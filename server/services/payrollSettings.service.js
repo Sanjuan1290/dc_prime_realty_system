@@ -1,5 +1,13 @@
 const SETTINGS_ID = 1;
 export const SUPPORTED_MID_PERIOD_CHANGE_RULE = 'period_boundary_only';
+export const NEW_HIRE_PRORATION_RULES = Object.freeze(['disabled', 'scheduled_workdays']);
+const validPayday = (value, field, { firstHalf = false } = {}) => {
+  const day = Number(value);
+  if (!Number.isInteger(day) || day < (firstHalf ? 16 : 1) || day > 28) {
+    throw payrollError(`${field} must be a valid calendar day from ${firstHalf ? 16 : 1} to 28.`, 'INVALID_PAYROLL_PAYDAY');
+  }
+  return day;
+};
 
 const payrollError = (message, code = 'PAYROLL_SETTINGS_ERROR', statusCode = 400, data = null) =>
   Object.assign(new Error(message), { code, statusCode, data });
@@ -24,6 +32,9 @@ const nullablePercentage = (value, field) => {
 
 export const normalizePayrollSettingsSnapshot = (row = {}) => ({
   settings_revision: Number(row.settings_revision || 1),
+  first_half_payday: Number(row.first_half_payday ?? 22),
+  second_half_payday: Number(row.second_half_payday ?? 7),
+  new_hire_proration_rule: String(row.new_hire_proration_rule || 'disabled'),
   regular_ot_multiplier: row.regular_ot_multiplier === null || row.regular_ot_multiplier === undefined ? null : Number(row.regular_ot_multiplier),
   rest_day_ot_multiplier: row.rest_day_ot_multiplier === null || row.rest_day_ot_multiplier === undefined ? null : Number(row.rest_day_ot_multiplier),
   regular_holiday_multiplier: row.regular_holiday_multiplier === null || row.regular_holiday_multiplier === undefined ? null : Number(row.regular_holiday_multiplier),
@@ -49,6 +60,9 @@ export const ensurePayrollSettingsSchema = async (connection) => {
       special_holiday_ot_multiplier DECIMAL(8,4) NULL,
       night_differential_percentage DECIMAL(6,3) NULL,
       mid_period_change_rule VARCHAR(40) NOT NULL DEFAULT 'period_boundary_only',
+      first_half_payday TINYINT UNSIGNED NOT NULL DEFAULT 22,
+      second_half_payday TINYINT UNSIGNED NOT NULL DEFAULT 7,
+      new_hire_proration_rule VARCHAR(40) NOT NULL DEFAULT 'disabled',
       settings_revision INT UNSIGNED NOT NULL DEFAULT 1,
       updated_by_user_id INT UNSIGNED NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -57,6 +71,8 @@ export const ensurePayrollSettingsSchema = async (connection) => {
       CONSTRAINT fk_employee_payroll_settings_user FOREIGN KEY (updated_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+  // Existing installations must apply the additive 20261012 payroll schedule migration
+  // before first use. Never execute ALTER TABLE inside the Payroll Settings update transaction.
   await connection.query(`
     INSERT INTO employee_payroll_settings (
       employee_payroll_settings_id, mid_period_change_rule, settings_revision
@@ -98,7 +114,14 @@ export const validatePayrollSettingsPayload = (body = {}) => {
       409
     );
   }
+  const hireRule = String(body.new_hire_proration_rule || 'disabled');
+  if (!NEW_HIRE_PRORATION_RULES.includes(hireRule)) {
+    throw payrollError('Select a supported new-hire proration policy.', 'INVALID_NEW_HIRE_RULE');
+  }
   return {
+    first_half_payday: validPayday(body.first_half_payday ?? 22, 'First-Half Payday', { firstHalf: true }),
+    second_half_payday: validPayday(body.second_half_payday ?? 7, 'Second-Half Payday'),
+    new_hire_proration_rule: hireRule,
     regular_ot_multiplier: nullableNumber(body.regular_ot_multiplier, 'Regular OT Multiplier'),
     rest_day_ot_multiplier: nullableNumber(body.rest_day_ot_multiplier, 'Rest Day OT Multiplier'),
     regular_holiday_multiplier: nullableNumber(body.regular_holiday_multiplier, 'Regular Holiday Multiplier'),
@@ -123,6 +146,9 @@ export const updatePayrollSettings = async (connection, { body, updatedByUserId 
         special_holiday_ot_multiplier = ?,
         night_differential_percentage = ?,
         mid_period_change_rule = ?,
+        first_half_payday = ?,
+        second_half_payday = ?,
+        new_hire_proration_rule = ?,
         settings_revision = settings_revision + 1,
         updated_by_user_id = ?,
         updated_at = CURRENT_TIMESTAMP
@@ -136,10 +162,14 @@ export const updatePayrollSettings = async (connection, { body, updatedByUserId 
     next.special_holiday_ot_multiplier,
     next.night_differential_percentage,
     next.mid_period_change_rule,
+    next.first_half_payday,
+    next.second_half_payday,
+    next.new_hire_proration_rule,
     Number(updatedByUserId || 0) || null,
     SETTINGS_ID,
   ]);
   const after = await getPayrollSettings(connection);
   return { before, after };
 };
+
 

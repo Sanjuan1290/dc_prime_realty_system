@@ -10,7 +10,7 @@ import {
   listEmployeePayrollHistory,
   recalculateDraftPayrollById,
 } from '../../../services/employeePayroll.service.js';
-import { resolvePayrollPeriod } from '../../../services/payrollPeriod.service.js';
+import { resolvePayrollPeriod, payrollPayday } from '../../../services/payrollPeriod.service.js';
 import { assessPayrollReadiness } from '../../../services/payrollReadiness.service.js';
 import { getPayrollSettingsSnapshot } from '../../../services/payrollSettings.service.js';
 import { buildFundReleaseReceipt } from '../../../services/payrollReceipt.service.js';
@@ -70,7 +70,7 @@ export const updateEmployeePayrollSettings = async (req, res) => {
       entityId: '1',
       entityLabel: 'Employee Payroll Settings',
       title: 'Payroll Settings Changed',
-      description: 'Employee payroll multipliers and the mid-period salary-change policy were updated.',
+      description: 'Employee payroll premium rules, salary schedule, and first-hire proration policy were updated.',
       metadata: {
         before: result.before,
         after: result.after,
@@ -91,14 +91,20 @@ export const updateEmployeePayrollSettings = async (req, res) => {
 };
 
 export const getPayrollPeriodPreview = async (req, res) => {
+  const connection = await db.getConnection();
   try {
-    const period = resolvePayrollPeriod({
-      month: req.query.month,
-      periodType: req.query.period_type,
+    const period = resolvePayrollPeriod({ month: req.query.month, periodType: req.query.period_type });
+    const settings = await getPayrollSettingsSnapshot(connection);
+    period.scheduledReleaseDate = payrollPayday({
+      month: period.month, periodType: period.periodType,
+      firstHalfDay: settings.first_half_payday,
+      secondHalfDay: settings.second_half_payday,
     });
     return res.json({ success: true, data: period });
   } catch (error) {
     return sendError(res, error);
+  } finally {
+    connection.release();
   }
 };
 
@@ -576,5 +582,6 @@ export const releaseEmployeePayroll = async (req, res) => {
     connection.release();
   }
 };
+
 
 

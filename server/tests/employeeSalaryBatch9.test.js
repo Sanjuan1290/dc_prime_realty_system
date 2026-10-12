@@ -141,6 +141,9 @@ test('Payroll Settings UI clearly keeps rates blank until approved and exposes o
   assert.match(settingsModal, /Enter only company-approved rates/)
   assert.match(settingsModal, /Leave a field blank until the company confirms it/)
   assert.match(settingsModal, /Payroll Boundary Only — 1st or 16th/)
-  assert.match(settingsModal, /current Attendance does not yet expose separate Regular Holiday OT minutes/)
+  assert.match(settingsModal, /Holiday Multiplier/)
+  assert.match(settingsModal, /legacyHolidayOtKeys/)
+  assert.doesNotMatch(settingsModal, /'Regular Holiday OT Multiplier'/)
 })
+
 

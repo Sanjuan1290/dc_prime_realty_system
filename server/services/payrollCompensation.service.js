@@ -11,6 +11,8 @@ export const getEffectiveCompensationForPeriod = async (connection, {
   periodStart,
   periodEnd,
   midPeriodChangeRule = SUPPORTED_MID_PERIOD_CHANGE_RULE,
+  hireDate = null,
+  newHireProrationRule = 'disabled',
 }) => {
   const [rows] = await connection.query(`
     SELECT h.*
@@ -49,6 +51,11 @@ export const getEffectiveCompensationForPeriod = async (connection, {
   }
 
   const record = history[0];
+  const newHire = record.effective_from > periodStart && record.effective_from <= periodEnd
+    && record.effective_from === hireDate && newHireProrationRule === 'scheduled_workdays';
+  if (record.effective_from > periodStart && newHire && (!record.effective_to || record.effective_to >= periodEnd)) {
+    return { ...record, payroll_new_hire_start: record.effective_from };
+  }
   if (record.effective_from > periodStart || (record.effective_to && record.effective_to < periodEnd)) {
     throw payrollError(
       'Payroll Settings require the compensation record to cover the whole payroll period. A partial-period salary proration formula has not been approved.',
@@ -60,4 +67,5 @@ export const getEffectiveCompensationForPeriod = async (connection, {
 
   return record;
 };
+
 

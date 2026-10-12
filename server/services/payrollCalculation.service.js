@@ -74,13 +74,23 @@ export const calculateDraftPayrollMoney = ({
   specialHolidayMinutes = 0,
   nightDifferentialMinutes = 0,
   payrollSettings = {},
+  prorationFraction = 1,
 }) => {
   const rates = calculatePayrollRates({ monthlyBasicSalary, regularWorkingMinutes });
+  if (!Number.isFinite(prorationFraction) || prorationFraction < 0 || prorationFraction > 1) {
+    throw Object.assign(new Error('Invalid new-hire proration fraction.'), { code: 'INVALID_PRORATION_FRACTION', statusCode: 409 });
+  }
+  const halfMonthBasic = round(rates.halfMonthBasic * prorationFraction, 2);
   const attendanceDeduction = calculateAttendanceDeduction({
     tardinessAbsenceMinutes,
     hourlyRate: rates.hourlyRate,
   });
   const allowances = resolvePayrollAllowances({ periodType, riceAllowance, transportationAllowance });
+  const proratedAllowances = {
+    riceAllowance: round(allowances.riceAllowance * prorationFraction, 2),
+    transportationAllowance: round(allowances.transportationAllowance * prorationFraction, 2),
+    attendanceBonus: round(allowances.attendanceBonus * prorationFraction, 2),
+  };
   const configuredEarnings = calculateConfiguredPayrollEarnings({
     hourlyRate: rates.hourlyRate,
     overtimeMinutes,
@@ -94,16 +104,16 @@ export const calculateDraftPayrollMoney = ({
   const manualDeductionsTotal = 0;
 
   const netFundRelease = round(
-    rates.halfMonthBasic
+    halfMonthBasic
       - attendanceDeduction
       + configuredEarnings.overtimePay
       + configuredEarnings.restDayOvertimePay
       + configuredEarnings.regularHolidayPay
       + configuredEarnings.specialHolidayPay
       + configuredEarnings.nightDifferentialPay
-      + allowances.riceAllowance
-      + allowances.transportationAllowance
-      + allowances.attendanceBonus
+      + proratedAllowances.riceAllowance
+      + proratedAllowances.transportationAllowance
+      + proratedAllowances.attendanceBonus
       + manualAdditionsTotal
       - manualDeductionsTotal,
     2
@@ -111,12 +121,15 @@ export const calculateDraftPayrollMoney = ({
 
   return {
     ...rates,
+    halfMonthBasic,
+    prorationFraction,
     attendanceDeduction,
-    ...allowances,
+    ...proratedAllowances,
     ...configuredEarnings,
     manualAdditionsTotal,
     manualDeductionsTotal,
     netFundRelease,
   };
 };
+
 

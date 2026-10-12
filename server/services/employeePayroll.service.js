@@ -3,8 +3,10 @@ import { ensureAttendanceLiteSchema, getManilaDateTime } from '../controllers/Sy
 import { calculateDraftPayrollMoney } from './payrollCalculation.service.js';
 import { getPayrollAttendanceSummary } from './payrollAttendance.service.js';
 import { getEffectiveCompensationForPeriod } from './payrollCompensation.service.js';
-import { clampPayrollAttendanceThrough, payrollPeriodFromDates, resolvePayrollPeriod } from './payrollPeriod.service.js';
+import { clampPayrollAttendanceThrough, payrollPeriodFromDates, resolvePayrollPeriod, payrollPayday } from './payrollPeriod.service.js';
 import { getPayrollSettingsSnapshot } from './payrollSettings.service.js';
+import { getEmployeeRestDaysAsOf } from './employeeRestDay.service.js';
+import { computeNewHireWorkdayFraction } from './payrollNewHireProration.service.js';
 
 export const PAYROLL_CALCULATION_VERSION = 'employee-salary-batch9-v1';
 let payrollSchemaReady = false;
@@ -81,6 +83,7 @@ export const ensureEmployeePayrollSchema = async (connection) => {
       period_start DATE NOT NULL,
       period_end DATE NOT NULL,
       release_date DATE NULL,
+      scheduled_release_date DATE NULL,
       release_day TINYINT UNSIGNED NULL,
       period_type ENUM('first_half','second_half') NULL,
       witness_name VARCHAR(180) NULL,
@@ -95,6 +98,7 @@ export const ensureEmployeePayrollSchema = async (connection) => {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
+  await connection.query('ALTER TABLE employee_payroll_periods ADD COLUMN IF NOT EXISTS scheduled_release_date DATE NULL');
   await connection.query(`
     CREATE TABLE IF NOT EXISTS employee_payrolls (
       employee_payroll_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -220,12 +224,13 @@ export const ensureEmployeePayrollSchema = async (connection) => {
 
 const ensurePeriodRow = async (connection, period) => {
   await connection.query(`
-    INSERT INTO employee_payroll_periods (period_label, period_start, period_end, period_type, payroll_status)
-    VALUES (?, ?, ?, ?, 'draft')
+    INSERT INTO employee_payroll_periods (period_label, period_start, period_end, period_type, scheduled_release_date, payroll_status)
+    VALUES (?, ?, ?, ?, ?, 'draft')
     ON DUPLICATE KEY UPDATE
       period_label = VALUES(period_label),
-      period_type = VALUES(period_type)
-  `, [period.periodLabel, period.periodStart, period.periodEnd, period.periodType]);
+      period_type = VALUES(period_type),
+      scheduled_release_date = IF(payroll_status = 'draft', COALESCE(scheduled_release_date, VALUES(scheduled_release_date)), scheduled_release_date)
+  `, [period.periodLabel, period.periodStart, period.periodEnd, period.periodType, period.scheduledReleaseDate]);
 
   const [rows] = await connection.query(`
     SELECT * FROM employee_payroll_periods
@@ -428,42 +433,80 @@ export const calculateAndStoreDraftPayroll = async (connection, {
     ? payrollPeriodFromDates(period)
     : resolvePayrollPeriod({ month: period.month, periodType: period.periodType });
   const attendanceThrough = clampPayrollAttendanceThrough({ ...normalizedPeriod, today });
-  const periodRow = await ensurePeriodRow(connection, normalizedPeriod);
   const employee = await getEmployee(connection, employeeId);
   const payrollSettings = await getPayrollSettingsSnapshot(connection);
+  normalizedPeriod.scheduledReleaseDate = payrollPayday({
+    month: normalizedPeriod.month,
+    periodType: normalizedPeriod.periodType,
+    firstHalfDay: payrollSettings.first_half_payday,
+    secondHalfDay: payrollSettings.second_half_payday,
+  });
+  const periodRow = await ensurePeriodRow(connection, normalizedPeriod);
+  const hireDate = dateOnly(employee.hire_date);
+  if (hireDate > normalizedPeriod.periodStart && hireDate <= normalizedPeriod.periodEnd
+      && payrollSettings.new_hire_proration_rule !== 'scheduled_workdays') {
+    throw payrollError('New-hire first payroll begins mid-period. Enable and approve the scheduled-workday proration policy in Payroll Settings before generating.', 'NEW_HIRE_PRORATION_NOT_APPROVED', 409);
+  }
   const compensation = await getEffectiveCompensationForPeriod(connection, {
     employeeId,
     periodStart: normalizedPeriod.periodStart,
     periodEnd: normalizedPeriod.periodEnd,
     midPeriodChangeRule: payrollSettings.mid_period_change_rule,
+    hireDate: dateOnly(employee.hire_date),
+    newHireProrationRule: payrollSettings.new_hire_proration_rule,
   });
+  if (hireDate > normalizedPeriod.periodStart && hireDate <= normalizedPeriod.periodEnd
+      && !compensation.payroll_new_hire_start) {
+    throw payrollError('New-hire compensation must start on the actual hire date to calculate a partial first payroll. Review Employment History; do not backdate Attendance.', 'NEW_HIRE_COMPENSATION_DATE_MISMATCH', 409);
+  }
+  const partialStart = compensation.payroll_new_hire_start || null;
+  if (partialStart && partialStart > attendanceThrough) {
+    throw payrollError('First payroll cannot be generated before the employee actually starts work.', 'FUTURE_EMPLOYEE_START', 409);
+  }
+  // Only Attendance on/after the actual hire date can affect first-payroll money.
   const attendance = await getPayrollAttendanceSummary(connection, {
-    employeeId,
-    dateFrom: normalizedPeriod.periodStart,
-    dateTo: attendanceThrough,
+    employeeId, dateFrom: partialStart || normalizedPeriod.periodStart, dateTo: attendanceThrough,
   });
+  const eligibility = partialStart
+    ? computeNewHireWorkdayFraction({
+        periodStart: normalizedPeriod.periodStart,
+        periodEnd: normalizedPeriod.periodEnd,
+        hireDate: partialStart,
+        restDays: (await getEmployeeRestDaysAsOf(connection, [employeeId], partialStart)).get(Number(employeeId)) || [],
+      })
+    : null;
+  const fullScheduledDays = eligibility?.allDays ?? attendance.summary.scheduledDays;
+  const eligibleScheduledDays = eligibility?.eligibleDays ?? attendance.summary.scheduledDays;
+  const fraction = eligibility?.fraction ?? 1;
+  const eligibleRows = attendance.rows;
+  const eligibleSummary = attendance.summary;
+  const attendanceUsed = partialStart ? {
+    ...attendance, rows: eligibleRows, summary: eligibleSummary,
+  } : attendance;
   const money = calculateDraftPayrollMoney({
     monthlyBasicSalary: compensation.monthly_basic_salary,
     regularWorkingMinutes: attendance.schedule.regularWorkingMinutes,
-    tardinessAbsenceMinutes: attendance.summary.tardinessAbsenceMinutes,
+    tardinessAbsenceMinutes: attendanceUsed.summary.tardinessAbsenceMinutes,
     periodType: normalizedPeriod.periodType,
     riceAllowance: compensation.rice_allowance,
     transportationAllowance: compensation.transportation_allowance,
-    overtimeMinutes: attendance.summary.overtimeMinutes,
-    restDayOvertimeMinutes: attendance.summary.restDayOvertimeMinutes,
-    regularHolidayMinutes: attendance.summary.regularHolidayMinutes,
-    specialHolidayMinutes: attendance.summary.specialHolidayMinutes,
-    nightDifferentialMinutes: attendance.summary.nightDifferentialMinutes,
+    overtimeMinutes: attendanceUsed.summary.overtimeMinutes,
+    restDayOvertimeMinutes: attendanceUsed.summary.restDayOvertimeMinutes,
+    regularHolidayMinutes: attendanceUsed.summary.regularHolidayMinutes,
+    specialHolidayMinutes: attendanceUsed.summary.specialHolidayMinutes,
+    nightDifferentialMinutes: attendanceUsed.summary.nightDifferentialMinutes,
     payrollSettings,
+    prorationFraction: fraction,
   });
   const warnings = warningList({
     period: normalizedPeriod,
     attendanceThrough,
-    attendance: attendance.summary,
+    attendance: attendanceUsed.summary,
     compensation,
     payrollSettings,
   });
 
+  if (partialStart) warnings.push(`First-hire proration: ${eligibleScheduledDays} of ${fullScheduledDays} scheduled workdays from ${partialStart}; half-month basic and allowances prorated. Attendance before hire date is excluded.`);
   const payload = {
     periodId: Number(periodRow.employee_payroll_period_id),
     employeeId: Number(employee.employee_id),
@@ -495,7 +538,7 @@ export const calculateAndStoreDraftPayroll = async (connection, {
     payrollSettingsSnapshot: payrollSettings,
     calculationVersion: PAYROLL_CALCULATION_VERSION,
     warnings,
-    attendanceBreakdown: attendance.rows.map((row) => ({
+    attendanceBreakdown: attendanceUsed.rows.map((row) => ({
       date: row.date,
       state: row.state,
       day_type: row.dayType,
@@ -520,7 +563,7 @@ export const getPayrollDraftById = async (connection, employeePayrollId, { forUp
   await ensureEmployeePayrollSchema(connection);
   const [rows] = await connection.query(`
     SELECT p.*, pp.period_label, pp.period_start, pp.period_end, pp.period_type,
-      pp.release_date AS period_release_date, pp.witness_name, pp.release_notes AS period_release_notes,
+      pp.release_date AS period_release_date, pp.scheduled_release_date AS scheduled_release_date, pp.witness_name, pp.release_notes AS period_release_notes,
       h.change_type AS employment_change_type, h.change_reason AS employment_change_reason,
       TRIM(CONCAT_WS(' ', finalized_user.first_name, finalized_user.middle_name, finalized_user.last_name)) AS finalized_by_name,
       TRIM(CONCAT_WS(' ', released_user.first_name, released_user.middle_name, released_user.last_name)) AS released_by_name
@@ -545,6 +588,7 @@ export const getPayrollDraftById = async (connection, employeePayrollId, { forUp
     attendance_calculated_through: dateOnly(row.attendance_calculated_through),
     released_date: dateOnly(row.released_date),
     period_release_date: dateOnly(row.period_release_date),
+    scheduled_release_date: dateOnly(row.scheduled_release_date),
     calculation_warnings: parseJson(row.calculation_warnings_json, []),
     payroll_settings_snapshot: parseJson(row.payroll_settings_snapshot_json, null),
     attendance_breakdown: parseJson(row.attendance_breakdown_json, []),
@@ -614,7 +658,7 @@ export const listPayrollDrafts = async (connection, {
       p.finalized_at, p.finalized_by_user_id,
       p.released_date, p.released_at, p.released_by_user_id, p.release_reference, p.release_notes, p.release_witness_name,
       p.finalized_snapshot_json,
-      pp.period_label, pp.period_start, pp.period_end, pp.period_type
+      pp.period_label, pp.period_start, pp.period_end, pp.period_type, pp.scheduled_release_date
     FROM employee_payrolls p
     INNER JOIN employee_payroll_periods pp ON pp.employee_payroll_period_id = p.employee_payroll_period_id
     INNER JOIN employees e ON e.employee_id = p.employee_id
@@ -774,5 +818,6 @@ export const listEmployeePayrollHistory = async (connection, employeeId) => {
     history,
   };
 };
+
 
 

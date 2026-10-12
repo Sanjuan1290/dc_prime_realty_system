@@ -11,6 +11,20 @@ const payrollError = (message, code = 'INVALID_PAYROLL_PERIOD', statusCode = 400
   return error;
 };
 
+export const payrollPayday = ({ month, periodType, firstHalfDay = 22, secondHalfDay = 7 }) => {
+  const match = String(month || '').match(MONTH_PATTERN);
+  if (!match || !PAYROLL_PERIOD_TYPES.includes(periodType)) throw payrollError('Invalid payroll payday period.');
+  const year = Number(match[1]);
+  const monthNumber = Number(match[2]);
+  if (monthNumber < 1 || monthNumber > 12) throw payrollError('Invalid payroll payday month.');
+  const day = Number(periodType === 'first_half' ? firstHalfDay : secondHalfDay);
+  if (!Number.isInteger(day) || day < 1 || day > 28 || (periodType === 'first_half' && day < 16)) {
+    throw payrollError('Paydays must be valid days; first-half payday must be between the 16th and 28th.');
+  }
+  const target = new Date(Date.UTC(year, monthNumber - 1 + (periodType === 'second_half' ? 1 : 0), day));
+  return target.toISOString().slice(0, 10);
+};
+
 const daysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
 
 export const resolvePayrollPeriod = ({ month, periodType }) => {
@@ -68,4 +82,5 @@ export const clampPayrollAttendanceThrough = ({ periodStart, periodEnd, today })
   }
   return periodEnd < current ? periodEnd : current;
 };
+
 

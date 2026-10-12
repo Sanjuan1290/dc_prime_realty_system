@@ -1,3 +1,4 @@
+import { getManilaDateTime } from '../controllers/System/Employees/attendanceLite.shared.js';
 const payrollError = (message, code = 'PAYROLL_RELEASE_ERROR', statusCode = 409, data = null) => Object.assign(
   new Error(message),
   { code, statusCode, data }
@@ -39,6 +40,14 @@ export const validatePayrollReleaseInput = ({ payroll, releasedByUserId, release
     throw payrollError('Select a valid Released Date.', 'INVALID_PAYROLL_RELEASE_DATE', 400)
   }
 
+  const currentDate = getManilaDateTime().date;
+  if (normalizedDate > currentDate) {
+    throw payrollError('The Actual Release Date cannot be in the future.', 'FUTURE_PAYROLL_RELEASE', 409);
+  }
+  const periodEnd = String(payroll.period_end || '').slice(0, 10);
+  if (periodEnd && normalizedDate < periodEnd) {
+    throw payrollError('Salary cannot be recorded as released before the payroll period ends.', 'PAYROLL_PERIOD_NOT_ENDED', 409);
+  }
   return {
     releasedByUserId: actorId,
     releaseDate: normalizedDate,
@@ -82,5 +91,6 @@ export const releasePayroll = async (connection, input) => {
 
   return normalized
 }
+
 
 

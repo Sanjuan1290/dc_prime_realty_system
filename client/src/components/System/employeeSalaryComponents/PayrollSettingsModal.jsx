@@ -6,13 +6,13 @@ import StatusAlert from '../../Shared/StatusAlert'
 import { useFetch, useFetchPut } from '../../../utils/useFetch'
 
 const numericFields = [
-  ['regular_ot_multiplier', 'Regular OT Multiplier', 'Applied to Regular OT hours.'],
-  ['rest_day_ot_multiplier', 'Rest Day OT Multiplier', 'Applied to Rest Day OT hours.'],
-  ['regular_holiday_multiplier', 'Regular Holiday Multiplier', 'Applied to recorded Regular Holiday worked hours.'],
-  ['regular_holiday_ot_multiplier', 'Regular Holiday OT Multiplier', 'Stored for the approved rule; current Attendance does not yet expose separate Regular Holiday OT minutes.'],
-  ['special_holiday_multiplier', 'Special Holiday Multiplier', 'Applied to recorded Special Holiday worked hours.'],
-  ['special_holiday_ot_multiplier', 'Special Holiday OT Multiplier', 'Stored for the approved rule; current Attendance does not yet expose separate Special Holiday OT minutes.'],
+  ['regular_ot_multiplier', 'Overtime Multiplier', 'Applied to regular overtime hours recorded in Attendance.'],
+  ['rest_day_ot_multiplier', 'Rest Day OT Multiplier', 'Applied to Rest Day overtime hours recorded in Attendance.'],
 ]
+// These two legacy fields are retained in the database for historical compatibility.
+// The UI does not offer unsupported separate Holiday OT settings or overwrite them.
+const legacyHolidayOtKeys = ['regular_holiday_ot_multiplier', 'special_holiday_ot_multiplier']
+const sameHolidayRate = (data) => data.regular_holiday_multiplier === data.special_holiday_multiplier
 
 const cleanInput = (value) => value === null || value === undefined ? '' : String(value)
 const payloadValue = (value) => String(value ?? '').trim() === '' ? null : Number(value)
@@ -30,16 +30,27 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
     const data = settingsQuery.data.data
     setForm({
       ...Object.fromEntries(numericFields.map(([key]) => [key, cleanInput(data[key])])),
+      ...Object.fromEntries(legacyHolidayOtKeys.map((key) => [key, cleanInput(data[key])])),
+      holiday_multiplier: sameHolidayRate(data) ? cleanInput(data.regular_holiday_multiplier) : '',
       night_differential_percentage: cleanInput(data.night_differential_percentage),
       mid_period_change_rule: data.mid_period_change_rule || 'period_boundary_only',
+      first_half_payday: cleanInput(data.first_half_payday ?? 22),
+      second_half_payday: cleanInput(data.second_half_payday ?? 7),
+      new_hire_proration_rule: data.new_hire_proration_rule || 'disabled',
     })
   }, [settingsQuery.data])
 
   const saveMutation = useMutation({
     mutationFn: () => useFetchPut('/employee-payroll/settings', {
       ...Object.fromEntries(numericFields.map(([key]) => [key, payloadValue(form?.[key])])),
+      regular_holiday_multiplier: payloadValue(form?.holiday_multiplier),
+      special_holiday_multiplier: payloadValue(form?.holiday_multiplier),
+      ...Object.fromEntries(legacyHolidayOtKeys.map((key) => [key, payloadValue(form?.[key])])),
       night_differential_percentage: payloadValue(form?.night_differential_percentage),
       mid_period_change_rule: 'period_boundary_only',
+      first_half_payday: Number(form?.first_half_payday),
+      second_half_payday: Number(form?.second_half_payday),
+      new_hire_proration_rule: form?.new_hire_proration_rule || 'disabled',
     }, { confirmationHandled: 'compact' }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['employee-salary'] })
@@ -47,6 +58,9 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
       onClose?.()
     },
   })
+
+  const holidayRatesDiffer = settingsQuery.data?.data && !sameHolidayRate(settingsQuery.data.data)
+  const sharedHolidayRateRequired = holidayRatesDiffer && String(form?.holiday_multiplier ?? '').trim() === ''
 
   const set = (key, value) => setForm((current) => ({ ...(current || {}), [key]: value }))
 
@@ -72,10 +86,30 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
               <div className="flex gap-3"><FiAlertTriangle className="mt-0.5 shrink-0 text-amber-700" /><div><p className="font-black text-amber-950">Enter only company-approved rates</p><p className="mt-1 text-sm font-semibold leading-6 text-amber-900">The Master Plan names these rules but does not provide their numeric values. Leave a field blank until the company confirms it. Recorded premium hours with an unconfigured rate remain ₱0.00 and produce a Draft warning.</p></div></div>
             </section>
 
+            <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+              <h3 className="text-base font-black text-slate-950">Payroll Schedule</h3>
+              <p className="mt-1 text-xs font-semibold text-slate-600">Pay periods are automatically 1–15 and 16–last day. Payday is the 22nd of that month or the 7th of the next. The configured payday is a schedule only, not confirmation of payment.</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-black text-slate-800">First-half payday (same month)<input type="number" min="16" max="28" value={form.first_half_payday} onChange={(e) => set('first_half_payday', e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3" /></label>
+                <label className="text-xs font-black text-slate-800">Second-half payday (following month)<input type="number" min="1" max="28" value={form.second_half_payday} onChange={(e) => set('second_half_payday', e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3" /></label>
+              </div>
+            </section>
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <label className="block text-sm font-black text-slate-900">First Payroll for New Hires</label>
+              <select value={form.new_hire_proration_rule} onChange={(e) => set('new_hire_proration_rule', e.target.value)} className="mt-3 h-11 w-full rounded-xl border border-amber-300 bg-white px-3 text-sm font-bold">
+                <option value="disabled">Disabled — approval required</option>
+                <option value="scheduled_workdays">Enable scheduled-workday proration</option>
+              </select>
+              <p className="mt-2 text-xs font-semibold leading-5 text-amber-900">If explicitly approved: first-payroll basic = half-month basic × scheduled workdays from the actual hire date through period end ÷ scheduled workdays of the entire half-month. Allowances are prorated by the same fraction; pre-hire Attendance is excluded. Existing-employee salary changes inside a period are still blocked.</p>
+            </section>
+            {holidayRatesDiffer ? <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
+              Existing Regular and Special Holiday rates are different. Enter a single approved Holiday Multiplier before saving; both future Draft holiday calculations will use it. Previously finalized payroll stays unchanged.
+            </section> : null}
             <section className="grid gap-4 md:grid-cols-2">
               {numericFields.map(([key, label, help]) => <label key={key} className="rounded-2xl border border-slate-200 p-4"><span className="block text-sm font-black text-slate-900">{label}</span><input type="number" min="0" step="0.0001" value={form[key]} onChange={(event) => set(key, event.target.value)} placeholder="Not configured" className="mt-3 h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-bold" /><span className="mt-2 block text-xs font-semibold leading-5 text-slate-500">{help}</span></label>)}
+              <label className="rounded-2xl border border-slate-200 p-4"><span className="block text-sm font-black text-slate-900">Holiday Multiplier</span><input type="number" min="0" step="0.0001" value={form.holiday_multiplier} onChange={(event) => set('holiday_multiplier', event.target.value)} placeholder="Not configured" className="mt-3 h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-bold" /><span className="mt-2 block text-xs font-semibold leading-5 text-slate-500">One approved multiplier for Holiday hours recorded in Attendance. Both legacy holiday categories use the same value for new Draft calculations; their historic accounting fields are preserved.</span></label>
               <label className="rounded-2xl border border-slate-200 p-4"><span className="block text-sm font-black text-slate-900">Night Differential Percentage</span><div className="relative mt-3"><input type="number" min="0" max="100" step="0.001" value={form.night_differential_percentage} onChange={(event) => set('night_differential_percentage', event.target.value)} placeholder="Not configured" className="h-11 w-full rounded-xl border border-slate-300 px-3 pr-10 text-sm font-bold" /><span className="absolute right-3 top-3 text-sm font-black text-slate-500">%</span></div><span className="mt-2 block text-xs font-semibold leading-5 text-slate-500">Applied as an additional percentage of hourly pay for recorded Night Differential hours.</span></label>
-              <label className="rounded-2xl border border-slate-200 p-4"><span className="block text-sm font-black text-slate-900">Mid-Period Salary Change Rule</span><select value="period_boundary_only" disabled className="mt-3 h-11 w-full rounded-xl border border-slate-300 bg-slate-100 px-3 text-sm font-bold text-slate-700"><option value="period_boundary_only">Payroll Boundary Only — 1st or 16th</option></select><span className="mt-2 block text-xs font-semibold leading-5 text-slate-500">A proration formula is not defined in the approved Master Plan, so salary/compensation changes inside a half-month period remain blocked.</span></label>
+              <label className="rounded-2xl border border-slate-200 p-4"><span className="block text-sm font-black text-slate-900">Salary Change Timing</span><select value="period_boundary_only" disabled className="mt-3 h-11 w-full rounded-xl border border-slate-300 bg-slate-100 px-3 text-sm font-bold text-slate-700"><option value="period_boundary_only">Payroll Boundary Only — 1st or 16th</option></select><span className="mt-2 block text-xs font-semibold leading-5 text-slate-500">A proration formula is not defined in the approved Master Plan, so salary/compensation changes inside a half-month period remain blocked.</span></label>
             </section>
 
             <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-950">
@@ -89,7 +123,7 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
           <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700">Cancel</button>
-          <button type="button" onClick={() => saveMutation.mutate()} disabled={!form || saveMutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50"><FiSave />{saveMutation.isPending ? 'Saving...' : 'Save Payroll Settings'}</button>
+          <button type="button" onClick={() => saveMutation.mutate()} disabled={!form || saveMutation.isPending || sharedHolidayRateRequired} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50"><FiSave />{saveMutation.isPending ? 'Saving...' : 'Save Payroll Settings'}</button>
         </footer>
       </div>
     </div>
@@ -97,5 +131,6 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
 }
 
 export default PayrollSettingsModal
+
 
 

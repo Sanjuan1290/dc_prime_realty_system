@@ -63,6 +63,7 @@ const ReleasePayrollModal = ({ payroll, onClose, onReleased }) => {
           <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <p className="font-black text-slate-950">{payroll?.employee_name_snapshot || 'Employee'}</p>
             <p className="mt-1 text-sm font-semibold text-slate-600">{payroll?.period_label || `${formatPayrollDate(payroll?.period_start)} – ${formatPayrollDate(payroll?.period_end)}`}</p>
+            {payroll?.scheduled_release_date ? <p className="mt-1 text-xs font-black text-blue-700">Scheduled Payday: {formatPayrollDate(payroll.scheduled_release_date)} · Actual Release Date may differ; record only after funds are paid.</p> : null}
             <div className="mt-3 flex items-center justify-between gap-4 border-t border-slate-200 pt-3"><span className="text-sm font-bold text-slate-600">Net Fund Release</span><span className="text-xl font-black text-emerald-700">{money(payroll?.net_fund_release)}</span></div>
           </section>
 
@@ -96,5 +97,6 @@ const ReleasePayrollModal = ({ payroll, onClose, onReleased }) => {
 }
 
 export default ReleasePayrollModal
+
 
 

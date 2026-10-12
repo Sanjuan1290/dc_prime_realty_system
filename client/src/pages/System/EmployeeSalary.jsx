@@ -102,10 +102,11 @@ const EmployeeSalary = () => {
   const handleGenerated = (result) => {
     const generated = result?.data?.generated?.length || 0
     const skipped = result?.data?.skipped?.length || 0
+    const firstIssue = result?.data?.skipped?.[0]?.message
     setAlert({
       type: skipped ? 'warning' : 'success',
       message: skipped
-        ? `Draft payroll generated for ${generated} employee(s). ${skipped} employee(s) were skipped because their payroll could not be calculated.`
+        ? `Draft payroll generated for ${generated} employee(s); ${skipped} skipped. First issue: ${firstIssue || 'See details in Generate Draft Payroll.'}`
         : result?.message || `Draft payroll generated for ${generated} employee(s).`,
     })
   }
@@ -146,7 +147,7 @@ const EmployeeSalary = () => {
         </div>
 
         <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-          <div><span className="font-black text-slate-900">{period?.periodLabel || 'Resolving payroll period...'}</span><span className="ml-2 font-semibold text-slate-500">{rows.length} payroll record(s)</span></div>
+          <div><span className="font-black text-slate-900">{period?.periodLabel || 'Resolving payroll period...'}</span><span className="ml-2 font-semibold text-slate-500">{rows.length} payroll record(s)</span>{period?.scheduledReleaseDate ? <span className="ml-3 rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">Scheduled payday: {period.scheduledReleaseDate}</span> : null}</div>
           <p className="text-xs font-semibold text-slate-500">Draft receipt = Preview only. Official Print / Export becomes available after Finalization.</p>
         </div>
 
@@ -174,7 +175,7 @@ const EmployeeSalary = () => {
 
       {showPayrollSummaryExport ? <PayrollSummaryExportModal month={month} periodType={periodType} periodLabel={period?.periodLabel} onClose={() => setShowPayrollSummaryExport(false)} /> : null}
       {showPayrollSettings ? <PayrollSettingsModal onClose={() => setShowPayrollSettings(false)} onSaved={(result) => { setAlert({ type: 'success', message: result?.message || 'Payroll Settings updated.' }); registerQuery.refetch() }} /> : null}
-      {showGenerate ? <GeneratePayrollModal month={month} periodType={periodType} periodLabel={period?.periodLabel} onClose={() => setShowGenerate(false)} onGenerated={handleGenerated} /> : null}
+      {showGenerate ? <GeneratePayrollModal month={month} periodType={periodType} periodLabel={period?.periodLabel} scheduledReleaseDate={period?.scheduledReleaseDate} onClose={() => setShowGenerate(false)} onGenerated={handleGenerated} /> : null}
       {selectedPayrollId ? <SalaryDetailModal payrollId={selectedPayrollId} initialTab={selectedPayrollTab} canRecalculate={canRecalculate} canFinalize={canFinalize} canCorrect={canCorrect} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={canExportReceipt} onClose={() => setSelectedPayrollId(null)} onUpdated={() => registerQuery.refetch()} /> : null}
       {selectedReceiptPayrollId ? <FundReleaseReceiptModal payrollId={selectedReceiptPayrollId} canPrint={canPrintReceipt} canExport={canExportReceipt} onClose={() => setSelectedReceiptPayrollId(null)} /> : null}
       {historyEmployee ? <SalaryHistoryModal employee={historyEmployee} canCorrect={canCorrect} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={canExportReceipt} onClose={() => setHistoryEmployee(null)} /> : null}
@@ -183,4 +184,5 @@ const EmployeeSalary = () => {
 }
 
 export default EmployeeSalary
+
 
