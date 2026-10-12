@@ -89,10 +89,15 @@ JOIN lot_project_accounts account_row ON account_row.lot_project_account_id = c.
 WHERE sg.seller_group_type = 'in_house'
   AND c.lot_project_account_id IS NOT NULL
   AND c.company_profit_rate_snapshot > 0
+  AND NOT EXISTS (
+    SELECT 1
+    FROM lot_project_network_profit_accounts existing
+    WHERE existing.lot_project_account_id = c.lot_project_account_id
+      AND existing.seller_group_id = sg.seller_group_id
+  )
 GROUP BY c.lot_project_account_id, sg.seller_group_id, sg.seller_group_name, sg.broker_name, sg.realty_name
 HAVING MIN(c.company_profit_rate_snapshot) = MAX(c.company_profit_rate_snapshot)
-   AND MIN(c.commission_base_amount) = MAX(c.commission_base_amount)
-ON DUPLICATE KEY UPDATE id = id;
+   AND MIN(c.commission_base_amount) = MAX(c.commission_base_amount);
 
 -- Stages mirror the existing seller commission split. The final stage absorbs rounding cents.
 INSERT INTO lot_project_network_profit_releases (
@@ -110,4 +115,9 @@ CROSS JOIN (
   SELECT '4th Release',75,15 UNION ALL
   SELECT 'Retention',100,25
 ) stage
-ON DUPLICATE KEY UPDATE id = id;
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM lot_project_network_profit_releases existing
+  WHERE existing.profit_account_id = profit.id
+    AND existing.release_stage = stage.release_stage
+);
