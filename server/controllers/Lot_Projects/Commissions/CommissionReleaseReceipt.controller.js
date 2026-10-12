@@ -37,7 +37,54 @@ export const getCommissionReleaseReceipt = async (req, res) => {
         AND receipt.receipt_status = 'active' AND stage.release_status = 'Released'
       LIMIT 1`, [project.lot_project_id, commissionId, stageId]);
     const row = rows[0];
-    if (!row) return res.status(404).json({ success: false, code: 'RELEASE_RECEIPT_NOT_FOUND', message: 'No Proof of Income receipt is linked to this released milestone. Check Accredited Sellers for older receipts.' });
+    if (!row) {
+      // Releases predating receipt-at-payout can be paid but have no receipt item.
+      // Return the actual authorized seller identity only for this exact paid stage;
+      // users with receipt-upload permission may create the missing document later.
+      const [legacyRows] = await connection.query(`
+        SELECT commission.accredited_seller_id, commission.sale_owner_accredited_seller_id,
+          commission.commission_rate_type, stage.actual_release_date
+        FROM lot_project_commission_releases stage
+        INNER JOIN lot_project_commissions commission
+          ON commission.lot_project_commission_id = stage.lot_project_commission_id
+        WHERE commission.lot_project_id = ? AND commission.lot_project_commission_id = ?
+          AND stage.lot_project_commission_release_id = ?
+          AND stage.release_status = 'Released'
+        LIMIT 1`, [project.lot_project_id, commissionId, stageId]);
+      const legacy = legacyRows[0];
+      if (!legacy) return res.status(404).json({ success: false, message: 'Released commission milestone not found.' });
+      const sellerId = String(legacy.commission_rate_type || '').toLowerCase() === 'direct'
+        ? Number(legacy.sale_owner_accredited_seller_id || legacy.accredited_seller_id)
+        : Number(legacy.accredited_seller_id);
+      return res.status(404).json({ success: false, code: 'RELEASE_RECEIPT_NOT_FOUND',
+        message: 'This previously released milestone has no linked Proof of Income receipt. An authorized user can record its missing receipt without releasing the commission again.',
+        legacyReceipt: { commissionId, releaseId: stageId, sellerId,
+          actualReleaseDate: legacy.actual_release_date },
+      });
+    }
+    // Earlier Accredited Sellers receipts may combine several paid stages.
+    // The original receipt (and its signed copy) represents ALL those stages:
+    // do not print the combined total as if it were only the selected tranche.
+    const [receiptStageRows] = await connection.query(`
+      SELECT stage.release_stage, stage.release_percent, stage.release_trigger_percent,
+        item.release_amount
+      FROM lot_project_commission_receipt_items item
+      INNER JOIN lot_project_commission_releases stage
+        ON stage.lot_project_commission_release_id = item.lot_project_commission_release_id
+      INNER JOIN lot_project_commissions commission
+        ON commission.lot_project_commission_id = stage.lot_project_commission_id
+      WHERE item.lot_project_commission_receipt_id = ?
+        AND commission.lot_project_id = ?
+        AND commission.lot_project_commission_id = ?
+        AND stage.release_status = 'Released'
+      ORDER BY FIELD(stage.release_stage, '1st Release', '2nd Release', '3rd Release', '4th Release', 'Retention')`,
+      [row.lot_project_commission_receipt_id, project.lot_project_id, commissionId]);
+    const includedReleases = receiptStageRows.map((release) => ({
+      stage: release.release_stage,
+      releasePercent: Number(release.release_percent),
+      triggerPercent: Number(release.release_trigger_percent),
+      netAmount: Number(release.release_amount),
+    }));
     return res.json({ success: true, data: {
       accreditedSellerId: Number(row.accredited_seller_id),
       receipt: { receiptId: Number(row.lot_project_commission_receipt_id),
@@ -46,10 +93,9 @@ export const getCommissionReleaseReceipt = async (req, res) => {
         witnessName: row.witness_name, totalAmount: Number(row.total_amount),
         unitId: row.unit_id, buyerName: row.buyer_name, commissionRole: row.commission_role,
         commissionRate: Number(row.commission_rate), grossCommission: Number(row.gross_commission),
-        releasePercent: Number(row.release_percent),
-        cumulativeTargetPercent: Number(row.release_trigger_percent),
-        releases: [{ stage: row.release_stage, releasePercent: Number(row.release_percent),
-          triggerPercent: Number(row.release_trigger_percent), netAmount: Number(row.net_release_amount) }] },
+        releasePercent: includedReleases.reduce((sum, release) => sum + release.releasePercent, 0),
+        cumulativeTargetPercent: Math.max(0, ...includedReleases.map((release) => release.triggerPercent)),
+        releases: includedReleases },
     } });
   } catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error) }); }
   finally { connection.release(); }

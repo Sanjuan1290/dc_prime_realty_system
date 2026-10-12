@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useFetch as fetchJson } from '../../../../utils/useFetch'
+import { useFetch as fetchJson, useFetchPost as postJson } from '../../../../utils/useFetch'
 import NetworkCompanyProfitPanel from '../NetworkCompanyProfitPanel'
 import CommissionReceiptPreview from '../CommissionReceiptPreview'
 import SignedCopyUploadModal from '../../../Shared/SignedCopyUploadModal'
@@ -334,6 +334,10 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
   const [receiptDetails, setReceiptDetails] = useState(emptyReleaseReceipt)
   const [sellerReceiptChoice, setSellerReceiptChoice] = useState(null)
   const [sellerSignedChoice, setSellerSignedChoice] = useState(null)
+  const [missingReceiptChoice, setMissingReceiptChoice] = useState(null)
+  const [missingReceiptDetails, setMissingReceiptDetails] = useState(emptyReleaseReceipt)
+  const [legacyReceiptSaving, setLegacyReceiptSaving] = useState(false)
+  const [legacyReceiptError, setLegacyReceiptError] = useState('')
   const [receiptLoading, setReceiptLoading] = useState(false)
   const [notice, setNotice] = useState(null)
   const activeNotice = notice || serverNotice
@@ -354,8 +358,45 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
             seller_group_type: commission.sellerGroupType, seller_group_name: commission.sellerGroup } })
       }
     } catch (error) {
-      setNotice({ type: 'warning', title: 'Receipt not available', message: error.message || 'Could not load this release receipt.' })
+      if (error.code === 'RELEASE_RECEIPT_NOT_FOUND' && error.data?.legacyReceipt?.sellerId) {
+        // An older payment must never be released twice just to make a receipt.
+        // The existing Accredited Seller receipt endpoint attaches the exact stage.
+        setMissingReceiptChoice({
+          ...error.data.legacyReceipt, stage: stage.stage, amount: stage.netAmount, purpose,
+        })
+        setMissingReceiptDetails(emptyReleaseReceipt())
+        setLegacyReceiptError('')
+      } else {
+        setNotice({ type: 'warning', title: 'Receipt not available', message: error.message || 'Could not load this release receipt.' })
+      }
     } finally { setReceiptLoading(false) }
+  }
+
+  const saveMissingReceipt = async () => {
+    if (!missingReceiptChoice || legacyReceiptSaving || !canUploadSigned) return
+    const invalid = validateReleaseReceipt(missingReceiptDetails, String(missingReceiptChoice.actualReleaseDate || '').slice(0, 10))
+    if (invalid) { setLegacyReceiptError(invalid); return }
+    setLegacyReceiptError('')
+    setLegacyReceiptSaving(true)
+    try {
+      await postJson(`/accredited/${missingReceiptChoice.sellerId}/proof-of-income-receipts`, {
+        commissionId: missingReceiptChoice.commissionId,
+        releaseIds: [missingReceiptChoice.releaseId],
+        ...missingReceiptDetails,
+      }, { doubleCheck: {
+        type: 'proof-of-income',
+        summary: `Record missing Proof of Income only · ${commission.seller} · ${missingReceiptChoice.stage}`,
+        data: { action: 'create-existing-release-receipt', commissionId: missingReceiptChoice.commissionId,
+          releaseId: missingReceiptChoice.releaseId, recipient: commission.seller,
+          amount: missingReceiptChoice.amount, receiptDate: missingReceiptDetails.receiptDate,
+          referenceNumber: missingReceiptDetails.referenceNumber,
+          note: 'The commission payment was already released. This action creates its receipt only.' },
+      } })
+      setMissingReceiptChoice(null)
+      setNotice({ type: 'success', title: 'Receipt linked', message: 'The receipt was attached to the existing released milestone. No additional payout was made. Open Print Acknowledgment or Signed Copy again.' })
+    } catch (error) {
+      setLegacyReceiptError(error?.message || 'Could not save the receipt. No payout was changed.')
+    } finally { setLegacyReceiptSaving(false) }
   }
 
   const changeBeneficiary = (event) => {
@@ -369,6 +410,8 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
     setNotice(null)
     setSellerReceiptChoice(null)
     setSellerSignedChoice(null)
+    setMissingReceiptChoice(null)
+    setLegacyReceiptError('')
     onClearServerNotice?.()
   }
 
@@ -737,6 +780,30 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
         />
       ) : null}
 
+      {missingReceiptChoice ? (
+        <div role="dialog" aria-modal="true" aria-label="Link earlier Proof of Income receipt" className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-black text-slate-950">Record missing Proof of Income</h3>
+            <p className="mt-2 text-xs font-semibold text-slate-600">
+              {commission.seller} · {missingReceiptChoice.stage} · {money(missingReceiptChoice.amount)}
+            </p>
+            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+              This milestone was already paid. Only a receipt will be recorded and linked to it—no new commission release.
+              Use the actual receipt details, or cancel if an existing signed document needs reconciliation.
+            </p>
+            {canUploadSigned ? <>
+              <ReleaseReceiptFields value={missingReceiptDetails} onChange={setMissingReceiptDetails}
+                disabled={legacyReceiptSaving} releaseDate={String(missingReceiptChoice.actualReleaseDate || '').slice(0, 10)}
+                title="Receipt Details for Earlier Release" />
+              {legacyReceiptError ? <p role="alert" className="mt-2 text-sm font-bold text-red-700">{legacyReceiptError}</p> : null}
+            </> : <p className="mt-3 text-sm font-semibold text-amber-800">Ask an Accredited Sellers receipt manager to record the missing receipt.</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" disabled={legacyReceiptSaving} onClick={() => setMissingReceiptChoice(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold">Cancel</button>
+              {canUploadSigned ? <button type="button" disabled={legacyReceiptSaving} onClick={saveMissingReceipt} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{legacyReceiptSaving ? 'Saving receipt...' : 'Review & Link Receipt'}</button> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
       {sellerReceiptChoice ? <CommissionReceiptPreview {...sellerReceiptChoice} onClose={() => setSellerReceiptChoice(null)}/> : null}
       {sellerSignedChoice ? <SignedCopyUploadModal
         title="Seller Proof of Income — Signed Acknowledgment"
