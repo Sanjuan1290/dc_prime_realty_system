@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useFetch as fetchJson } from '../../../../utils/useFetch'
 import NetworkCompanyProfitPanel from '../NetworkCompanyProfitPanel'
+import CommissionReceiptPreview from '../CommissionReceiptPreview'
+import SignedCopyUploadModal from '../../../Shared/SignedCopyUploadModal'
+import { FiFileText, FiPrinter } from 'react-icons/fi'
 import ReleaseReceiptFields, { emptyReleaseReceipt, validateReleaseReceipt } from '../ReleaseReceiptFields'
 import { selectCompanyProfitsForAccount } from '../../../../utils/networkProfitSelector'
 import { FiAlertCircle, FiLoader, FiPauseCircle, FiPlayCircle, FiSave, FiX } from 'react-icons/fi'
@@ -294,7 +297,7 @@ const ReleaseConfirmDialog = ({
   )
 }
 
-const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, canRelease = false, canHold = false, canUnhold = false, isSaving = false, serverNotice = null, onClearServerNotice }) => {
+const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, canRelease = false, canViewSigned = false, canUploadSigned = false, canHold = false, canUnhold = false, isSaving = false, serverNotice = null, onClearServerNotice }) => {
   const sellers = Array.isArray(commissionGroup?.sellers) ? commissionGroup.sellers : []
   // Network profit remains a separate financial ledger; this selector only joins the UI.
   // Match by the buyer ACCOUNT ID, never by unit or seller name (both may repeat).
@@ -329,8 +332,31 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
   const [historicalNote, setHistoricalNote] = useState('')
   const [agentReceiptStatus, setAgentReceiptStatus] = useState('')
   const [receiptDetails, setReceiptDetails] = useState(emptyReleaseReceipt)
+  const [sellerReceiptChoice, setSellerReceiptChoice] = useState(null)
+  const [sellerSignedChoice, setSellerSignedChoice] = useState(null)
+  const [receiptLoading, setReceiptLoading] = useState(false)
   const [notice, setNotice] = useState(null)
   const activeNotice = notice || serverNotice
+
+  const openSellerReceipt = async (stage, purpose) => {
+    if (receiptLoading) return
+    setReceiptLoading(true)
+    setNotice(null)
+    try {
+      const data = await fetchJson(`/projects/lot-projects/${projectSlug}/commissions/${commission.commissionId || commission.id}/releases/${stage.releaseId}/receipt`)
+      const payload = data?.data
+      if (!payload?.receipt?.receiptId || !payload?.accreditedSellerId) throw new Error('No saved receipt was found for this release.')
+      if (purpose === 'signed') {
+        setSellerSignedChoice({ receiptId: payload.receipt.receiptId, sellerId: payload.accreditedSellerId, stage: stage.stage })
+      } else {
+        setSellerReceiptChoice({ receipt: payload.receipt,
+          seller: { full_name: commission.seller, role: commission.rawRole,
+            seller_group_type: commission.sellerGroupType, seller_group_name: commission.sellerGroup } })
+      }
+    } catch (error) {
+      setNotice({ type: 'warning', title: 'Receipt not available', message: error.message || 'Could not load this release receipt.' })
+    } finally { setReceiptLoading(false) }
+  }
 
   const changeBeneficiary = (event) => {
     setSelectedBeneficiary(event.target.value)
@@ -341,6 +367,8 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
     setHistoricalNote('')
     setAgentReceiptStatus('')
     setNotice(null)
+    setSellerReceiptChoice(null)
+    setSellerSignedChoice(null)
     onClearServerNotice?.()
   }
 
@@ -599,6 +627,18 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
                         ) : null}
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
+                            {isReleased ? <>
+                              <button type="button" onClick={() => openSellerReceipt(stage, 'print')} disabled={receiptLoading || isSaving}
+                                className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-black disabled:opacity-50">
+                                <FiPrinter className="h-3.5 w-3.5"/> Print Acknowledgment
+                              </button>
+                              <button type="button" onClick={() => openSellerReceipt(stage, 'signed')} disabled={receiptLoading || isSaving || !canViewSigned}
+                                title={!canViewSigned ? 'Accredited Seller document-view permission is required.' : undefined}
+                                className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-black disabled:opacity-50">
+                                <FiFileText className="h-3.5 w-3.5"/> Signed Copy
+                              </button>
+                            </> : null}
+
                             {canRelease && ['Eligible', 'Earned on Cancellation'].includes(stage.status) ? (
                               <button
                                 type="button"
@@ -696,6 +736,16 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
           onConfirm={submitAction}
         />
       ) : null}
+
+      {sellerReceiptChoice ? <CommissionReceiptPreview {...sellerReceiptChoice} onClose={() => setSellerReceiptChoice(null)}/> : null}
+      {sellerSignedChoice ? <SignedCopyUploadModal
+        title="Seller Proof of Income — Signed Acknowledgment"
+        description="The signed receipt for this specific completed seller commission milestone."
+        recordLabel={`${sellerSignedChoice.stage} · ${commission.seller}`}
+        category="Signed Proof of Income"
+        readOnly={!canUploadSigned}
+        basePath={`/accredited/${sellerSignedChoice.sellerId}/proof-of-income-receipts/${sellerSignedChoice.receiptId}/signed-copy`}
+        onClose={() => setSellerSignedChoice(null)} /> : null}
 
       <ConfirmDialog
         action={confirmAction}

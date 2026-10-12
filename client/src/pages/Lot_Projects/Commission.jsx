@@ -494,6 +494,8 @@ const Commission = () => {
           }}
           onAction={handleCommissionAction}
           canRelease={canRelease}
+          canViewSigned={hasPermission(user, PERMISSIONS.SYSTEM_ACCREDITED_VIEW)}
+          canUploadSigned={hasPermission(user, PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF)}
           canHold={canHold}
           canUnhold={canUnhold}
           serverNotice={modalNotice}

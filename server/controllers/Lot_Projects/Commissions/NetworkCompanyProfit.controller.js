@@ -5,6 +5,7 @@ import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { createOperationalReview } from '../../../services/operationalReview.service.js';
 import { validateReleaseReceiptDetails } from '../../../services/releaseReceiptDetails.js';
 import { roundProfitMoney } from '../../../services/networkCompanyProfitTerms.js';
+import { getNetworkProfitReleaseCalendar } from '../../../services/networkProfitReleaseCalendar.js';
 import { getUserProjectAccess } from '../../../services/projectAccess.service.js';
 
 const clean = (value) => String(value ?? '').trim();
@@ -64,7 +65,7 @@ const getStages = async (connection, profitId) => {
   }));
 };
 
-const mappedProfit = async (connection, profit) => {
+const mappedProfit = async (connection, profit, releaseDateInfo = null) => {
   const stages = await getStages(connection, profit.id);
   const released = roundProfitMoney(stages.filter((s) => s.status === 'Released').reduce((sum, s) => sum + s.amount, 0));
   return {
@@ -78,9 +79,12 @@ const mappedProfit = async (connection, profit) => {
     commissionBase: Number(profit.commission_base_snapshot),
     totalProfit: Number(profit.gross_profit_snapshot),
     released, remaining: roundProfitMoney(profit.gross_profit_snapshot - released),
+    releaseDateInfo,
     stages: stages.map((stage) => ({
       ...stage,
-      canRelease: stage.canRelease && !isCancelled(profit.account_status)
+      canRelease: stage.canRelease && Boolean(releaseDateInfo?.isReleaseDate) && !isCancelled(profit.account_status)
+        && profit.seller_group_type === 'in_house' && profit.seller_group_status === 'active',
+      awaitingReleaseDate: stage.canRelease && !releaseDateInfo?.isReleaseDate && !isCancelled(profit.account_status)
         && profit.seller_group_type === 'in_house' && profit.seller_group_status === 'active',
     })),
   };
@@ -100,10 +104,12 @@ export const getNetworkCompanyProfit = async (req, res) => {
     if (!(await ensureTables(connection, res))) return;
     const [rows] = await connection.query(`SELECT p.id FROM lot_project_network_profit_accounts p
       WHERE p.lot_project_id = ? ORDER BY p.id DESC`, [project.lot_project_id]);
+    const [[releaseSettings]] = await connection.query(`SELECT release_day_one, release_day_two FROM lot_project_settings WHERE lot_project_id = ? LIMIT 1`, [project.lot_project_id]);
+    const releaseDateInfo = getNetworkProfitReleaseCalendar(todayDateOnly(), releaseSettings || {});
     const data = [];
     for (const row of rows) {
       const profit = await selectProfitContext(connection, row.id, project.lot_project_id);
-      if (profit) data.push(await mappedProfit(connection, profit));
+      if (profit) data.push(await mappedProfit(connection, profit, releaseDateInfo));
     }
     return res.json({ success: true, data });
   } catch (error) {
@@ -173,10 +179,10 @@ export const releaseNetworkCompanyProfit = async (req, res) => {
     // The same configured live-release-day restriction as personal commissions.
     const [[settings]] = await connection.query(`SELECT release_day_one, release_day_two
       FROM lot_project_settings WHERE lot_project_id = ? LIMIT 1`, [project.lot_project_id]);
-    const releaseDays = [Number(settings?.release_day_one || 7), Number(settings?.release_day_two || 22)];
-    if (!releaseDays.includes(Number(date.slice(8, 10)))) {
+    const releaseCalendar = getNetworkProfitReleaseCalendar(date, settings || {});
+    if (!releaseCalendar.isReleaseDate) {
       await connection.rollback(); inTransaction = false;
-      return res.status(409).json({ success: false, message: 'Today is not a scheduled commission release day for this project.' });
+      return res.status(409).json({ success: false, message: `Today is not a scheduled commission release day for this project. Next release date: ${releaseCalendar.nextReleaseDate}.` });
     }
     const [updated] = await connection.query(`UPDATE lot_project_network_profit_releases
       SET release_status = 'Released', actual_release_date = ?, released_by_user_id = ?,
@@ -209,7 +215,7 @@ export const releaseNetworkCompanyProfit = async (req, res) => {
     });
     await connection.commit(); inTransaction = false;
     return res.json({ success: true, message: `${release.release_stage} Company Profit released successfully.`,
-      data: await mappedProfit(connection, profit) });
+      data: await mappedProfit(connection, profit, releaseCalendar) });
   } catch (error) {
     if (inTransaction) try { await connection.rollback(); } catch {}
     return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error) });

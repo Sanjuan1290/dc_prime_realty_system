@@ -46,7 +46,7 @@ USE `dc_prime_realty_system_db`;
     CONSTRAINT fk_commission_receipt_seller
       FOREIGN KEY (accredited_seller_id) REFERENCES accredited_sellers (accredited_seller_id)
       ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT fk_commission_receipt_creator
+    CONSTRAINT fk_commission_ receipt_creator
       FOREIGN KEY (created_by_user_id) REFERENCES users (id)
       ON DELETE SET NULL ON UPDATE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

@@ -4,6 +4,7 @@ import {
   saveNetworkProfitSignedCopy, getNetworkProfitSignedContent, getNetworkProfitSignedAccessStatus,
 } from '../../controllers/Lot_Projects/Commissions/NetworkCompanyProfitFiles.controller.js';
 
+import { getCommissionReleaseReceipt } from '../../controllers/Lot_Projects/Commissions/CommissionReleaseReceipt.controller.js';
 import { getNetworkCompanyProfit, releaseNetworkCompanyProfit } from '../../controllers/Lot_Projects/Commissions/NetworkCompanyProfit.controller.js';
 import {
   authenticateUser,
@@ -208,6 +209,7 @@ router.get('/lot-projects/:projectSlug/network-company-profit/:profitId/releases
 
 router.get('/lot-projects/:projectSlug/reservation-agents', requirePermission(PERMISSIONS.LOT_RESERVATIONS_CREATE), getReservationAgents);
 router.get('/lot-projects/:projectSlug/commission-preview', requirePermission(PERMISSIONS.LOT_RESERVATIONS_CREATE), getReservationCommissionPreviewController);
+router.get('/lot-projects/:projectSlug/commissions/:commissionId/releases/:releaseId/receipt', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getCommissionReleaseReceipt);
 router.patch('/lot-projects/:projectSlug/commissions/:commissionId', requireCommissionActionPermission, updateLotProjectCommission);
 router.get('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.LOT_SETTINGS_VIEW), getLotProjectSettings);
 router.post('/lot-projects/:projectSlug/settings/code', requirePermission(PERMISSIONS.LOT_SETTINGS_MANAGE), requestLotProjectSettingsCode);

@@ -65,8 +65,9 @@ test('Company Profit shares the Commission Details modal but keeps separate docu
   assert.doesNotMatch(source('client/src/pages/Lot_Projects/Commission.jsx'), /<NetworkCompanyProfitPanel/);
   assert.match(source('client/src/pages/System/Accredited.jsx'), /<NetworkProfitAcknowledgementLibrary/);
   assert.match(accreditedRoutes, /network-company-profit-acknowledgments', requirePermission\(PERMISSIONS\.SYSTEM_ACCREDITED_VIEW\), requirePermission\(PERMISSIONS\.LOT_COMMISSIONS_VIEW\)/);
-  assert.match(panel, /Network Company Profit Release Acknowledgment/);
-  assert.match(panel, /not an individual seller's Proof of Income/);
+  assert.match(panel, /<CommissionReceiptPreview/);
+  assert.match(panel, /commissionRole: 'network_company_profit'/);
+  assert.match(source('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerProofOfIncomePrintPage.jsx'), /isCompanyProfit/);
   assert.match(library, /readOnly=\{!canUpload\}/);
   assert.match(source('client/src/pages/System/Accredited.jsx'), /hasPermission\(actor, PERMISSIONS\.LOT_COMMISSIONS_VIEW\)/);
 });

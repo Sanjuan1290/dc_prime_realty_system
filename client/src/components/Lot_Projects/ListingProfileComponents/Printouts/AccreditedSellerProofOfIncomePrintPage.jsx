@@ -16,6 +16,7 @@ const roleLabels = {
   unit_manager: 'UNIT MANAGER',
   sales_agent: 'SALES AGENT',
   external_group: 'EXTERNAL GROUP',
+  network_company_profit: 'NETWORK COMPANY PROFIT',
 }
 
 const amountNumber = (value) =>
@@ -105,8 +106,9 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
   const commissionRate = Number(receipt.commissionRate || 0)
   const role = receipt.commissionRole || seller.role
   const amountText = amountNumber(totalAmount)
+  const isCompanyProfit = role === 'network_company_profit'
   const isExternalGroup = role === 'external_group' || seller.seller_group_type === 'external'
-  const payeeName = isExternalGroup ? seller.seller_group_name || seller.sellerGroupName || seller.full_name || '-' : seller.full_name || seller.fullName || '-'
+  const payeeName = isCompanyProfit ? seller.payee_name || seller.full_name || '-' : isExternalGroup ? seller.seller_group_name || seller.sellerGroupName || seller.full_name || '-' : seller.full_name || seller.fullName || '-'
   const representativeName = isExternalGroup ? seller.full_name || seller.fullName || '-' : null
 
   return (
@@ -140,7 +142,7 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
             <tr className="h-[61mm] align-top">
               <td className="border border-[#8a8a8a] px-2 py-3">
                 <p className="text-[13px] font-bold uppercase leading-tight">
-                  COMMISSION<br />RELEASE
+                  {isCompanyProfit ? <>COMPANY PROFIT<br />RELEASE</> : <>COMMISSION<br />RELEASE</>}
                 </p>
                 <p className="mt-14 text-[13px] font-medium uppercase">
                   {payeeName}
@@ -229,4 +231,5 @@ const AccreditedSellerProofOfIncomePrintPage = () => {
 }
 
 export default AccreditedSellerProofOfIncomePrintPage
+
 

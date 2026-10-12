@@ -5,6 +5,7 @@ import { useFetch, useFetchPost } from '../../../utils/useFetch'
 import SignedCopyUploadModal from '../../Shared/SignedCopyUploadModal'
 import ReleaseReceiptFields, { emptyReleaseReceipt, validateReleaseReceipt } from './ReleaseReceiptFields'
 import StatusAlert from '../../Shared/StatusAlert'
+import CommissionReceiptPreview from './CommissionReceiptPreview'
 
 const money = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(amount || 0))
 const readableMethod = (value) => ({ bank_transfer: 'Bank Transfer', cash: 'Cash', check: 'Check', other: 'Other' }[value] || value || '-')
@@ -13,34 +14,18 @@ const readableMethod = (value) => ({ bank_transfer: 'Bank Transfer', cash: 'Cash
 // signed-file workflow, but NOT the personal seller commission ledger.
 export const NetworkProfitAcknowledgement = ({ profit, stage, onClose }) => {
   if (!profit || !stage || stage.status !== 'Released') return null
-  return <div className="fixed inset-0 z-[90] overflow-y-auto bg-slate-950/70 p-4">
-    <style>{`@media print { body * {visibility:hidden!important;} #network-profit-print, #network-profit-print * {visibility:visible!important;} #network-profit-print{position:absolute;inset:0;width:100%;box-shadow:none!important;border:0!important;} .network-profit-actions{display:none!important;} }`}</style>
-    <div className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow-xl" id="network-profit-print">
-      <div className="network-profit-actions mb-6 flex justify-end gap-2">
-        <button type="button" onClick={() => window.print()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white"><FiPrinter className="mr-1 inline"/> Print / Save PDF</button>
-        <button type="button" onClick={onClose} aria-label="Close acknowledgment" className="rounded-lg border px-3 py-2"><FiX/></button>
-      </div>
-      <p className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">D&C Prime Realty</p>
-      <h2 className="mt-2 text-2xl font-black">Network Company Profit Release Acknowledgment</h2>
-      <p className="mt-1 text-sm text-slate-500">Reference: NCP-{stage.id} · {stage.stage}</p>
-      <div className="mt-6 grid grid-cols-2 gap-4 border-y py-5 text-sm">
-        <div><p className="text-slate-500">Project / Unit</p><p className="font-bold">{profit.project} · {profit.unit}</p></div>
-        <div><p className="text-slate-500">Buyer Account</p><p className="font-bold">{profit.accountReference} · {profit.buyer}</p></div>
-        <div><p className="text-slate-500">Network / Realty</p><p className="font-bold">{profit.network}</p></div>
-        <div><p className="text-slate-500">Authorized Recipient (recorded payee)</p><p className="font-bold">{stage.payeeName || profit.payee}</p></div>
-        <div><p className="text-slate-500">Payment Date</p><p className="font-bold">{String(stage.actualReleaseDate || '').slice(0,10)}</p></div>
-        <div><p className="text-slate-500">Payment Method / Reference</p><p className="font-bold">{readableMethod(stage.paymentMethod)} · {stage.paymentReference}</p></div>
-        {stage.receiptDate ? <div><p className="text-slate-500">Receipt Date / Witness</p><p className="font-bold">{String(stage.receiptDate).slice(0,10)} · {stage.witnessName || '-'}</p></div> : null}
-        {stage.bankName ? <div><p className="text-slate-500">Bank / Account No.</p><p className="font-bold">{stage.bankName} · {stage.accountNumber || '-'}</p></div> : null}
-        <div><p className="text-slate-500">Company Profit Rate</p><p className="font-bold">{profit.companyProfitRate.toFixed(4)}%</p></div>
-        <div><p className="text-slate-500">Milestone</p><p className="font-bold">{stage.stage} · {stage.releasePercent}%</p></div>
-      </div>
-      <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-slate-500">Amount Released</p>
-      <p className="mt-1 text-3xl font-black">{money(stage.amount)}</p>
-      <p className="mt-5 text-sm text-slate-600">This document acknowledges the payment of the Network's Company Profit share. It is not an individual seller's Proof of Income.</p>
-      <div className="mt-12 grid grid-cols-2 gap-10 text-center text-sm"><div className="border-t pt-2">Authorized Accounting Representative</div><div className="border-t pt-2">Network / Payee Acknowledgment</div></div>
-    </div>
-  </div>
+  return <CommissionReceiptPreview onClose={onClose}
+    seller={{ full_name: stage.payeeName || profit.payee, payee_name: stage.payeeName || profit.payee,
+      role: 'network_company_profit' }}
+    receipt={{ receiptDate: stage.receiptDate || stage.actualReleaseDate,
+      bankName: stage.bankName, accountNumber: stage.accountNumber,
+      referenceNumber: stage.paymentReference, witnessName: stage.witnessName,
+      unitId: profit.unit, buyerName: profit.buyer, grossCommission: profit.totalProfit,
+      commissionRate: profit.companyProfitRate, commissionRole: 'network_company_profit',
+      totalAmount: stage.amount, releasePercent: Number(stage.releasePercent),
+      cumulativeTargetPercent: Number(stage.triggerPercent),
+      releases: [{ stage: stage.stage, releasePercent: stage.releasePercent,
+        triggerPercent: stage.triggerPercent }] }} />
 }
 
 export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = false, embedded = false, profitRecord = null }) {
@@ -131,8 +116,9 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
                   <td className="px-4 py-3 font-black text-slate-900">{money(stage.amount)}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex rounded-full border px-2.5 py-1 font-black ${stage.status === 'Released' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : stage.canRelease ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                      {stage.status === 'Released' ? 'Completed' : stage.canRelease ? 'Eligible' : stage.status === 'On Hold' ? 'On Hold' : 'Not Eligible'}
+                      {stage.status === 'Released' ? 'Completed' : stage.canRelease ? 'Eligible' : stage.status === 'On Hold' ? 'On Hold' : stage.awaitingReleaseDate ? 'Awaiting Release Date' : 'Not Eligible'}
                     </span>
+                    {stage.awaitingReleaseDate ? <p className="mt-1 text-[10px] font-bold text-amber-700">Next release date: {profitRecord.releaseDateInfo?.nextReleaseDate || '-'}</p> : null}
                     {stage.actualReleaseDate ? <p className="mt-1 text-[10px] font-semibold text-slate-500">{String(stage.actualReleaseDate).slice(0, 10)}</p> : null}
                   </td>
                   <td className="px-4 py-3">
@@ -140,8 +126,8 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
                       {stage.status === 'Released' ? <>
                         <button type="button" onClick={() => setPrintChoice({ profit: profitRecord, stage })} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-black"><FiPrinter className="mr-1 inline"/>Print Acknowledgment</button>
                         <button type="button" onClick={() => setSignedChoice({ profit: profitRecord, stage })} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-black"><FiFileText className="mr-1 inline"/>Signed Copy</button>
-                      </> : canRelease && stage.canRelease ?
-                        <button type="button" onClick={() => { setReleaseChoice({ profit: profitRecord, stage }); setReceiptDetails(emptyReleaseReceipt()); setReceiptError(''); setNotice(null) }} className="rounded-lg bg-blue-700 px-3 py-1.5 font-black text-white">Release</button>
+                      </> : canRelease && (stage.canRelease || stage.awaitingReleaseDate) ?
+                        <button type="button" disabled={!stage.canRelease} title={!stage.canRelease ? `Next scheduled release: ${profitRecord.releaseDateInfo?.nextReleaseDate || '-'}` : undefined} onClick={() => { setReleaseChoice({ profit: profitRecord, stage }); setReceiptDetails(emptyReleaseReceipt()); setReceiptError(''); setNotice(null) }} className="rounded-lg bg-blue-700 px-3 py-1.5 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">Release</button>
                         : <span className="text-slate-400">—</span>}
                     </div>
                   </td>
@@ -163,12 +149,12 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
           {profit.stages.map((stage) => <div key={stage.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-sm font-black">{stage.stage}</p><p className="text-xs text-slate-500">{stage.releasePercent}% · {money(stage.amount)}</p>
             <p className={`mt-2 text-xs font-bold ${stage.status === 'Released' ? 'text-emerald-700' : stage.canRelease ? 'text-blue-700' : 'text-amber-700'}`}>
-              {stage.status === 'Released' ? 'Released' : stage.canRelease ? 'Eligible' : 'Not eligible / On hold'}
+              {stage.status === 'Released' ? 'Released' : stage.canRelease ? 'Eligible' : stage.awaitingReleaseDate ? 'Awaiting Release Date' : 'Not eligible / On hold'}
             </p>
             {stage.status === 'Released' ? <div className="mt-2 flex flex-wrap gap-1">
               <button type="button" onClick={() => setPrintChoice({ profit, stage })} className="rounded border bg-white px-2 py-1 text-xs font-bold"><FiPrinter className="mr-1 inline"/>Print</button>
               <button type="button" onClick={() => setSignedChoice({ profit, stage })} className="rounded border bg-white px-2 py-1 text-xs font-bold"><FiFileText className="mr-1 inline"/>Signed Copy</button>
-            </div> : canRelease && stage.canRelease ? <button type="button" onClick={() => { setReleaseChoice({ profit, stage }); setReceiptDetails(emptyReleaseReceipt()); setReceiptError(''); setNotice(null) }} className="mt-2 rounded bg-blue-700 px-3 py-1.5 text-xs font-bold text-white">Release</button> : null}
+            </div> : canRelease && (stage.canRelease || stage.awaitingReleaseDate) ? <button type="button" disabled={!stage.canRelease} title={!stage.canRelease ? `Next scheduled release: ${profit.releaseDateInfo?.nextReleaseDate || '-'}` : undefined} onClick={() => { setReleaseChoice({ profit, stage }); setReceiptDetails(emptyReleaseReceipt()); setReceiptError(''); setNotice(null) }} className="mt-2 rounded bg-blue-700 px-3 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300">Release</button> : null}
           </div>)}
         </div>
       </article>)}
@@ -184,6 +170,7 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
         <p className="mt-3 text-xs text-amber-800"><FiShield className="mr-1 inline"/> This release requires Final Double-Check and is recorded in Audit Logs and the Head Review Center.</p>
         <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setReleaseChoice(null)} disabled={mutation.isPending} className="rounded-lg border px-4 py-2">Cancel</button>
           <button type="button" disabled={mutation.isPending} onClick={() => {
+            if (!releaseChoice.stage.canRelease) { setReceiptError('This milestone cannot be released today. Refresh to check the next release date.'); return }
             const problem = validateReleaseReceipt(receiptDetails)
             if (problem) { setReceiptError(problem); return }
             mutation.mutate({ ...releaseChoice, paymentMethod: method, paymentReference: receiptDetails.referenceNumber.trim(), receiptDetails })
