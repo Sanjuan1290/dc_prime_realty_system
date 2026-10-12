@@ -185,7 +185,9 @@ export const buildFundReleaseReceipt = (payroll, { today = null } = {}) => {
     manual_deductions_total: manualDeductions,
     total: netFundRelease,
     amount_in_words: amountToPhilippineWords(netFundRelease),
-    witness_name: text(payroll?.witness_name || 'Authorized Representative'),
+    // Each employee payout can have its own witness. For older records, use the period
+    // witness if present; never fabricate a person's identity on a financial receipt.
+    witness_name: text(payroll?.release_witness_name || payroll?.witness_name),
     finalized_at: payroll?.finalized_at || null,
     finalized_by_name: text(payroll?.finalized_by_name),
     released_date: dateOnly(payroll?.released_date),
@@ -196,4 +198,5 @@ export const buildFundReleaseReceipt = (payroll, { today = null } = {}) => {
     source: official && payroll?.finalized_snapshot ? 'finalized_snapshot' : 'draft_calculation',
   };
 };
+
 

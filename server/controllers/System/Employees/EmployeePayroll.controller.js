@@ -11,6 +11,8 @@ import {
   recalculateDraftPayrollById,
 } from '../../../services/employeePayroll.service.js';
 import { resolvePayrollPeriod } from '../../../services/payrollPeriod.service.js';
+import { assessPayrollReadiness } from '../../../services/payrollReadiness.service.js';
+import { getPayrollSettingsSnapshot } from '../../../services/payrollSettings.service.js';
 import { buildFundReleaseReceipt } from '../../../services/payrollReceipt.service.js';
 import { releasePayroll } from '../../../services/payrollRelease.service.js';
 import { getPayrollSettings, updatePayrollSettings } from '../../../services/payrollSettings.service.js';
@@ -218,6 +220,16 @@ export const getPayrollEligibleEmployees = async (req, res) => {
   const connection = await db.getConnection();
   try {
     const data = await listPayrollEligibleEmployees(connection);
+    if (req.query.month && req.query.period_type) {
+      const period = resolvePayrollPeriod({ month: req.query.month, periodType: req.query.period_type });
+      const settings = await getPayrollSettingsSnapshot(connection);
+      const today = getManilaDateTime().date;
+      const enriched = [];
+      for (const employee of data) {
+        enriched.push({ ...employee, payroll_readiness: await assessPayrollReadiness(connection, employee, { period, today, settings }) });
+      }
+      return res.json({ success: true, data: enriched, period });
+    }
     return res.json({ success: true, data });
   } catch (error) {
     return sendError(res, error);
@@ -290,13 +302,16 @@ export const generateDraftPayroll = async (req, res) => {
         });
       } catch (error) {
         if (requestedEmployeeId) throw error;
+        if (!error.statusCode || error.statusCode >= 500) console.error('[employee-payroll] Employee skipped due to server error', { employeeId: employee.employee_id, code: error.code, error });
         skipped.push({
           employee_id: Number(employee.employee_id),
           employee_code: employee.employee_code,
           employee_name: employee.full_name,
           code: error.code || 'PAYROLL_SKIPPED',
-          message: error.message,
-          data: error.data || null,
+          message: error.statusCode && error.statusCode < 500
+            ? error.message
+            : 'Payroll could not be calculated. Contact an administrator to review the server error log.',
+          data: error.statusCode && error.statusCode < 500 ? (error.data || null) : null,
         });
       }
     }
@@ -518,6 +533,7 @@ export const releaseEmployeePayroll = async (req, res) => {
       releaseDate: req.body?.release_date,
       releaseReference: req.body?.release_reference,
       releaseNotes: req.body?.release_notes,
+      releaseWitnessName: req.body?.release_witness_name,
     });
     const released = await getPayrollDraftById(connection, payrollId);
 
@@ -541,6 +557,7 @@ export const releaseEmployeePayroll = async (req, res) => {
         releasedByName: released.released_by_name || null,
         releaseReference: release.releaseReference,
         releaseNotes: release.releaseNotes,
+        releaseWitnessName: release.releaseWitnessName,
         finalizedAt: released.finalized_at,
         finalizedByUserId: released.finalized_by_user_id,
       },
@@ -559,4 +576,5 @@ export const releaseEmployeePayroll = async (req, res) => {
     connection.release();
   }
 };
+
 

@@ -11,7 +11,7 @@ const validDateOnly = (value) => {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date
 }
 
-export const validatePayrollReleaseInput = ({ payroll, releasedByUserId, releaseDate, releaseReference, releaseNotes }) => {
+export const validatePayrollReleaseInput = ({ payroll, releasedByUserId, releaseDate, releaseReference, releaseNotes, releaseWitnessName }) => {
   if (!payroll) throw payrollError('Employee payroll not found.', 'EMPLOYEE_PAYROLL_NOT_FOUND', 404)
 
   const status = String(payroll.payroll_status || '').toLowerCase()
@@ -44,6 +44,7 @@ export const validatePayrollReleaseInput = ({ payroll, releasedByUserId, release
     releaseDate: normalizedDate,
     releaseReference: clean(releaseReference, 180) || null,
     releaseNotes: clean(releaseNotes, 2000) || null,
+    releaseWitnessName: clean(releaseWitnessName, 180) || null,
   }
 }
 
@@ -58,7 +59,8 @@ export const releasePayroll = async (connection, input) => {
         released_at = CURRENT_TIMESTAMP,
         released_by_user_id = ?,
         release_reference = ?,
-        release_notes = ?
+        release_notes = ?,
+        release_witness_name = ?
     WHERE employee_payroll_id = ?
       AND payroll_status IN ('finalized','corrected')
   `, [
@@ -66,6 +68,7 @@ export const releasePayroll = async (connection, input) => {
     normalized.releasedByUserId,
     normalized.releaseReference,
     normalized.releaseNotes,
+    normalized.releaseWitnessName,
     payrollId,
   ])
 
@@ -79,4 +82,5 @@ export const releasePayroll = async (connection, input) => {
 
   return normalized
 }
+
 

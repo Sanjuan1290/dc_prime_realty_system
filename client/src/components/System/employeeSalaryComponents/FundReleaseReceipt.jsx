@@ -105,7 +105,7 @@ const FundReleaseReceipt = ({ receipt }) => {
         <section>
           <p className="mb-14 font-medium">Witness:</p>
           <div className="border-t border-black pt-2">
-            <p className="font-black uppercase">{receipt.witness_name || 'Authorized Representative'}</p>
+            <p className="font-black uppercase">{receipt.witness_name || '\u00a0'}</p>
             <p className="mt-1 font-medium">Signature and Date</p>
           </div>
         </section>
@@ -115,4 +115,5 @@ const FundReleaseReceipt = ({ receipt }) => {
 }
 
 export default FundReleaseReceipt
+
 

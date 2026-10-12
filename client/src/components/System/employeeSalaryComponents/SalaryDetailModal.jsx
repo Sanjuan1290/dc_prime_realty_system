@@ -162,7 +162,7 @@ const SalaryDetailModal = ({ payrollId, initialTab = 'salary', canRecalculate = 
           <p className="text-xs font-semibold text-slate-500">Calculation version: {payroll?.calculation_version || '—'}</p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700">Close</button>
-            {payroll ? <button type="button" onClick={() => setShowReceipt(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-800 hover:bg-slate-50"><FiFileText />Preview Receipt</button> : null}
+            {payroll ? <button type="button" onClick={() => setShowReceipt(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-800 hover:bg-slate-50"><FiFileText />{officialStatus ? 'Acknowledgement Receipt' : 'Preview Receipt'}</button> : null}
             {canRecalculate && payroll?.payroll_status === 'draft' ? <button type="button" onClick={() => recalcMutation.mutate()} disabled={recalcMutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50"><FiRefreshCw className={recalcMutation.isPending ? 'animate-spin' : ''} />{recalcMutation.isPending ? 'Recalculating...' : 'Recalculate Draft'}</button> : null}
             {canFinalize && payroll?.payroll_status === 'draft' ? <button type="button" onClick={() => setShowFinalReview(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white hover:bg-emerald-700"><FiLock />Proceed to Final Review</button> : null}
             {canCorrect && ['finalized', 'corrected'].includes(payroll?.payroll_status) ? <button type="button" onClick={() => setShowCorrection(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-700 px-5 text-sm font-black text-white hover:bg-violet-800"><FiAlertTriangle />Salary Correction</button> : null}
@@ -173,10 +173,11 @@ const SalaryDetailModal = ({ payrollId, initialTab = 'salary', canRecalculate = 
       {showFinalReview ? <FinalizePayrollModal payrollId={payrollId} onClose={() => setShowFinalReview(false)} onFinalized={(result) => { setAlert({ type: 'success', message: result?.message || 'Payroll finalized.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary-detail', payrollId] }); queryClient.invalidateQueries({ queryKey: ['employee-salary-receipt', payrollId] }); onUpdated?.() }} /> : null}
       {showReceipt ? <FundReleaseReceiptModal payrollId={payrollId} canPrint={canPrintReceipt} canExport={canExportReceipt} historyMode={historyMode} onClose={() => setShowReceipt(false)} /> : null}
       {showCorrection && payroll ? <CorrectPayrollModal payrollId={payrollId} onClose={() => setShowCorrection(false)} onCorrected={(result) => { setAlert({ type: 'success', message: result?.message || 'Salary Correction saved.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary-detail', payrollId] }); queryClient.invalidateQueries({ queryKey: ['employee-salary-receipt', payrollId] }); onUpdated?.() }} /> : null}
-      {showRelease && payroll ? <ReleasePayrollModal payroll={payroll} onClose={() => setShowRelease(false)} onReleased={(result) => { setAlert({ type: 'success', message: result?.message || 'Payroll marked as Released.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary-detail', payrollId] }); queryClient.invalidateQueries({ queryKey: ['employee-salary-receipt', payrollId] }); onUpdated?.() }} /> : null}
+      {showRelease && payroll ? <ReleasePayrollModal payroll={payroll} onClose={() => setShowRelease(false)} onReleased={(result) => { setShowReceipt(true); setAlert({ type: 'success', message: 'Payroll release recorded. The acknowledgment receipt is ready to print and sign.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary-detail', payrollId] }); queryClient.invalidateQueries({ queryKey: ['employee-salary-receipt', payrollId] }); onUpdated?.() }} /> : null}
     </div>
   )
 }
 
 export default SalaryDetailModal
+
 

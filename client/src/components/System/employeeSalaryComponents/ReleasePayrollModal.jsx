@@ -22,6 +22,7 @@ const ReleasePayrollModal = ({ payroll, onClose, onReleased }) => {
   const queryClient = useQueryClient()
   const [releaseDate, setReleaseDate] = useState(manilaDateOnly())
   const [reference, setReference] = useState('')
+  const [witnessName, setWitnessName] = useState(payroll?.release_witness_name || payroll?.witness_name || '')
   const [notes, setNotes] = useState('')
 
   const payrollId = Number(payroll?.employee_payroll_id || 0)
@@ -31,6 +32,7 @@ const ReleasePayrollModal = ({ payroll, onClose, onReleased }) => {
     mutationFn: () => useFetchPost(`/employee-payroll/payrolls/${payrollId}/release`, {
       release_date: releaseDate,
       release_reference: reference.trim() || null,
+      release_witness_name: witnessName.trim() || null,
       release_notes: notes.trim() || null,
     }, { confirmationHandled: 'compact' }),
     onSuccess: (result) => {
@@ -64,6 +66,10 @@ const ReleasePayrollModal = ({ payroll, onClose, onReleased }) => {
             <div className="mt-3 flex items-center justify-between gap-4 border-t border-slate-200 pt-3"><span className="text-sm font-bold text-slate-600">Net Fund Release</span><span className="text-xl font-black text-emerald-700">{money(payroll?.net_fund_release)}</span></div>
           </section>
 
+          <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+            <p className="text-sm font-black text-blue-950">Acknowledgement Receipt for Fund Release</p>
+            <p className="mt-1 text-xs font-semibold leading-5 text-blue-900">After the release is recorded, the system opens the payroll acknowledgment using the finalized salary and Attendance snapshot. Print one copy, then have the employee and witness sign when the salary is actually received. Printing a copy does not create a second payout.</p>
+          </section>
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
             <div className="flex gap-3"><FiCheckCircle className="mt-0.5 shrink-0 text-emerald-700" /><div><p className="font-black text-emerald-950">Official snapshot stays immutable</p><p className="mt-1 text-sm font-semibold leading-5 text-emerald-900">Marking this payroll as Released will not recalculate Attendance, salary, allowances, deductions, or the final receipt total.</p></div></div>
           </section>
@@ -72,6 +78,11 @@ const ReleasePayrollModal = ({ payroll, onClose, onReleased }) => {
             <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Released Date *</span><input type="date" value={releaseDate} onChange={(event) => setReleaseDate(event.target.value)} className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold" /></label>
             <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Reference</span><input value={reference} onChange={(event) => setReference(event.target.value)} maxLength={180} placeholder="Bank transfer, cash voucher, cheque, etc." className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold" /></label>
           </div>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Witness Name (for acknowledgment receipt)</span>
+            <input value={witnessName} onChange={(event) => setWitnessName(event.target.value)} maxLength={180} placeholder="Name to print below the witness signature line" className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold" />
+            <span className="mt-1 block text-xs font-semibold text-slate-500">Optional until the actual witness is known. If left blank, the printed witness signature line remains available for handwriting.</span>
+          </label>
           <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Notes</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} rows={4} placeholder="Optional fund-release notes" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold" /></label>
         </div>
 
@@ -85,4 +96,5 @@ const ReleasePayrollModal = ({ payroll, onClose, onReleased }) => {
 }
 
 export default ReleasePayrollModal
+
 

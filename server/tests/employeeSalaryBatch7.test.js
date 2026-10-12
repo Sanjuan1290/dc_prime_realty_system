@@ -54,12 +54,14 @@ test('release validation only accepts an immutable Finalized payroll and require
     releaseDate: '2026-09-22',
     releaseReference: ' CASH-001 ',
     releaseNotes: ' Released to employee. ',
+    releaseWitnessName: ' KIRSTEN JHOYCE A. RIOJA ',
   })
   assert.deepEqual(normalized, {
     releasedByUserId: 9,
     releaseDate: '2026-09-22',
     releaseReference: 'CASH-001',
     releaseNotes: 'Released to employee.',
+    releaseWitnessName: 'KIRSTEN JHOYCE A. RIOJA',
   })
   assert.throws(() => validatePayrollReleaseInput({ payroll: { ...finalized, payroll_status: 'draft' }, releasedByUserId: 9, releaseDate: '2026-09-22' }), /Only Finalized or formally Corrected payroll/)
   assert.throws(() => validatePayrollReleaseInput({ payroll: { ...finalized, payroll_status: 'released' }, releasedByUserId: 9, releaseDate: '2026-09-22' }), /already been marked as Released/)
@@ -131,4 +133,5 @@ test('released payroll remains official, historical, and exportable rather than 
   assert.doesNotMatch(salaryDetail, /canRecalculate && payroll\?\.payroll_status === 'released'/)
   assert.match(historyModal, /Released payroll remains historical and exportable/)
 })
+
 

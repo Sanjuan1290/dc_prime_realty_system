@@ -259,11 +259,11 @@ const warningList = ({ period, attendanceThrough, attendance, compensation, payr
   const missing = [];
   if (attendance.overtimeMinutes && payrollSettings.regular_ot_multiplier === null) missing.push('Regular OT Multiplier');
   if (attendance.restDayOvertimeMinutes && payrollSettings.rest_day_ot_multiplier === null) missing.push('Rest Day OT Multiplier');
-  if (attendance.regularHolidayMinutes && payrollSettings.regular_holiday_multiplier === null) missing.push('Regular Holiday Multiplier');
-  if (attendance.specialHolidayMinutes && payrollSettings.special_holiday_multiplier === null) missing.push('Special Holiday Multiplier');
+  if (attendance.regularHolidayMinutes && payrollSettings.regular_holiday_multiplier === null) missing.push('Holiday Multiplier');
+  if (attendance.specialHolidayMinutes && payrollSettings.special_holiday_multiplier === null) missing.push('Holiday Multiplier');
   if (attendance.nightDifferentialMinutes && payrollSettings.night_differential_percentage === null) missing.push('Night Differential Percentage');
   if (missing.length) {
-    warnings.push(`Payroll Settings are incomplete for recorded premium hours: ${missing.join(', ')}. Unconfigured money rules remain ₱0.00 until the Draft is recalculated after settings are completed.`);
+    warnings.push(`Payroll Settings are incomplete for recorded premium hours: ${[...new Set(missing)].join(', ')}. Unconfigured money rules remain ₱0.00 until the Draft is recalculated after settings are completed.`);
   }
   if ((attendance.regularHolidayMinutes || attendance.specialHolidayMinutes) && (payrollSettings.regular_holiday_ot_multiplier !== null || payrollSettings.special_holiday_ot_multiplier !== null)) {
     warnings.push('Holiday OT multipliers are stored in Payroll Settings but are not applied yet because Attendance does not expose separate Regular-Holiday-OT or Special-Holiday-OT minutes.');
@@ -612,7 +612,7 @@ export const listPayrollDrafts = async (connection, {
       p.net_fund_release, p.payroll_status,
       p.attendance_calculated_through, p.calculation_warnings_json,
       p.finalized_at, p.finalized_by_user_id,
-      p.released_date, p.released_at, p.released_by_user_id, p.release_reference, p.release_notes,
+      p.released_date, p.released_at, p.released_by_user_id, p.release_reference, p.release_notes, p.release_witness_name,
       p.finalized_snapshot_json,
       pp.period_label, pp.period_start, pp.period_end, pp.period_type
     FROM employee_payrolls p
@@ -649,7 +649,7 @@ export const listPayrollEligibleEmployees = async (connection, employeeId = null
   }
   const [rows] = await connection.query(`
     SELECT e.employee_id, e.employee_code, ${buildEmployeeNameSql('e')} AS full_name,
-      e.position, e.department, e.employment_type
+      e.position, e.department, e.employment_type, e.employee_status, e.hire_date, e.monthly_salary
     FROM employees e
     WHERE ${where}
     ORDER BY e.last_name ASC, e.first_name ASC, e.employee_id ASC
@@ -684,7 +684,7 @@ export const listEmployeePayrollHistory = async (connection, employeeId) => {
       p.rice_allowance, p.transportation_allowance, p.attendance_bonus,
       p.manual_additions_total, p.manual_deductions_total, p.net_fund_release,
       p.payroll_status, p.finalized_snapshot_json, p.finalized_at, p.finalized_by_user_id,
-      p.released_date, p.released_at, p.released_by_user_id, p.release_reference, p.release_notes,
+      p.released_date, p.released_at, p.released_by_user_id, p.release_reference, p.release_notes, p.release_witness_name,
       p.finalized_snapshot_json,
       pp.period_label, pp.period_start, pp.period_end, pp.period_type, pp.release_date AS period_release_date,
       TRIM(CONCAT_WS(' ', finalized_user.first_name, finalized_user.middle_name, finalized_user.last_name)) AS finalized_by_name,
@@ -774,4 +774,5 @@ export const listEmployeePayrollHistory = async (connection, employeeId) => {
     history,
   };
 };
+
 
