@@ -56,5 +56,11 @@ test('a consolidated summary is visibly not a newly-issued or signed receipt',()
   assert.match(receipt, /receipt\.isConsolidatedSummary/)
   assert.match(receipt, /Consolidated summary of existing Company Profit releases/)
   assert.match(receipt, /receipt\.isConsolidatedSummary \? releases\.map/)
-  assert.match(receipt, /!receipt\.isConsolidatedSummary \? <div/)
+  // Conditional receipt signature sections must share a single JSX parent.
+  // Printing a consolidated summary intentionally omits both signature blocks.
+  assert.match(receipt, /\{!receipt\.isConsolidatedSummary\s*\?\s*\(\s*<>/)
+  assert.match(receipt, /Payee:<\/p>/)
+  assert.match(receipt, /Witness:<\/p>/)
+  assert.match(receipt, /<\/>\s*\)\s*:\s*null\}/)
+  assert.doesNotMatch(receipt, /\{!receipt\.isConsolidatedSummary\s*\?\s*<div/)
 })

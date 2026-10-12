@@ -197,24 +197,28 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
           TOTAL AMOUNT: {amountInWords(totalAmount)} ({amountText}).
         </p>
 
-        {!receipt.isConsolidatedSummary ? <div className="mt-12">
-          <p className="text-[14px]">Payee:</p>
-          <div className="mt-10 w-[78mm] border-b border-[#555]" />
-          <p className="mt-1 text-[13px] font-bold uppercase">
-            {payeeName}
-          </p>
-          {representativeName ? <p className="text-[11px] uppercase">Representative: {representativeName}</p> : null}
-          <p className="text-[12px]">Signature and Date</p>
-        </div>
+        {!receipt.isConsolidatedSummary ? (
+          <>
+            <div className="mt-12">
+              <p className="text-[14px]">Payee:</p>
+              <div className="mt-10 w-[78mm] border-b border-[#555]" />
+              <p className="mt-1 text-[13px] font-bold uppercase">
+                {payeeName}
+              </p>
+              {representativeName ? <p className="text-[11px] uppercase">Representative: {representativeName}</p> : null}
+              <p className="text-[12px]">Signature and Date</p>
+            </div>
 
-        <div className="mt-12">
-          <p className="text-[14px]">Witness:</p>
-          <div className="mt-10 w-[78mm] border-b border-[#555]" />
-          <p className="mt-1 text-[13px] font-bold uppercase">
-            {receipt.witnessName || '-'}
-          </p>
-          <p className="text-[12px]">Signature and Date</p>
-        </div> : null}
+            <div className="mt-12">
+              <p className="text-[14px]">Witness:</p>
+              <div className="mt-10 w-[78mm] border-b border-[#555]" />
+              <p className="mt-1 text-[13px] font-bold uppercase">
+                {receipt.witnessName || '-'}
+              </p>
+              <p className="text-[12px]">Signature and Date</p>
+            </div>
+          </>
+        ) : null}
 
         {receipt.isConsolidatedSummary ? <p className="mt-10 text-[12px] font-medium">This summary combines the selected existing payments only. Refer to each original release acknowledgement for payment instructions, witness and signatures.</p> : null}
         <div className="mt-12 border-t border-dashed border-slate-300 pt-3 text-[9px] text-slate-500 print:hidden">
