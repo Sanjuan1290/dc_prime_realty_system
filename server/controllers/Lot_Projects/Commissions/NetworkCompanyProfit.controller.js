@@ -3,6 +3,7 @@ import {
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { createOperationalReview } from '../../../services/operationalReview.service.js';
+import { validateReleaseReceiptDetails } from '../../../services/releaseReceiptDetails.js';
 import { roundProfitMoney } from '../../../services/networkCompanyProfitTerms.js';
 import { getUserProjectAccess } from '../../../services/projectAccess.service.js';
 
@@ -57,6 +58,8 @@ const getStages = async (connection, profitId) => {
     payeeName: stage.payee_name,
     paymentMethod: stage.payment_method,
     paymentReference: stage.payment_reference,
+    bankName: stage.bank_name, accountNumber: stage.account_number,
+    receiptDate: stage.receipt_date, witnessName: stage.witness_name,
     recordedAt: stage.release_recorded_at,
   }));
 };
@@ -122,12 +125,20 @@ export const releaseNetworkCompanyProfit = async (req, res) => {
     const method = clean(req.body?.paymentMethod).toLowerCase();
     const reference = clean(req.body?.paymentReference);
     const date = todayDateOnly();
+    const receiptDetails = validateReleaseReceiptDetails(req.body?.receiptDetails, date, date);
     if (!Number.isSafeInteger(profitId) || profitId <= 0 || !Number.isSafeInteger(releaseId) || releaseId <= 0) {
       return res.status(400).json({ success: false, message: 'Select a valid Company Profit release.' });
     }
     if (!validMethods.has(method) || !reference || reference.length > 120) {
       return res.status(400).json({ success: false, message: 'Choose a payment method and enter its reference (up to 120 characters).' });
     }
+    for (const column of ['bank_name', 'account_number', 'receipt_date', 'witness_name']) {
+      const [[columnRow]] = await connection.query(`SELECT COUNT(*) AS n FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'lot_project_network_profit_releases' AND column_name = ?`, [column]);
+      if (!Number(columnRow?.n)) return res.status(503).json({ success: false, code: 'PROFIT_RECEIPT_MIGRATION_REQUIRED',
+        message: 'Apply the Company Profit receipt details migration before releasing this milestone.' });
+    }
+    if (reference !== receiptDetails.referenceNumber) return res.status(400).json({ success: false, message: 'The payment reference must match the receipt reference.' });
     await connection.beginTransaction();
     inTransaction = true;
     const profit = await selectProfitContext(connection, profitId, project.lot_project_id, true);
@@ -169,9 +180,12 @@ export const releaseNetworkCompanyProfit = async (req, res) => {
     }
     const [updated] = await connection.query(`UPDATE lot_project_network_profit_releases
       SET release_status = 'Released', actual_release_date = ?, released_by_user_id = ?,
-        payee_name = ?, payment_method = ?, payment_reference = ?, release_recorded_at = NOW()
+        payee_name = ?, payment_method = ?, payment_reference = ?,
+        bank_name = ?, account_number = ?, receipt_date = ?, witness_name = ?, release_recorded_at = NOW()
       WHERE id = ? AND profit_account_id = ? AND release_status = 'Pending'`,
-      [date, actor.id, profit.payee_name_snapshot, method, reference, releaseId, profitId]);
+      [date, actor.id, profit.payee_name_snapshot, method, reference,
+        receiptDetails.bankName, receiptDetails.accountNumber, receiptDetails.receiptDate,
+        receiptDetails.witnessName, releaseId, profitId]);
     if (updated.affectedRows !== 1) throw Object.assign(new Error('This release was already processed.'), { statusCode: 409 });
     await writeAuditLog(connection, req, {
       action: 'release', module: 'Commissions', entityType: 'lot_project_network_profit_release', entityId: String(releaseId),
@@ -180,7 +194,8 @@ export const releaseNetworkCompanyProfit = async (req, res) => {
       description: `Released ${release.release_stage} Company Profit to ${profit.payee_name_snapshot}.`,
       metadata: { projectId: project.lot_project_id, accountId: profit.lot_project_account_id,
         profitId, releaseId, releaseStage: release.release_stage, amount: Number(release.release_amount),
-        payee: profit.payee_name_snapshot, paymentMethod: method, paymentReference: reference, actualReleaseDate: date },
+        payee: profit.payee_name_snapshot, paymentMethod: method, paymentReference: reference,
+        receiptDate: receiptDetails.receiptDate, actualReleaseDate: date },
     });
     await createOperationalReview(connection, {
       actor: req.authUser, actionKey: 'commission.release', department: 'accounting',
@@ -190,7 +205,7 @@ export const releaseNetworkCompanyProfit = async (req, res) => {
         payee: profit.payee_name_snapshot, amount: Number(release.release_amount), stage: release.release_stage },
       afterSnapshot: { status: 'Released', unitCode: profit.unit, network: profit.network_name_snapshot,
         payee: profit.payee_name_snapshot, amount: Number(release.release_amount), stage: release.release_stage,
-        releaseDate: date, paymentMethod: method, paymentReference: reference },
+        releaseDate: date, paymentMethod: method, paymentReference: reference, receiptDate: receiptDetails.receiptDate },
     });
     await connection.commit(); inTransaction = false;
     return res.json({ success: true, message: `${release.release_stage} Company Profit released successfully.`,
@@ -218,7 +233,8 @@ export const getNetworkCompanyProfitAcknowledgments = async (req, res) => {
         l.lot_project_listing_unit_id AS unit, a.account_reference,
         COALESCE(cp.buyer_full_name, a.buyer_name_snapshot) AS buyer,
         r.id AS release_id, r.release_stage, r.release_percent, r.release_amount,
-        r.actual_release_date, r.payee_name, r.payment_method, r.payment_reference, r.release_recorded_at
+        r.actual_release_date, r.payee_name, r.payment_method, r.payment_reference, r.release_recorded_at,
+        r.bank_name, r.account_number, r.receipt_date, r.witness_name
       FROM lot_project_network_profit_releases r
       JOIN lot_project_network_profit_accounts p ON p.id = r.profit_account_id
       JOIN lot_projects lp ON lp.lot_project_id = p.lot_project_id
@@ -238,6 +254,8 @@ export const getNetworkCompanyProfitAcknowledgments = async (req, res) => {
       },
       stage: { id: Number(row.release_id), stage: row.release_stage, status: 'Released',
         releasePercent: Number(row.release_percent), amount: Number(row.release_amount),
+        bankName: row.bank_name, accountNumber: row.account_number,
+        receiptDate: row.receipt_date, witnessName: row.witness_name,
         actualReleaseDate: row.actual_release_date, payeeName: row.payee_name,
         paymentMethod: row.payment_method, paymentReference: row.payment_reference },
     })) });

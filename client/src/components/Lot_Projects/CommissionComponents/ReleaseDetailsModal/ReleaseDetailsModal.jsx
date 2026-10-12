@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useFetch as fetchJson } from '../../../../utils/useFetch'
 import NetworkCompanyProfitPanel from '../NetworkCompanyProfitPanel'
+import ReleaseReceiptFields, { emptyReleaseReceipt, validateReleaseReceipt } from '../ReleaseReceiptFields'
 import { selectCompanyProfitsForAccount } from '../../../../utils/networkProfitSelector'
 import { FiAlertCircle, FiLoader, FiPauseCircle, FiPlayCircle, FiSave, FiX } from 'react-icons/fi'
 
@@ -153,6 +154,8 @@ const ReleaseConfirmDialog = ({
   historicalDate,
   historicalNote,
   historicalAllowed,
+  receiptDetails,
+  onReceiptChange,
   isSaving,
   onModeChange,
   onHistoricalDateChange,
@@ -270,6 +273,8 @@ const ReleaseConfirmDialog = ({
           </div>
         ) : null}
 
+        <ReleaseReceiptFields value={receiptDetails} onChange={onReceiptChange} disabled={isSaving}
+          releaseDate={historicalSelected ? historicalDate : today} />
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={onCancel} disabled={isSaving} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
             Back
@@ -323,6 +328,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
   const [historicalDate, setHistoricalDate] = useState(releaseDateInfo.todayDateISO || todayManilaISO())
   const [historicalNote, setHistoricalNote] = useState('')
   const [agentReceiptStatus, setAgentReceiptStatus] = useState('')
+  const [receiptDetails, setReceiptDetails] = useState(emptyReleaseReceipt)
   const [notice, setNotice] = useState(null)
   const activeNotice = notice || serverNotice
 
@@ -385,6 +391,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
       setReleaseMode(stage.isReleaseDate ? 'live' : 'historical')
       setHistoricalDate(releaseDateInfo.todayDateISO || todayManilaISO())
       setHistoricalNote('')
+      setReceiptDetails(emptyReleaseReceipt())
     }
 
     setSelectedStage(stage)
@@ -406,10 +413,20 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
       }
     }
 
+    if (confirmAction === 'release_stage') {
+      const actualDate = releaseMode === 'historical' ? historicalDate : (releaseDateInfo.todayDateISO || todayManilaISO())
+      const problem = validateReleaseReceipt(receiptDetails, actualDate)
+      if (problem) {
+        setNotice({ type: 'error', title: 'Receipt Details required', message: problem })
+        return
+      }
+    }
+
     onAction?.(commission, {
       action: confirmAction,
       releaseId: selectedStage.releaseId,
       ...(confirmAction === 'release_stage' ? {
+        receiptDetails,
         releaseMode,
         actualReleaseDate: releaseMode === 'historical'
           ? historicalDate
@@ -665,6 +682,8 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
           historicalDate={historicalDate}
           historicalNote={historicalNote}
           historicalAllowed={historicalAllowed}
+          receiptDetails={receiptDetails}
+          onReceiptChange={setReceiptDetails}
           isSaving={isSaving}
           onModeChange={setReleaseMode}
           onHistoricalDateChange={setHistoricalDate}

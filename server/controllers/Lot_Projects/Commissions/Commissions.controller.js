@@ -1,3 +1,4 @@
+import { validateReleaseReceiptDetails } from '../../../services/releaseReceiptDetails.js';
 import {
   db,
   getErrorMessage,
@@ -1025,6 +1026,13 @@ export const updateLotProjectCommission = async (req, res) => {
       }
     }
 
+    // Receipt-backed stage releases require existing schema; never mutate schema during a payout.
+    const rawReceipt = req.body?.receiptDetails;
+    if (isReleaseAction && (!(await tableExists(connection, 'lot_project_commission_receipts'))
+      || !(await tableExists(connection, 'lot_project_commission_receipt_items')))) {
+      return res.status(503).json({ success: false, code: 'COMMISSION_RECEIPT_SCHEMA_REQUIRED',
+        message: 'Apply the receipt migration before releasing commissions. No money was released.' });
+    }
     const hasReleaseTable = await tableExists(connection, 'lot_project_commission_releases');
 
     if (hasReleaseTable && ['release_stage', 'hold_stage', 'unhold_stage', 'set_agent_receipt_status'].includes(action)) {
@@ -1241,6 +1249,7 @@ export const updateLotProjectCommission = async (req, res) => {
       let releaseEntryMode = release.release_entry_mode || 'live';
       let historicalReleaseNote = release.historical_release_note || null;
 
+      // Validate before saving a financial event. Rechecked after the selected release date is established.
       const accountStartingDate = release.soa_starting_date instanceof Date
         ? release.soa_starting_date.toISOString().slice(0, 10)
         : String(release.soa_starting_date || '').slice(0, 10);
@@ -1319,6 +1328,8 @@ export const updateLotProjectCommission = async (req, res) => {
         releaseEntryMode = isHistoricalRelease ? 'historical' : 'live';
         actualReleaseDate = isHistoricalRelease ? historicalActualReleaseDate : todayDateOnly();
         historicalReleaseNote = isHistoricalRelease ? (requestedHistoricalNote || null) : null;
+        // An invalid receipt must reject the release before any payment record is updated.
+        validateReleaseReceiptDetails(rawReceipt, actualReleaseDate, todayDateOnly());
         message = isHistoricalRelease
           ? `${release.release_stage} historical release recorded successfully.`
           : `${release.release_stage} released successfully.`;
@@ -1431,12 +1442,17 @@ export const updateLotProjectCommission = async (req, res) => {
       const data = await recomputeCommissionFromReleases(connection, commissionId, project.lot_project_id);
 
       if (action === 'release_stage') {
+        const receiptDetails = validateReleaseReceiptDetails(rawReceipt, actualReleaseDate, todayDateOnly());
         const [contextRows] = await connection.query(
           `
             SELECT
               c.lot_project_commission_id,
               c.lot_project_listing_id,
               c.accredited_seller_id,
+              c.sale_owner_accredited_seller_id,
+              c.commission_rate_type,
+              c.lot_project_client_profile_id,
+              c.lot_project_account_id,
               l.lot_project_listing_unit_id,
               cp.buyer_full_name,
               NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)), '') AS seller_name
@@ -1458,6 +1474,27 @@ export const updateLotProjectCommission = async (req, res) => {
         const commissionContext = contextRows[0] || {};
         const sellerName = commissionContext.seller_name || 'Seller';
         const releaseAmount = toNumber(release.net_release_amount);
+        const sellerId = String(commissionContext.commission_rate_type || '').toLowerCase() === 'direct'
+          ? Number(commissionContext.sale_owner_accredited_seller_id || commissionContext.accredited_seller_id)
+          : Number(commissionContext.accredited_seller_id);
+        if (!sellerId || !commissionContext.lot_project_client_profile_id || !commissionContext.lot_project_listing_id) {
+          throw Object.assign(new Error('Commission receipt could not identify its seller or buyer account. Nothing was released.'), { statusCode: 409 });
+        }
+        // One receipt per milestone, saved IN the same transaction as the release and its audit.
+        const [receiptInsert] = await connection.query(`
+          INSERT INTO lot_project_commission_receipts (
+            lot_project_id, lot_project_listing_id, lot_project_client_profile_id, lot_project_account_id,
+            lot_project_commission_id, accredited_seller_id, bank_name, account_number, receipt_date,
+            reference_number, witness_name, total_amount, receipt_status, created_by_user_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`, [
+          project.lot_project_id, commissionContext.lot_project_listing_id, commissionContext.lot_project_client_profile_id,
+          commissionContext.lot_project_account_id || null, commissionId, sellerId, receiptDetails.bankName,
+          receiptDetails.accountNumber, receiptDetails.receiptDate, receiptDetails.referenceNumber,
+          receiptDetails.witnessName, releaseAmount, currentUser.id,
+        ]);
+        await connection.query(`INSERT INTO lot_project_commission_receipt_items (
+          lot_project_commission_receipt_id, lot_project_commission_release_id, release_amount
+        ) VALUES (?, ?, ?)`, [receiptInsert.insertId, releaseId, releaseAmount]);
 
         await writeAuditLog(connection, req, {
           action: 'release',
@@ -1473,6 +1510,9 @@ export const updateLotProjectCommission = async (req, res) => {
             releaseId,
             releaseStage: release.release_stage,
             releaseAmount,
+            receiptId: Number(receiptInsert.insertId),
+            receiptDate: receiptDetails.receiptDate,
+            receiptReference: receiptDetails.referenceNumber,
             actualReleaseDate,
             releaseMode: releaseEntryMode,
             historicalReleaseNote,
@@ -1683,4 +1723,5 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
+
 

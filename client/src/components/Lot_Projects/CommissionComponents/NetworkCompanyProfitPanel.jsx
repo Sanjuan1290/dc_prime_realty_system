@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiFileText, FiPrinter, FiShield, FiX } from 'react-icons/fi'
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
 import SignedCopyUploadModal from '../../Shared/SignedCopyUploadModal'
+import ReleaseReceiptFields, { emptyReleaseReceipt, validateReleaseReceipt } from './ReleaseReceiptFields'
 import StatusAlert from '../../Shared/StatusAlert'
 
 const money = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(amount || 0))
@@ -29,6 +30,8 @@ export const NetworkProfitAcknowledgement = ({ profit, stage, onClose }) => {
         <div><p className="text-slate-500">Authorized Recipient (recorded payee)</p><p className="font-bold">{stage.payeeName || profit.payee}</p></div>
         <div><p className="text-slate-500">Payment Date</p><p className="font-bold">{String(stage.actualReleaseDate || '').slice(0,10)}</p></div>
         <div><p className="text-slate-500">Payment Method / Reference</p><p className="font-bold">{readableMethod(stage.paymentMethod)} · {stage.paymentReference}</p></div>
+        {stage.receiptDate ? <div><p className="text-slate-500">Receipt Date / Witness</p><p className="font-bold">{String(stage.receiptDate).slice(0,10)} · {stage.witnessName || '-'}</p></div> : null}
+        {stage.bankName ? <div><p className="text-slate-500">Bank / Account No.</p><p className="font-bold">{stage.bankName} · {stage.accountNumber || '-'}</p></div> : null}
         <div><p className="text-slate-500">Company Profit Rate</p><p className="font-bold">{profit.companyProfitRate.toFixed(4)}%</p></div>
         <div><p className="text-slate-500">Milestone</p><p className="font-bold">{stage.stage} · {stage.releasePercent}%</p></div>
       </div>
@@ -44,7 +47,8 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
   const queryClient = useQueryClient()
   const [releaseChoice, setReleaseChoice] = useState(null)
   const [method, setMethod] = useState('bank_transfer')
-  const [reference, setReference] = useState('')
+  const [receiptDetails, setReceiptDetails] = useState(emptyReleaseReceipt)
+  const [receiptError, setReceiptError] = useState('')
   const [signedChoice, setSignedChoice] = useState(null)
   const [printChoice, setPrintChoice] = useState(null)
   const [notice, setNotice] = useState(null)
@@ -56,9 +60,9 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
   })
   const records = embedded ? (profitRecord ? [profitRecord] : []) : (data?.data || [])
   const mutation = useMutation({
-    mutationFn: ({ profit, stage, paymentMethod, paymentReference }) => useFetchPost(
+    mutationFn: ({ profit, stage, paymentMethod, paymentReference, receiptDetails }) => useFetchPost(
       `/projects/lot-projects/${projectSlug}/network-company-profit/${profit.id}/releases/${stage.id}`,
-      { paymentMethod, paymentReference },
+      { paymentMethod, paymentReference, receiptDetails },
       { doubleCheck: { type: 'commission-release', summary: `${profit.unit} · ${profit.network} · Company Profit`,
         data: { commissionBeneficiary: {
           project: profit.project, unit: profit.unit, buyer: profit.buyer,
@@ -74,7 +78,8 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
     ),
     onSuccess: (result) => {
       setReleaseChoice(null)
-      setReference('')
+      setReceiptDetails(emptyReleaseReceipt())
+      setReceiptError('')
       setNotice({ type: 'success', message: result.message || 'Company Profit released successfully.' })
       queryClient.invalidateQueries({ queryKey })
       queryClient.invalidateQueries({ queryKey: ['lot-commissions', projectSlug] })
@@ -136,7 +141,7 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
                         <button type="button" onClick={() => setPrintChoice({ profit: profitRecord, stage })} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-black"><FiPrinter className="mr-1 inline"/>Print Acknowledgment</button>
                         <button type="button" onClick={() => setSignedChoice({ profit: profitRecord, stage })} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-black"><FiFileText className="mr-1 inline"/>Signed Copy</button>
                       </> : canRelease && stage.canRelease ?
-                        <button type="button" onClick={() => { setReleaseChoice({ profit: profitRecord, stage }); setNotice(null) }} className="rounded-lg bg-blue-700 px-3 py-1.5 font-black text-white">Release</button>
+                        <button type="button" onClick={() => { setReleaseChoice({ profit: profitRecord, stage }); setReceiptDetails(emptyReleaseReceipt()); setReceiptError(''); setNotice(null) }} className="rounded-lg bg-blue-700 px-3 py-1.5 font-black text-white">Release</button>
                         : <span className="text-slate-400">—</span>}
                     </div>
                   </td>
@@ -163,21 +168,26 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
             {stage.status === 'Released' ? <div className="mt-2 flex flex-wrap gap-1">
               <button type="button" onClick={() => setPrintChoice({ profit, stage })} className="rounded border bg-white px-2 py-1 text-xs font-bold"><FiPrinter className="mr-1 inline"/>Print</button>
               <button type="button" onClick={() => setSignedChoice({ profit, stage })} className="rounded border bg-white px-2 py-1 text-xs font-bold"><FiFileText className="mr-1 inline"/>Signed Copy</button>
-            </div> : canRelease && stage.canRelease ? <button type="button" onClick={() => { setReleaseChoice({ profit, stage }); setNotice(null) }} className="mt-2 rounded bg-blue-700 px-3 py-1.5 text-xs font-bold text-white">Release</button> : null}
+            </div> : canRelease && stage.canRelease ? <button type="button" onClick={() => { setReleaseChoice({ profit, stage }); setReceiptDetails(emptyReleaseReceipt()); setReceiptError(''); setNotice(null) }} className="mt-2 rounded bg-blue-700 px-3 py-1.5 text-xs font-bold text-white">Release</button> : null}
           </div>)}
         </div>
       </article>)}
     </div>
     {releaseChoice ? <div className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/60 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
         <h3 className="text-lg font-black">Release Network Company Profit</h3>
         <p className="mt-1 text-sm">{releaseChoice.profit.unit} · {releaseChoice.stage.stage} · <strong>{money(releaseChoice.stage.amount)}</strong></p>
         <p className="mt-2 text-sm text-slate-600">Recipient: <strong>{releaseChoice.profit.payee}</strong>. This is the Network's payout, not the Head's personal commission.</p>
         <label className="mt-4 block text-sm font-bold">Payment Method<select value={method} onChange={(e) => setMethod(e.target.value)} className="mt-1 w-full rounded-lg border p-3"><option value="bank_transfer">Bank Transfer</option><option value="cash">Cash</option><option value="check">Check</option><option value="other">Other</option></select></label>
-        <label className="mt-4 block text-sm font-bold">Payment Reference<input value={reference} maxLength={120} onChange={(e) => setReference(e.target.value)} placeholder="Transfer, check, or cash voucher reference" className="mt-1 w-full rounded-lg border p-3" /></label>
+        <ReleaseReceiptFields value={receiptDetails} onChange={(next) => { setReceiptDetails(next); setReceiptError('') }} />
+        {receiptError ? <p role="alert" className="mt-2 text-sm font-bold text-red-700">{receiptError}</p> : null}
         <p className="mt-3 text-xs text-amber-800"><FiShield className="mr-1 inline"/> This release requires Final Double-Check and is recorded in Audit Logs and the Head Review Center.</p>
         <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setReleaseChoice(null)} disabled={mutation.isPending} className="rounded-lg border px-4 py-2">Cancel</button>
-          <button type="button" disabled={!reference.trim() || mutation.isPending} onClick={() => mutation.mutate({ ...releaseChoice, paymentMethod: method, paymentReference: reference.trim() })} className="rounded-lg bg-blue-700 px-4 py-2 font-bold text-white disabled:opacity-40">{mutation.isPending ? 'Saving...' : 'Review & Release'}</button></div>
+          <button type="button" disabled={mutation.isPending} onClick={() => {
+            const problem = validateReleaseReceipt(receiptDetails)
+            if (problem) { setReceiptError(problem); return }
+            mutation.mutate({ ...releaseChoice, paymentMethod: method, paymentReference: receiptDetails.referenceNumber.trim(), receiptDetails })
+          }} className="rounded-lg bg-blue-700 px-4 py-2 font-bold text-white disabled:opacity-40">{mutation.isPending ? 'Saving...' : 'Review & Release'}</button></div>
       </div>
     </div> : null}
     {printChoice ? <NetworkProfitAcknowledgement {...printChoice} onClose={() => setPrintChoice(null)}/> : null}
