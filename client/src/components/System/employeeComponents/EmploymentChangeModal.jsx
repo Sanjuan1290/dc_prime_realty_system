@@ -186,7 +186,7 @@ const EmploymentChangeModal = ({ employee, departmentConfigs = [], departments =
 
               <section className="grid gap-4 rounded-2xl border border-blue-100 bg-blue-50 p-4 md:grid-cols-2">
                 <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Change Type *</span><select className={inputClass} value={form.change_type} onChange={(e) => setValue('change_type', e.target.value)}>{CHANGE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Effective Date *</span><input type="date" max={getManilaDate()} className={inputClass} value={form.effective_from} onChange={(e) => setValue('effective_from', e.target.value)} /></label>
+                <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Start Date of Change *</span><input type="date" max={getManilaDate()} className={inputClass} value={form.effective_from} onChange={(e) => setValue('effective_from', e.target.value)} /><span className="text-xs font-medium text-slate-500">For payroll, choose the 1st or 16th of a month.</span></label>
                 <label className="grid gap-2 md:col-span-2"><span className="text-sm font-black text-slate-700">Position *</span><input className={inputClass} value={form.position} onChange={(e) => setValue('position', e.target.value)} /></label>
                 <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Department *</span><select className={inputClass} value={form.department} onChange={(e) => setValue('department', e.target.value)}>{departmentOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
                 <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Employment Type *</span><select className={inputClass} value={form.employment_type} onChange={(e) => setValue('employment_type', e.target.value)}>{EMPLOYMENT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -227,4 +227,5 @@ const EmploymentChangeModal = ({ employee, departmentConfigs = [], departments =
 }
 
 export default EmploymentChangeModal
+
 

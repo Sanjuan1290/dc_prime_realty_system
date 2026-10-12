@@ -22,17 +22,17 @@ const PayrollSummaryPrint = ({ summary }) => {
         {statusEntries.length ? <p className="mt-1 text-[10px] font-medium">Status: {statusEntries.map(([status, count]) => `${payrollStatusLabel(status)} ${count}`).join(' | ')}</p> : null}
       </header>
 
-      <table className="w-full table-fixed border-collapse border border-black text-[9px]">
+      <table className="w-full table-fixed border-collapse border border-black text-[9px]" style={{ breakInside: 'auto' }}>
         <colgroup>
           <col className="w-[18%]" /><col className="w-[19%]" /><col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[8%]" /><col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[10%]" /><col className="w-[9%]" />
         </colgroup>
-        <thead>
+        <thead style={{ display: 'table-header-group' }}>
           <tr className="bg-[#d9d9d9]">
             {['Employee', 'Position', 'Basic', 'Deduction', 'OT', 'Rest Day OT', 'Allowances', 'Adjustments', 'Net'].map((label) => <th key={label} className="border border-black px-1.5 py-2 text-center font-black">{label}</th>)}
           </tr>
         </thead>
         <tbody>
-          {rows.length ? rows.map((row) => <tr key={row.employee_payroll_id}>
+          {rows.length ? rows.map((row) => <tr key={row.employee_payroll_id} style={{ breakInside: 'avoid' }}>
             <td className="border border-black px-1.5 py-1.5 font-bold">{row.employee_name || '—'}</td>
             <td className="border border-black px-1.5 py-1.5">{row.position || '—'}</td>
             <td className="border border-black px-1.5 py-1.5 text-right">{amount(row.basic)}</td>
@@ -46,7 +46,7 @@ const PayrollSummaryPrint = ({ summary }) => {
         </tbody>
       </table>
 
-      <div className="mt-5 grid grid-cols-2 gap-8 text-[10px]">
+      <div className="mt-5 grid grid-cols-2 gap-8 text-[10px]" style={{ breakInside: 'avoid' }}>
         <section>
           <h3 className="border-b border-black pb-1 font-black uppercase">Period Totals</h3>
           <div className="mt-2 grid grid-cols-[1fr_auto] gap-x-5 gap-y-1.5">
@@ -70,10 +70,11 @@ const PayrollSummaryPrint = ({ summary }) => {
         </section>
       </div>
 
-      <p className="mt-5 text-[9px] leading-relaxed">Adjustments combine Holiday Pay, Night Differential Pay, and net manual additions/deductions so the row columns reconcile to the stored Net Fund Release. Cancelled payroll is excluded from the period summary.</p>
+      <p className="mt-5 text-[9px] leading-relaxed">Adjustments include holiday pay, night shift extra pay and approved manual changes. Cancelled payroll is not included.</p>
     </article>
   )
 }
 
 export default PayrollSummaryPrint
+
 

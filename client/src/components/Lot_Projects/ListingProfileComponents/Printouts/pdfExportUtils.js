@@ -129,7 +129,7 @@ const createPdfPrintStyles = ({ pageSize = 'A4 portrait' } = {}) => `
 const buildPrintableHtml = (element, options = {}) => {
   const clonedElement = element.cloneNode(true)
   const containsOfferToBuy = Boolean(element?.matches?.('.otb-page') || element?.querySelector?.('.otb-page'))
-  const printPageSize = containsOfferToBuy ? 'legal portrait' : 'A4 portrait'
+  const printPageSize = containsOfferToBuy ? 'legal portrait' : (options.pageSize || 'A4 portrait')
   clonedElement.classList.add('pdf-print-root')
 
   // Do not copy action bars, modal chrome, or status banners into the PDF print window.
@@ -198,4 +198,5 @@ export const openElementInPdfPrintWindow = async (element, options = {}) => {
 // Kept as the public function used by the print buttons. It opens Chrome's clean Save-as-PDF print flow
 // instead of converting the page through canvas, which was producing blank PDFs for some uploaded images.
 export const downloadElementAsPdf = openElementInPdfPrintWindow
+
 

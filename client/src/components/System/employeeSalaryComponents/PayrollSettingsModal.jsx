@@ -136,13 +136,6 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
               </div>
             </section>
 
-            <section>
-              <label className="block text-sm font-bold text-slate-800" htmlFor="salary-change-timing">When salary changes can take effect</label>
-              <select id="salary-change-timing" value="period_boundary_only" disabled className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm font-semibold text-slate-700">
-                <option value="period_boundary_only">Only on the 1st or 16th</option>
-              </select>
-            </section>
-
             <details className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <summary className="cursor-pointer font-bold text-slate-700">Settings history</summary>
               <div className="mt-2 space-y-1">

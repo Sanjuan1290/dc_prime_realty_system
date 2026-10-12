@@ -115,7 +115,7 @@ test('cancelled payroll is excluded and Draft presence marks the period summary 
   assert.match(summary.warnings[0], /Draft payroll/)
 })
 
-test('CSV, Excel, and PDF use the planned payroll-summary columns and totals', () => {
+test('PDF-only payroll summary uses the planned columns and totals', () => {
   for (const label of ['Employee', 'Position', 'Basic', 'Deduction', 'OT', 'Rest Day OT', 'Allowances', 'Adjustments', 'Net']) {
     assert.match(exportUtility, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
     assert.match(summaryPrint, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
@@ -124,17 +124,16 @@ test('CSV, Excel, and PDF use the planned payroll-summary columns and totals', (
   assert.match(exportUtility, /TOTAL FUND RELEASE/)
   assert.match(exportUtility, /XLSX\.writeFile/)
   assert.match(exportUtility, /text\/csv/)
-  assert.match(exportModal, />CSV</)
-  assert.match(exportModal, />Excel</)
-  assert.match(exportModal, /Export PDF/)
+  assert.doesNotMatch(exportModal, /downloadPayrollSummaryCsv|downloadPayrollSummaryExcel|>CSV<|>Excel</)
+  assert.match(exportModal, /Save as PDF/)
   assert.match(exportModal, /downloadElementAsPdf/)
 })
 
 test('PDF summary is a black-and-white A4 landscape accounting table and whole-period export ignores page filters', () => {
-  assert.match(exportModal, /@page \{ size: A4 landscape/)
+  assert.match(exportModal, /pageSize: 'A4 landscape'/)
   assert.match(summaryPrint, /border border-black/)
   assert.match(summaryPrint, /bg-\[#d9d9d9\]/)
-  assert.match(exportModal, /ignores the page's Department, Status, and Search filters/)
+  assert.match(exportModal, /Includes all employees in this pay period/)
   assert.match(salaryPage, /<FiDownload \/>Export Summary/)
   assert.match(salaryPage, /PERMISSIONS\.PAYROLL_SUMMARY_EXPORT/)
 })
@@ -163,4 +162,5 @@ test('final QA still reproduces the supplied Fund Release receipt benchmark exac
   assert.equal(receipt.total_deduction, 1031.61)
   assert.equal(receipt.total, 6468.39)
 })
+
 
