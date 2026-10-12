@@ -1,6 +1,7 @@
 import { db } from '../../../db/connect.js';
 import { writeAuditLog } from '../auditLogs.controller.js';
-import { buildEmployeeNameSql, cleanText, nullableText } from './employeeModule.shared.js';
+import { buildEmployeeNameSql, cleanText, dateOnly, nullableText } from './employeeModule.shared.js';
+import { correctEmployeeHireDate, normalizeHireDate } from '../../../services/employeeHireDateCorrection.service.js';
 import { ensureAttendanceLiteSchema, getAttendanceRuntimeSettings, getManilaDateTime } from './attendanceLite.shared.js';
 import { generateUniqueAttendanceBarcode } from './attendanceBarcode.shared.js';
 import {
@@ -43,6 +44,8 @@ const normalizePayload = (body = {}) => ({
   position: cleanText(body.position),
   employmentType: employmentTypes.has(String(body.employment_type)) ? String(body.employment_type) : 'regular',
   status: statuses.has(String(body.employee_status)) ? String(body.employee_status) : 'active',
+  hireDate: cleanText(body.hire_date),
+  hireDateChangeReason: cleanText(body.hire_date_change_reason),
   monthlyBasicSalary: normalizeMoney(body.monthly_basic_salary ?? body.monthly_salary, 'Monthly Basic Salary'),
   riceAllowance: normalizeMoney(body.rice_allowance, 'Rice Allowance'),
   transportationAllowance: normalizeMoney(body.transportation_allowance, 'Transportation Allowance'),
@@ -307,6 +310,10 @@ export const createEmployee = async (req, res) => {
     validatePayload(payload, { requireCompensation: true });
     const actorId = req.authUser?.id || null;
     const today = getManilaDateTime().date;
+    const hireDate = normalizeHireDate(payload.hireDate || today);
+    if (!hireDate || hireDate > today) {
+      throw Object.assign(new Error('Enter a valid hire date that is not in the future.'), { statusCode: 400 });
+    }
 
     await connection.beginTransaction();
     const employeeCode = await allocateEmployeeBarcode(connection, payload.department);
@@ -320,14 +327,14 @@ export const createEmployee = async (req, res) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       employeeCode.employeeCode, attendanceBarcode, payload.firstName, payload.middleName, payload.lastName,
-      employeeCode.department, payload.position, payload.employmentType, today, payload.monthlyBasicSalary,
+      employeeCode.department, payload.position, payload.employmentType, hireDate, payload.monthlyBasicSalary,
       payload.riceAllowance, payload.transportationAllowance, payload.attendanceBonus, payload.status, actorId, actorId,
     ]);
 
     await createInitialEmployeeRestDays(connection, {
       employeeId: result.insertId,
       restDays: payload.restDays,
-      effectiveFrom: today,
+      effectiveFrom: hireDate,
       actorId,
     });
 
@@ -340,7 +347,7 @@ export const createEmployee = async (req, res) => {
       riceAllowance: payload.riceAllowance,
       transportationAllowance: payload.transportationAllowance,
       attendanceBonus: payload.attendanceBonus,
-      effectiveFrom: today,
+      effectiveFrom: hireDate,
       actorId,
       reason: 'Initial employment and compensation record created with the employee.',
     });
@@ -365,7 +372,8 @@ export const createEmployee = async (req, res) => {
         employmentHistoryId: initialEmploymentHistoryId,
         restDays: payload.restDays,
         restDaysLabel: formatRestDays(payload.restDays),
-        restDaysEffectiveFrom: today,
+        restDaysEffectiveFrom: hireDate,
+        hireDate,
       },
     });
     await connection.commit();
@@ -381,7 +389,8 @@ export const createEmployee = async (req, res) => {
         position: payload.position,
         employment_type: payload.employmentType,
         rest_days: payload.restDays,
-        rest_days_effective_from: today,
+        rest_days_effective_from: hireDate,
+        hire_date: hireDate,
         full_name: [payload.firstName, payload.middleName, payload.lastName].filter(Boolean).join(' '),
       },
     });
@@ -405,9 +414,14 @@ export const updateEmployee = async (req, res) => {
     const [rows] = await connection.query('SELECT * FROM employees WHERE employee_id = ? LIMIT 1 FOR UPDATE', [employeeId]);
     if (!rows[0]) throw Object.assign(new Error('Employee not found.'), { statusCode: 404 });
 
+    const hireDate = dateOnly(rows[0].hire_date) || today;
+    const requestedHireDate = payload.hireDate || hireDate;
+    const hireDateChange = await correctEmployeeHireDate(connection, {
+      employeeId, previousHireDate: hireDate, newHireDate: requestedHireDate,
+      reason: payload.hireDateChangeReason, actorId, today,
+    });
     const restDaysEffectiveFrom = payload.restDaysEffectiveFrom || today;
-    const hireDate = String(rows[0].hire_date || today).slice(0, 10);
-    if (restDaysEffectiveFrom < hireDate) {
+    if (restDaysEffectiveFrom < hireDateChange.current) {
       throw Object.assign(new Error('Rest Day effective date cannot be before the employee hire date.'), { statusCode: 400 });
     }
     if (restDaysEffectiveFrom > today) {
@@ -423,9 +437,9 @@ export const updateEmployee = async (req, res) => {
 
     await connection.query(`
       UPDATE employees SET first_name = ?, middle_name = ?, last_name = ?,
-        employee_status = ?, updated_by_user_id = ?
+        employee_status = ?, hire_date = ?, updated_by_user_id = ?
       WHERE employee_id = ?
-    `, [payload.firstName, payload.middleName, payload.lastName, payload.status, actorId, employeeId]);
+    `, [payload.firstName, payload.middleName, payload.lastName, payload.status, hireDateChange.current, actorId, employeeId]);
 
     await writeAuditLog(connection, req, {
       actor: req.authUser,
@@ -440,6 +454,11 @@ export const updateEmployee = async (req, res) => {
         position: rows[0].position,
         employmentType: rows[0].employment_type,
         compensationPreserved: true,
+        hireDateChanged: hireDateChange.changed,
+        previousHireDate: hireDateChange.previous,
+        hireDate: hireDateChange.current,
+        hireDateChangeReason: hireDateChange.reason || null,
+        payrollDraftRecalculationRequired: hireDateChange.changed && hireDateChange.hasDraft,
         previousRestDays: restDayChange.previous,
         restDays: restDayChange.current,
         restDaysEffectiveFrom: restDayChange.effectiveFrom,
@@ -449,12 +468,17 @@ export const updateEmployee = async (req, res) => {
     await connection.commit();
     return res.json({
       success: true,
-      message: restDayChange.changed
-        ? `Employee updated successfully. Rest Days are effective ${restDayChange.effectiveFrom}. Existing employee code and attendance barcode were preserved.`
-        : 'Employee updated successfully. Existing employee code and attendance barcode were preserved.',
+      message: hireDateChange.changed && hireDateChange.hasDraft
+        ? 'Employee saved. Recalculate existing Draft payroll before finalizing.'
+        : hireDateChange.changed
+          ? 'Employee and hire date updated successfully.'
+          : restDayChange.changed
+            ? `Employee updated. Rest days start ${restDayChange.effectiveFrom}.`
+            : 'Employee updated successfully.', 
       data: {
         employee_code: rows[0].employee_code,
         barcode_code: rows[0].barcode_code,
+        hire_date: hireDateChange.current,
         rest_days: restDayChange.current,
         rest_days_effective_from: restDayChange.effectiveFrom,
       },
@@ -646,4 +670,5 @@ export const createEmployeeEmploymentChange = async (req, res) => {
     connection.release();
   }
 };
+
 

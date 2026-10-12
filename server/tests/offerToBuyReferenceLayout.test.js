@@ -74,7 +74,12 @@ test('Offer to Buy uses Legal paper in every browser print path', () => {
   assert.match(form, /size:\s*legal portrait/);
   assert.match(shell, /pageSize === 'legal' \? 'legal portrait'/);
   assert.match(preview, /type === 'offer' \? 'legal portrait' : 'A4 portrait'/);
-  assert.match(pdfUtils, /containsOfferToBuy \? 'legal portrait' : 'A4 portrait'/);
+  // Offer to Buy must always use Legal paper, even when other reports
+  // request their own print size (for example, Payroll Summary A4 landscape).
+  assert.match(pdfUtils, /containsOfferToBuy\s*\?\s*'legal portrait'\s*:\s*\(options\.pageSize\s*\|\|\s*'A4 portrait'\)/);
+  assert.match(pdfUtils, /createPdfPrintStyles\(\{ pageSize: printPageSize \}\)/);
+  const payrollExport = read('client/src/components/System/employeeSalaryComponents/PayrollSummaryExportModal.jsx');
+  assert.match(payrollExport, /downloadElementAsPdf\(contentRef\.current,\s*\{\s*filename,\s*pageSize:\s*'A4 landscape'\s*\}\)/);
   assert.match(preview, /openElementInPdfPrintWindow\(previewContentRef\.current/);
 });
 
@@ -103,4 +108,5 @@ test('unlisted employment statuses appear only on the Other line', () => {
   assert.equal(resolveEmploymentStatus('Government Consultant').checkedKey, '');
   assert.equal(getEmploymentStatusOtherText('Government Consultant'), 'Government Consultant');
 });
+
 
