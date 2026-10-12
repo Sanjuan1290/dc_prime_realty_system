@@ -1,16 +1,16 @@
 import { formatPhilippineDateTime } from '../../../utils/formatDateTime'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiAlertTriangle, FiSave, FiSettings, FiX } from 'react-icons/fi'
+import { FiSave, FiSettings, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import { useFetch, useFetchPut } from '../../../utils/useFetch'
 
+// Keep API/database keys unchanged. Only the labels displayed to staff are simplified.
 const numericFields = [
-  ['regular_ot_multiplier', 'Overtime Multiplier', 'Applied to regular overtime hours recorded in Attendance.'],
-  ['rest_day_ot_multiplier', 'Rest Day OT Multiplier', 'Applied to Rest Day overtime hours recorded in Attendance.'],
+  ['regular_ot_multiplier', 'Regular Overtime Rate (× hourly pay)', '×'],
+  ['rest_day_ot_multiplier', 'Rest Day Overtime Rate (× hourly pay)', '×'],
 ]
-// These two legacy fields are retained in the database for historical compatibility.
-// The UI does not offer unsupported separate Holiday OT settings or overwrite them.
+// Historical holiday overtime columns are preserved, not exposed as new settings.
 const legacyHolidayOtKeys = ['regular_holiday_ot_multiplier', 'special_holiday_ot_multiplier']
 const sameHolidayRate = (data) => data.regular_holiday_multiplier === data.special_holiday_multiplier
 
@@ -61,69 +61,103 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
 
   const holidayRatesDiffer = settingsQuery.data?.data && !sameHolidayRate(settingsQuery.data.data)
   const sharedHolidayRateRequired = holidayRatesDiffer && String(form?.holiday_multiplier ?? '').trim() === ''
-
   const set = (key, value) => setForm((current) => ({ ...(current || {}), [key]: value }))
+
+  const fieldClass = 'mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100'
+  const fieldCardClass = 'rounded-xl border border-slate-200 bg-white p-4'
 
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/60 p-3 sm:p-6">
-      <div className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div>
-            <div className="flex items-center gap-2 text-blue-700"><FiSettings /><p className="text-xs font-black uppercase tracking-wider">Employee Salary</p></div>
-            <h2 className="mt-1 text-xl font-black text-slate-950">Payroll Settings</h2>
-            <p className="mt-1 text-sm font-semibold text-slate-500">Configure company-approved premium-pay rules. No payroll multiplier is hardcoded by this module.</p>
-          </div>
-          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"><FiX /></button>
+      <div className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
+          <div className="flex items-center gap-2 text-slate-950"><FiSettings className="text-blue-600" /><h2 className="text-xl font-black">Payroll Settings</h2></div>
+          <button type="button" onClick={onClose} aria-label="Close Payroll Settings" className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"><FiX /></button>
         </header>
 
-        <div className="overflow-y-auto p-5 sm:p-6">
-          {settingsQuery.isLoading ? <StatusAlert type="loading" message="Loading Payroll Settings..." /> : null}
-          {settingsQuery.isError ? <StatusAlert type="error" message={settingsQuery.error?.message || 'Unable to load Payroll Settings.'} /> : null}
-          {saveMutation.isError ? <div className="mb-4"><StatusAlert type="error" message={saveMutation.error?.message || 'Unable to save Payroll Settings.'} /></div> : null}
+        <div className="space-y-5 overflow-y-auto p-5 sm:p-6">
+          {settingsQuery.isLoading ? <StatusAlert type="loading" message="Loading payroll settings..." /> : null}
+          {settingsQuery.isError ? <StatusAlert type="error" message={settingsQuery.error?.message || 'Unable to load payroll settings.'} /> : null}
+          {saveMutation.isError ? <StatusAlert type="error" message={saveMutation.error?.message || 'Unable to save payroll settings.'} /> : null}
 
-          {form ? <div className="space-y-5">
-            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <div className="flex gap-3"><FiAlertTriangle className="mt-0.5 shrink-0 text-amber-700" /><div><p className="font-black text-amber-950">Enter only company-approved rates</p><p className="mt-1 text-sm font-semibold leading-6 text-amber-900">The Master Plan names these rules but does not provide their numeric values. Leave a field blank until the company confirms it. Recorded premium hours with an unconfigured rate remain ₱0.00 and produce a Draft warning.</p></div></div>
-            </section>
-
-            <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-              <h3 className="text-base font-black text-slate-950">Payroll Schedule</h3>
-              <p className="mt-1 text-xs font-semibold text-slate-600">Pay periods are automatically 1–15 and 16–last day. Payday is the 22nd of that month or the 7th of the next. The configured payday is a schedule only, not confirmation of payment.</p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="text-xs font-black text-slate-800">First-half payday (same month)<input type="number" min="16" max="28" value={form.first_half_payday} onChange={(e) => set('first_half_payday', e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3" /></label>
-                <label className="text-xs font-black text-slate-800">Second-half payday (following month)<input type="number" min="1" max="28" value={form.second_half_payday} onChange={(e) => set('second_half_payday', e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3" /></label>
+          {form ? <>
+            <section>
+              <h3 className="mb-3 text-base font-black text-slate-900">Paydays</h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className={fieldCardClass}>
+                  <span className="block text-sm font-bold text-slate-800">Payday for 1st–15th (same month)</span>
+                  <input type="number" min="16" max="28" value={form.first_half_payday} onChange={(event) => set('first_half_payday', event.target.value)} className={fieldClass} />
+                </label>
+                <label className={fieldCardClass}>
+                  <span className="block text-sm font-bold text-slate-800">Payday for 16th–month end (next month)</span>
+                  <input type="number" min="1" max="28" value={form.second_half_payday} onChange={(event) => set('second_half_payday', event.target.value)} className={fieldClass} />
+                </label>
               </div>
             </section>
-            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <label className="block text-sm font-black text-slate-900">First Payroll for New Hires</label>
-              <select value={form.new_hire_proration_rule} onChange={(e) => set('new_hire_proration_rule', e.target.value)} className="mt-3 h-11 w-full rounded-xl border border-amber-300 bg-white px-3 text-sm font-bold">
-                <option value="disabled">Disabled — approval required</option>
-                <option value="scheduled_workdays">Enable scheduled-workday proration</option>
-              </select>
-              <p className="mt-2 text-xs font-semibold leading-5 text-amber-900">If explicitly approved: first-payroll basic = half-month basic × scheduled workdays from the actual hire date through period end ÷ scheduled workdays of the entire half-month. Allowances are prorated by the same fraction; pre-hire Attendance is excluded. Existing-employee salary changes inside a period are still blocked.</p>
-            </section>
-            {holidayRatesDiffer ? <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-              Existing Regular and Special Holiday rates are different. Enter a single approved Holiday Multiplier before saving; both future Draft holiday calculations will use it. Previously finalized payroll stays unchanged.
-            </section> : null}
-            <section className="grid gap-4 md:grid-cols-2">
-              {numericFields.map(([key, label, help]) => <label key={key} className="rounded-2xl border border-slate-200 p-4"><span className="block text-sm font-black text-slate-900">{label}</span><input type="number" min="0" step="0.0001" value={form[key]} onChange={(event) => set(key, event.target.value)} placeholder="Not configured" className="mt-3 h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-bold" /><span className="mt-2 block text-xs font-semibold leading-5 text-slate-500">{help}</span></label>)}
-              <label className="rounded-2xl border border-slate-200 p-4"><span className="block text-sm font-black text-slate-900">Holiday Multiplier</span><input type="number" min="0" step="0.0001" value={form.holiday_multiplier} onChange={(event) => set('holiday_multiplier', event.target.value)} placeholder="Not configured" className="mt-3 h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-bold" /><span className="mt-2 block text-xs font-semibold leading-5 text-slate-500">One approved multiplier for Holiday hours recorded in Attendance. Both legacy holiday categories use the same value for new Draft calculations; their historic accounting fields are preserved.</span></label>
-              <label className="rounded-2xl border border-slate-200 p-4"><span className="block text-sm font-black text-slate-900">Night Differential Percentage</span><div className="relative mt-3"><input type="number" min="0" max="100" step="0.001" value={form.night_differential_percentage} onChange={(event) => set('night_differential_percentage', event.target.value)} placeholder="Not configured" className="h-11 w-full rounded-xl border border-slate-300 px-3 pr-10 text-sm font-bold" /><span className="absolute right-3 top-3 text-sm font-black text-slate-500">%</span></div><span className="mt-2 block text-xs font-semibold leading-5 text-slate-500">Applied as an additional percentage of hourly pay for recorded Night Differential hours.</span></label>
-              <label className="rounded-2xl border border-slate-200 p-4"><span className="block text-sm font-black text-slate-900">Salary Change Timing</span><select value="period_boundary_only" disabled className="mt-3 h-11 w-full rounded-xl border border-slate-300 bg-slate-100 px-3 text-sm font-bold text-slate-700"><option value="period_boundary_only">Payroll Boundary Only — 1st or 16th</option></select><span className="mt-2 block text-xs font-semibold leading-5 text-slate-500">A proration formula is not defined in the approved Master Plan, so salary/compensation changes inside a half-month period remain blocked.</span></label>
+
+            <section>
+              <h3 className="mb-3 text-base font-black text-slate-900">New Employee's First Pay</h3>
+              <label className="block">
+                <span className="mb-2 block text-sm font-bold text-slate-800">If hired during a pay period</span>
+                <select value={form.new_hire_proration_rule} onChange={(event) => set('new_hire_proration_rule', event.target.value)} className={`${fieldClass} mt-0`}>
+                  <option value="disabled">Do not calculate partial pay (approval needed)</option>
+                  <option value="scheduled_workdays">Approved: Pay for scheduled workdays after hiring</option>
+                </select>
+              </label>
             </section>
 
-            <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-950">
-              <p><strong>Settings revision:</strong> {settingsQuery.data?.data?.settings_revision ?? '—'}</p>
-              <p><strong>Last updated:</strong> {settingsQuery.data?.data?.updated_at ? formatPhilippineDateTime(settingsQuery.data.data.updated_at, { timeZoneLabel: true }) : 'Not yet updated'}</p>
-              <p><strong>Updated by:</strong> {settingsQuery.data?.data?.updated_by_name || '—'}</p>
-              <p className="mt-2">Changing settings does not alter Finalized/Corrected/Released payroll. Existing Draft payroll must be recalculated before Finalization.</p>
+            <section>
+              <h3 className="text-base font-black text-slate-900">Extra Pay Rates</h3>
+              <p className="mt-1 mb-3 text-xs font-medium text-slate-600">Enter company-approved rates only. Leave unapproved rates blank; extra pay for those hours will be ₱0.00 in a draft.</p>
+              {holidayRatesDiffer ? <p role="alert" className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">Existing holiday rates differ. Enter one approved Holiday Pay Rate before saving.</p> : null}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {numericFields.map(([key, label, unit]) => (
+                  <label key={key} className={fieldCardClass}>
+                    <span className="block text-sm font-bold text-slate-800">{label}</span>
+                    <div className="relative">
+                      <input type="number" min="0" step="0.0001" value={form[key]} onChange={(event) => set(key, event.target.value)} placeholder="Not set" className={`${fieldClass} pr-10`} />
+                      <span className="pointer-events-none absolute right-4 top-[1.15rem] text-sm font-bold text-slate-500">{unit}</span>
+                    </div>
+                  </label>
+                ))}
+                <label className={fieldCardClass}>
+                  <span className="block text-sm font-bold text-slate-800">Holiday Pay Rate (× hourly pay)</span>
+                  <div className="relative">
+                    <input type="number" min="0" step="0.0001" value={form.holiday_multiplier} onChange={(event) => set('holiday_multiplier', event.target.value)} placeholder="Not set" className={`${fieldClass} pr-10`} />
+                    <span className="pointer-events-none absolute right-4 top-[1.15rem] text-sm font-bold text-slate-500">×</span>
+                  </div>
+                </label>
+                <label className={fieldCardClass}>
+                  <span className="block text-sm font-bold text-slate-800">Night Shift Extra Pay</span>
+                  <div className="relative">
+                    <input type="number" min="0" max="100" step="0.001" value={form.night_differential_percentage} onChange={(event) => set('night_differential_percentage', event.target.value)} placeholder="Not set" className={`${fieldClass} pr-10`} />
+                    <span className="pointer-events-none absolute right-4 top-[1.15rem] text-sm font-bold text-slate-500">%</span>
+                  </div>
+                </label>
+              </div>
             </section>
-          </div> : null}
+
+            <section>
+              <label className="block text-sm font-bold text-slate-800" htmlFor="salary-change-timing">When salary changes can take effect</label>
+              <select id="salary-change-timing" value="period_boundary_only" disabled className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm font-semibold text-slate-700">
+                <option value="period_boundary_only">Only on the 1st or 16th</option>
+              </select>
+            </section>
+
+            <details className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              <summary className="cursor-pointer font-bold text-slate-700">Settings history</summary>
+              <div className="mt-2 space-y-1">
+                <p>Version: {settingsQuery.data?.data?.settings_revision ?? '—'}</p>
+                <p>Last saved: {settingsQuery.data?.data?.updated_at ? formatPhilippineDateTime(settingsQuery.data.data.updated_at, { timeZoneLabel: true }) : 'Not yet saved'}</p>
+                <p>Saved by: {settingsQuery.data?.data?.updated_by_name || '—'}</p>
+                <p>Previously finalized and released payroll is not changed. Recalculate existing drafts before finalizing.</p>
+              </div>
+            </details>
+          </> : null}
         </div>
 
-        <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
-          <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700">Cancel</button>
-          <button type="button" onClick={() => saveMutation.mutate()} disabled={!form || saveMutation.isPending || sharedHolidayRateRequired} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50"><FiSave />{saveMutation.isPending ? 'Saving...' : 'Save Payroll Settings'}</button>
+        <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+          <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-bold text-slate-700">Cancel</button>
+          <button type="button" onClick={() => saveMutation.mutate()} disabled={!form || saveMutation.isPending || sharedHolidayRateRequired} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"><FiSave />{saveMutation.isPending ? 'Saving...' : 'Save Changes'}</button>
         </footer>
       </div>
     </div>
@@ -131,6 +165,3 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
 }
 
 export default PayrollSettingsModal
-
-
-

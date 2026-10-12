@@ -75,15 +75,17 @@ test('eligibility endpoint remains permission-gated and adds period-specific rea
   const page = read('client/src/pages/System/EmployeeSalary.jsx');
   assert.match(router, /eligible-employees'.*PERMISSIONS\.PAYROLL_GENERATE/);
   assert.match(controller, /assessPayrollReadiness\(connection, employee/);
-  assert.match(modal, /Payroll readiness — Employees \+ Attendance/);
+  assert.match(modal, /Payroll Check/);
+  assert.doesNotMatch(modal, /Fields and settings required for payroll generation/);
+  assert.doesNotMatch(modal, /payroll_readiness\.checks\.map/);
   assert.match(modal, /lastResult\.skipped\?\.map/);
   assert.match(modal, /employee_id: Number\(employeeId\)/);
-  assert.match(page, /First issue:/);
+  assert.match(page, /payroll draft\(s\) created/);
 });
 
 test('one visible Holiday Multiplier applies the same approved rate to existing holiday categories without touching prior payroll', () => {
   const settingsUi = read('client/src/components/System/employeeSalaryComponents/PayrollSettingsModal.jsx');
-  assert.match(settingsUi, /Holiday Multiplier/);
+  assert.match(settingsUi, /Holiday Pay Rate/);
   assert.match(settingsUi, /legacyHolidayOtKeys/);
   assert.match(settingsUi, /regular_holiday_multiplier: payloadValue\(form\?\.holiday_multiplier\)/);
   assert.match(settingsUi, /special_holiday_multiplier: payloadValue\(form\?\.holiday_multiplier\)/);
@@ -95,3 +97,4 @@ test('one visible Holiday Multiplier applies the same approved rate to existing 
   });
   assert.equal(earned.regularHolidayPay + earned.specialHolidayPay, 400);
 });
+

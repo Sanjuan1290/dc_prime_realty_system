@@ -102,11 +102,10 @@ const EmployeeSalary = () => {
   const handleGenerated = (result) => {
     const generated = result?.data?.generated?.length || 0
     const skipped = result?.data?.skipped?.length || 0
-    const firstIssue = result?.data?.skipped?.[0]?.message
     setAlert({
       type: skipped ? 'warning' : 'success',
       message: skipped
-        ? `Draft payroll generated for ${generated} employee(s); ${skipped} skipped. First issue: ${firstIssue || 'See details in Generate Draft Payroll.'}`
+        ? `${generated} payroll draft(s) created. ${skipped} employee(s) need changes; see the payroll window for details.`
         : result?.message || `Draft payroll generated for ${generated} employee(s).`,
     })
   }
@@ -114,12 +113,12 @@ const EmployeeSalary = () => {
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader title="Employee Salary" description="Review half-month payroll generated from effective compensation and Attendance. Draft values remain recalculable until Finalization." icon={FiDollarSign} />
+        <PageHeader title="Employee Salary" description="Review employee pay, deductions, and allowances for each pay period." icon={FiDollarSign} />
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => { periodQuery.refetch(); registerQuery.refetch() }} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><FiRefreshCw className={registerQuery.isFetching || periodQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
           {canExportPayrollSummary ? <button type="button" onClick={() => setShowPayrollSummaryExport(true)} disabled={!period} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"><FiDownload />Export Summary</button> : null}
           {canManagePayrollSettings ? <button type="button" onClick={() => setShowPayrollSettings(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50"><FiSettings />Payroll Settings</button> : null}
-          {canGenerate ? <button type="button" onClick={() => setShowGenerate(true)} disabled={!period} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50"><FiPlus />Generate Draft Payroll</button> : null}
+          {canGenerate ? <button type="button" onClick={() => setShowGenerate(true)} disabled={!period} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50"><FiPlus />Create Payroll Draft</button> : null}
         </div>
       </div>
 
@@ -184,5 +183,6 @@ const EmployeeSalary = () => {
 }
 
 export default EmployeeSalary
+
 
 

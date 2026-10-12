@@ -138,12 +138,14 @@ test('formal corrections recalculate with current approved settings and version 
 test('Payroll Settings UI clearly keeps rates blank until approved and exposes only the supported boundary rule', () => {
   assert.match(salaryPage, /PERMISSIONS\.PAYROLL_SETTINGS_MANAGE/)
   assert.match(salaryPage, /<FiSettings \/>Payroll Settings/)
-  assert.match(settingsModal, /Enter only company-approved rates/)
-  assert.match(settingsModal, /Leave a field blank until the company confirms it/)
-  assert.match(settingsModal, /Payroll Boundary Only — 1st or 16th/)
-  assert.match(settingsModal, /Holiday Multiplier/)
+  assert.match(settingsModal, /Extra Pay Rates/)
+  assert.match(settingsModal, /Leave unapproved rates blank/)
+  assert.match(settingsModal, /Only on the 1st or 16th/)
+  assert.match(settingsModal, /Holiday Pay Rate/)
+  assert.doesNotMatch(settingsModal, /The Master Plan names these rules/)
   assert.match(settingsModal, /legacyHolidayOtKeys/)
   assert.doesNotMatch(settingsModal, /'Regular Holiday OT Multiplier'/)
 })
+
 
 
