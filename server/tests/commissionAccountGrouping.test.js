@@ -80,7 +80,7 @@ test('commission lines group into one main record per listing', () => {
   assert.deepEqual(groups[0].sellers.map((seller) => seller.seller), ['Agent One', 'Manager One']);
 });
 
-test('commission page and modal expose one-row accounts and seller selector', async () => {
+test('commission page and modal expose account-safe Company & Seller Commission selector', async () => {
   const [pageSource, modalSource, controllerSource] = await Promise.all([
     readFile(new URL('../../client/src/pages/Lot_Projects/Commission.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../../client/src/components/Lot_Projects/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal.jsx', import.meta.url), 'utf8'),
@@ -90,10 +90,9 @@ test('commission page and modal expose one-row accounts and seller selector', as
   assert.match(pageSource, /One row per unit and buyer/);
   assert.match(pageSource, /\['Unit', 'Client', 'Sellers', 'Network Name', 'Commission Base \(Before Discount\)', 'Total Gross'/);
   assert.match(pageSource, /commissionGroup=\{selected\}/);
-  assert.match(modalSource, /Commission Seller/);
-  assert.match(modalSource, /Select commission seller/);
+  assert.match(modalSource, /Company & Seller Commission/);
+  assert.match(modalSource, /Select company or seller commission/);
   assert.match(modalSource, /commissionGroup\?\.unit/);
   assert.match(controllerSource, /return every commission recipient for the/);
   assert.match(controllerSource, /searchCommission\.lot_project_listing_id = c\.lot_project_listing_id/);
 });
-

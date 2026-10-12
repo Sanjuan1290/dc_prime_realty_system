@@ -60,8 +60,9 @@ test('signed acknowledgments cannot expose files before scanner approval', () =>
   assert.match(projectRoutes, /getNetworkProfitSignedContent/);
 });
 
-test('separate categories are visible in Commissions and Accredited Sellers', () => {
-  assert.match(source('client/src/pages/Lot_Projects/Commission.jsx'), /<NetworkCompanyProfitPanel/);
+test('Company Profit shares the Commission Details modal but keeps separate document categories in Accredited Sellers', () => {
+  assert.match(source('client/src/components/Lot_Projects/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal.jsx'), /<NetworkCompanyProfitPanel/);
+  assert.doesNotMatch(source('client/src/pages/Lot_Projects/Commission.jsx'), /<NetworkCompanyProfitPanel/);
   assert.match(source('client/src/pages/System/Accredited.jsx'), /<NetworkProfitAcknowledgementLibrary/);
   assert.match(accreditedRoutes, /network-company-profit-acknowledgments', requirePermission\(PERMISSIONS\.SYSTEM_ACCREDITED_VIEW\), requirePermission\(PERMISSIONS\.LOT_COMMISSIONS_VIEW\)/);
   assert.match(panel, /Network Company Profit Release Acknowledgment/);

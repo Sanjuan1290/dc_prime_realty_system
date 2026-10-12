@@ -5,7 +5,6 @@ import { FiDollarSign, FiEye, FiRefreshCw, FiSearch, FiUsers } from 'react-icons
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ReleaseDetailsModal from '../../components/Lot_Projects/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal'
-import NetworkCompanyProfitPanel from '../../components/Lot_Projects/CommissionComponents/NetworkCompanyProfitPanel'
 import { groupCommissionRecords } from '../../utils/commissionRecords'
 import { useFetch as fetchJson, useFetchPatch as patchJson } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
@@ -315,6 +314,7 @@ const Commission = () => {
         </div>
       </section>
 
+      <p className="-mb-4 text-xs font-semibold text-slate-500">Summary amounts reflect seller commissions only; Network Company Profit is tracked separately within each account.</p>
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Commission Accounts" value={isLoading ? '...' : displayStats.total || 0} isMoney={false} />
         <StatCard label="Gross Commission" value={displayStats.gross || 0} tone="blue" />
@@ -376,7 +376,7 @@ const Commission = () => {
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-white px-5 py-4">
           <h2 className="text-lg font-black text-slate-950">Commission Records</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">One row per unit and buyer. Commission Base is saved before sale discount and LMF; open Details to manage each recipient.</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">One row per unit and buyer. Seller commission amounts are listed in the table; open Details for each seller and the separately tracked Network Company Profit.</p>
         </div>
 
         <div className="hidden overflow-x-auto lg:block">
@@ -452,7 +452,7 @@ const Commission = () => {
 
               <button type="button" onClick={() => { setSelected(record); setModalNotice(null) }} className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white text-sm font-black text-slate-700 transition hover:bg-slate-50">
                 <FiEye className="h-4 w-4" />
-                View Seller Commissions
+                View Company & Seller Commissions
               </button>
             </article>
           ))}
@@ -483,11 +483,10 @@ const Commission = () => {
         </div>
       </section>
 
-      <NetworkCompanyProfitPanel projectSlug={projectSlug} canRelease={canRelease} />
-
       {selected ? (
         <ReleaseDetailsModal
           commissionGroup={selected}
+          projectSlug={projectSlug}
           isSaving={updateCommissionMutation.isPending}
           onClose={() => {
             setSelected(null)

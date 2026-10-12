@@ -40,7 +40,7 @@ export const NetworkProfitAcknowledgement = ({ profit, stage, onClose }) => {
   </div>
 }
 
-export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = false }) {
+export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = false, embedded = false, profitRecord = null }) {
   const queryClient = useQueryClient()
   const [releaseChoice, setReleaseChoice] = useState(null)
   const [method, setMethod] = useState('bank_transfer')
@@ -52,9 +52,9 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
   const { data, isLoading, isError, error } = useQuery({
     queryKey,
     queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/network-company-profit`),
-    enabled: Boolean(projectSlug),
+    enabled: Boolean(projectSlug) && !embedded,
   })
-  const records = data?.data || []
+  const records = embedded ? (profitRecord ? [profitRecord] : []) : (data?.data || [])
   const mutation = useMutation({
     mutationFn: ({ profit, stage, paymentMethod, paymentReference }) => useFetchPost(
       `/projects/lot-projects/${projectSlug}/network-company-profit/${profit.id}/releases/${stage.id}`,
@@ -81,17 +81,72 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
     },
     onError: (err) => setNotice({ type: 'error', message: err.message || 'Company Profit release failed. Nothing was released.' }),
   })
-  return <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-    <div className="border-b border-slate-200 p-5">
-      <h2 className="text-lg font-black text-slate-950">Network Company Profit</h2>
-      <p className="mt-1 text-sm text-slate-600">Separate from personal seller commissions. Released only to the saved Network/Realty payee, with its own audit trail and signed acknowledgment.</p>
+  return <section className={embedded ? "bg-white" : "overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"}>
+    <div className={embedded ? 'pb-3' : 'border-b border-slate-200 p-5'}>
+      <h2 className={embedded ? 'text-sm font-black text-slate-950' : 'text-lg font-black text-slate-950'}>Network Company Profit Information</h2>
+      <p className="mt-1 text-xs font-semibold text-slate-500">Company-owned profit, separate from personal seller commissions. Payments go to the saved Network/Realty payee.</p>
     </div>
-    <div className="space-y-4 p-5">
+    <div className={embedded ? 'space-y-4' : 'space-y-4 p-5'}>
       {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={() => setNotice(null)}/> : null}
-      {isError ? <StatusAlert type="error" message={error?.message || 'Could not load Network Company Profit records.'} /> : null}
-      {isLoading ? <p className="text-sm text-slate-500">Loading Network Company Profit...</p> : null}
-      {!isLoading && !isError && records.length === 0 ? <p className="text-sm text-slate-500">No saved In-House Network Company Profit allocations for this project.</p> : null}
-      {records.map((profit) => <article key={profit.id} className="rounded-xl border border-slate-200 p-4">
+      {!embedded && isError ? <StatusAlert type="error" message={error?.message || 'Could not load Network Company Profit records.'} /> : null}
+      {!embedded && isLoading ? <p className="text-sm text-slate-500">Loading Network Company Profit...</p> : null}
+      {!embedded && !isLoading && !isError && records.length === 0 ? <p className="text-sm text-slate-500">No saved In-House Network Company Profit allocations for this project.</p> : null}
+      {embedded && profitRecord ? <article className="space-y-5">
+        <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4">
+          {[
+            ['Network / Realty', profitRecord.network],
+            ['Registered Payee', profitRecord.payee],
+            ['Broker', profitRecord.broker],
+            ['Buyer', profitRecord.buyer],
+            ['Unit', profitRecord.unit],
+            ['Commission Base', money(profitRecord.commissionBase)],
+            ['Company Profit Rate', `${Number(profitRecord.companyProfitRate || 0).toFixed(4)}%`],
+            ['Total Company Profit', money(profitRecord.totalProfit)],
+            ['Released', money(profitRecord.released)],
+            ['Remaining', money(profitRecord.remaining)],
+            ['Account Reference', profitRecord.accountReference || '-'],
+            ['Project', profitRecord.project || '-'],
+          ].map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{label}</p>
+            <p className="mt-1 text-sm font-black text-slate-950">{value || '-'}</p>
+          </div>)}
+        </div>
+        <section>
+          <h3 className="mb-3 text-sm font-black text-slate-950">Company Profit Release Milestones</h3>
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full min-w-[800px] divide-y divide-slate-200 text-xs">
+              <thead className="bg-slate-50"><tr>
+                {['Stage', 'Trigger %', 'Release %', 'Amount', 'Status', 'Actions'].map((heading) => <th key={heading} className="px-4 py-3 text-left font-black text-slate-700">{heading}</th>)}
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {profitRecord.stages.map((stage) => <tr key={stage.id}>
+                  <td className="px-4 py-3 font-black text-slate-900">{stage.stage}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-600">{stage.stage === 'Retention' ? '-' : `${Number(stage.triggerPercent)}%`}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-600">{Number(stage.releasePercent)}%</td>
+                  <td className="px-4 py-3 font-black text-slate-900">{money(stage.amount)}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 font-black ${stage.status === 'Released' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : stage.canRelease ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                      {stage.status === 'Released' ? 'Completed' : stage.canRelease ? 'Eligible' : stage.status === 'On Hold' ? 'On Hold' : 'Not Eligible'}
+                    </span>
+                    {stage.actualReleaseDate ? <p className="mt-1 text-[10px] font-semibold text-slate-500">{String(stage.actualReleaseDate).slice(0, 10)}</p> : null}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      {stage.status === 'Released' ? <>
+                        <button type="button" onClick={() => setPrintChoice({ profit: profitRecord, stage })} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-black"><FiPrinter className="mr-1 inline"/>Print Acknowledgment</button>
+                        <button type="button" onClick={() => setSignedChoice({ profit: profitRecord, stage })} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-black"><FiFileText className="mr-1 inline"/>Signed Copy</button>
+                      </> : canRelease && stage.canRelease ?
+                        <button type="button" onClick={() => { setReleaseChoice({ profit: profitRecord, stage }); setNotice(null) }} className="rounded-lg bg-blue-700 px-3 py-1.5 font-black text-white">Release</button>
+                        : <span className="text-slate-400">—</span>}
+                    </div>
+                  </td>
+                </tr>)}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </article> : null}
+      {!embedded && records.map((profit) => <article key={profit.id} className="rounded-xl border border-slate-200 p-4">
         <div className="flex flex-wrap justify-between gap-3">
           <div><h3 className="font-black text-slate-900">{profit.unit} · {profit.network}</h3>
             <p className="text-sm text-slate-600">{profit.buyer} · Payee: {profit.payee} · Rate: {profit.companyProfitRate.toFixed(4)}%</p>

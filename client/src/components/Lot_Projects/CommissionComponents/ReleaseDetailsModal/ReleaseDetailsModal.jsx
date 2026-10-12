@@ -1,4 +1,8 @@
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useFetch as fetchJson } from '../../../../utils/useFetch'
+import NetworkCompanyProfitPanel from '../NetworkCompanyProfitPanel'
+import { selectCompanyProfitsForAccount } from '../../../../utils/networkProfitSelector'
 import { FiAlertCircle, FiLoader, FiPauseCircle, FiPlayCircle, FiSave, FiX } from 'react-icons/fi'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
@@ -285,10 +289,21 @@ const ReleaseConfirmDialog = ({
   )
 }
 
-const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, canRelease = false, canHold = false, canUnhold = false, isSaving = false, serverNotice = null, onClearServerNotice }) => {
+const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, canRelease = false, canHold = false, canUnhold = false, isSaving = false, serverNotice = null, onClearServerNotice }) => {
   const sellers = Array.isArray(commissionGroup?.sellers) ? commissionGroup.sellers : []
-  const [selectedCommissionId, setSelectedCommissionId] = useState(() => String(sellers[0]?.commissionId || sellers[0]?.id || ''))
-  const commission = sellers.find((seller) => String(seller.commissionId || seller.id) === selectedCommissionId) || sellers[0] || {}
+  // Network profit remains a separate financial ledger; this selector only joins the UI.
+  // Match by the buyer ACCOUNT ID, never by unit or seller name (both may repeat).
+  const { data: profitResponse, isLoading: isProfitLoading, isError: isProfitError, error: profitError } = useQuery({
+    queryKey: ['network-company-profit', projectSlug],
+    queryFn: () => fetchJson(`/projects/lot-projects/${projectSlug}/network-company-profit`),
+    enabled: Boolean(projectSlug && commissionGroup?.accountId),
+  })
+  const companyProfits = selectCompanyProfitsForAccount(profitResponse?.data, commissionGroup?.accountId)
+  const [selectedBeneficiary, setSelectedBeneficiary] = useState(() => `seller:${sellers[0]?.commissionId || sellers[0]?.id || ''}`)
+  const selectedProfit = selectedBeneficiary.startsWith('company:')
+    ? companyProfits.find((profit) => `company:${profit.id}` === selectedBeneficiary)
+    : null
+  const commission = sellers.find((seller) => `seller:${seller.commissionId || seller.id}` === selectedBeneficiary) || sellers[0] || {}
   const grossCommission = Number(commission.grossCommission || commission.gross || 0)
   const released = Number(commission.released || 0)
   const netRemaining = Math.max(Number(commission.netRemaining ?? grossCommission - released), 0)
@@ -311,8 +326,8 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, canRelease = 
   const [notice, setNotice] = useState(null)
   const activeNotice = notice || serverNotice
 
-  const changeSeller = (event) => {
-    setSelectedCommissionId(event.target.value)
+  const changeBeneficiary = (event) => {
+    setSelectedBeneficiary(event.target.value)
     setConfirmAction(null)
     setSelectedStage(null)
     setReleaseMode('live')
@@ -419,22 +434,27 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, canRelease = 
           <div>
             <h2 className="text-base font-black text-slate-950">Commission Details</h2>
             <p className="mt-1 text-xs font-semibold text-slate-500">
-              {commissionGroup?.unit || '-'} · {commissionGroup?.client || '-'} · {sellers.length} recipient{sellers.length === 1 ? '' : 's'}
+              {commissionGroup?.unit || '-'} · {commissionGroup?.client || '-'} · {sellers.length} seller{sellers.length === 1 ? '' : 's'}{companyProfits.length ? ` · ${companyProfits.length} Network Company Profit recipient${companyProfits.length === 1 ? '' : 's'}` : ''}
             </p>
           </div>
 
           <div className="flex w-full items-end gap-2 md:w-auto">
             <label className="min-w-0 flex-1 md:w-[360px] md:flex-none">
-              <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Commission Seller</span>
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Company & Seller Commission</span>
               <select
-                value={selectedCommissionId}
-                onChange={changeSeller}
-                disabled={isSaving || sellers.length <= 1}
+                value={selectedBeneficiary}
+                onChange={changeBeneficiary}
+                disabled={isSaving || sellers.length + companyProfits.length <= 1}
                 className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100 disabled:text-slate-500"
-                aria-label="Select commission seller"
+                aria-label="Select company or seller commission"
               >
+                {companyProfits.map((profit) => (
+                  <option key={`company:${profit.id}`} value={`company:${profit.id}`}>
+                    Company Profit · {profit.network} · {profit.payee}
+                  </option>
+                ))}
                 {sellers.map((seller) => (
-                  <option key={seller.commissionId || seller.id} value={String(seller.commissionId || seller.id)}>
+                  <option key={`seller:${seller.commissionId || seller.id}`} value={`seller:${seller.commissionId || seller.id}`}>
                     {seller.seller || 'Unnamed seller'} · {seller.role || '-'} · {seller.commissionType || '-'}
                   </option>
                 ))}
@@ -448,6 +468,20 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, canRelease = 
         </div>
 
         <div className="p-3">
+          {isProfitLoading ? <p className="mb-3 text-xs font-semibold text-slate-500">Loading Company Profit options for this buyer account...</p> : null}
+          {isProfitError ? <p role="alert" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">Company Profit could not load: {profitError?.message || 'Refresh and try again.'} Seller commissions remain available.</p> : null}
+          {selectedProfit ? (
+            <NetworkCompanyProfitPanel
+              key={selectedProfit.id}
+              embedded
+              profitRecord={selectedProfit}
+              projectSlug={projectSlug}
+              canRelease={canRelease}
+            />
+          ) : selectedBeneficiary.startsWith('company:') ? (
+            <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">This Company Profit record is no longer available for this buyer account. Select a seller or refresh the page.</p>
+          ) : (
+          <>
           <section>
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><h3 className="text-sm font-black text-slate-950">Commission Information</h3><p className="text-xs font-semibold text-slate-500">Showing {commission.seller || 'selected seller'}</p></div>
 
@@ -612,6 +646,8 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, canRelease = 
               </table>
             </div>
           </section>
+          </>
+          )}
         </div>
 
         <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-3 py-3">
@@ -664,4 +700,3 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, canRelease = 
 }
 
 export default ReleaseDetailsModal
-
