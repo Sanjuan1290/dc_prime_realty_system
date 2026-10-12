@@ -20,6 +20,7 @@ const TECHNICAL_MUTATION_PATTERNS = [
   /\/projects\/lot-projects\/[^/]+\/settings\/code$/i,
   /\/system-settings\/code$/i,
   /\/projects\/reports\/export-audit$/i,
+  /\/projects\/lot-projects\/[^/]+\/performance-export-audit$/i,
   /\/projects\/lot-projects\/[^/]+\/price-list\/print-audit$/i,
   /\/projects\/lot-projects\/\d+\/edit-preflight$/i,
   /\/purge-code$/i,
@@ -310,6 +311,7 @@ export const requestApiBlob = async (
     }
   }
 }
+
 
 
 

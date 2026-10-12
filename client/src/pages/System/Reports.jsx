@@ -1,4 +1,7 @@
 import { useMemo, useState } from 'react'
+import PerformanceLeaderboard from '../../components/Reports/PerformanceLeaderboard'
+import { mergePerformance } from '../../utils/reportPerformance'
+import ReportPerformanceInsights from '../../components/Reports/ReportPerformanceInsights'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -461,6 +464,10 @@ const Reports = () => {
       stats: dashboard.stats || {},
       salesTrend: dashboard.salesTrend || [],
       cancellationTrend: dashboard.cancellationTrend || [],
+      id: payload.id || payload.lot_project_id || project.lot_project_id,
+      sellerPerformance: dashboard.sellerPerformance || [],
+      groupPerformance: dashboard.groupPerformance || [],
+      overdueAging: dashboard.overdueAging || {},
     }
   }), [dashboardList, selectedProjects])
 
@@ -516,6 +523,12 @@ const Reports = () => {
     pendingCancellationCount: 0,
   }), [projectReports])
 
+  const crossProjectSellers = useMemo(() => mergePerformance(projectReports, 'sellerPerformance'), [projectReports])
+  const crossProjectNetworks = useMemo(() => mergePerformance(projectReports, 'groupPerformance'), [projectReports])
+  const currentOverdueAging = useMemo(() => projectReports.reduce((totals, report) => {
+    for (const key of Object.keys(totals)) totals[key] += Number(report.overdueAging?.[key] || 0)
+    return totals
+  }, { days1To30: 0, days31To60: 0, days61To90: 0, daysOver90: 0 }), [projectReports])
   const companySalesTrend = useMemo(() => mergeCompanyTrend(projectReports), [projectReports])
   const cancellationTrend = useMemo(() => mergeCancellationTrend(projectReports), [projectReports])
   const projectSalesChart = projectReports.map((report) => ({
@@ -557,6 +570,15 @@ const Reports = () => {
   const projectsError = lotProjectsQuery.error || houseLotProjectsQuery.error
   const isLoading = isProjectsLoading || (canLoadRange && isDashboardsLoading)
   const selectedScopeLabel = projectScopeOptions.find((option) => option.value === projectScope)?.label || 'All Projects'
+
+  const handlePerformanceExport = async ({ ranking, networkType, metric }) => {
+    if (!canExport || !canLoadRange) throw new Error('You do not have permission to export this report.')
+    await useFetchPost('/projects/reports/export-audit', {
+      from: fromDate, to: toDate, projectScope,
+      ranking, networkType, metric, reportType: 'performance_csv',
+      filename: `DC-Prime-${ranking}-performance_${fromDate}_to_${toDate}.csv`,
+    }, { confirmationHandled: 'technical' })
+  }
 
   const handleExportPdf = async () => {
     if (!canExport || !canLoadRange || isExporting) return
@@ -702,6 +724,9 @@ const Reports = () => {
         </ChartCard>
       </section>
 
+      <ReportPerformanceInsights stats={summary} aging={currentOverdueAging} networks={crossProjectNetworks} scope="system" />
+      <PerformanceLeaderboard sellers={crossProjectSellers} networks={crossProjectNetworks} scope="system" allowExport={canExport} onBeforeExport={handlePerformanceExport} />
+
       <section className="grid gap-6 xl:grid-cols-2">
         <ChartCard title="Company Sales Trend" description="The chart uses the same gross sales, cash, net collectibles, reservations, and net sales definitions as the summary cards.">
           {companySalesTrend.length ? <ResponsiveContainer width="100%" height="100%"><ComposedChart data={companySalesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={18} /><YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} /><YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Area yAxisId="money" type="monotone" dataKey="totalGrossSales" name="Gross Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={3} /><Line yAxisId="money" type="monotone" dataKey="cashCollected" name="Cash Collected" stroke={chartColors.green} strokeWidth={3} dot={false} /><Line yAxisId="money" type="monotone" dataKey="netCashCollectibles" name="Cash Collectibles − Discount" stroke={chartColors.amber} strokeWidth={3} dot={false} /><Line yAxisId="money" type="monotone" dataKey="totalNetSales" name="Total Net Sales" stroke={chartColors.indigo} strokeWidth={3} dot={false} /><Line yAxisId="count" type="monotone" dataKey="reservations" name="Total Number of Reservations" stroke={chartColors.violet} strokeWidth={3} dot /></ComposedChart></ResponsiveContainer> : <EmptyChart />}
@@ -795,7 +820,7 @@ const Reports = () => {
 
               <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-950">
                 <p className="font-black">Summary export only</p>
-                <p className="mt-1 text-blue-800">Detailed transaction records, buyer-level tables, individual unit rows, payment transactions, and seller-level records are not included.</p>
+                <p className="mt-1 text-blue-800">Detailed transaction records, buyer-level tables, individual unit rows, payment transactions, and seller-level records are not included in this management-summary PDF. Use the separate Performance CSV for rankings.</p>
               </div>
             </div>
 
@@ -814,4 +839,5 @@ const Reports = () => {
 }
 
 export default Reports
+
 

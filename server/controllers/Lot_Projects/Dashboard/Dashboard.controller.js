@@ -13,6 +13,7 @@ import {
   refreshStaleDailyPenaltyCaches,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { loadProjectPerformance } from './reportPerformance.service.js';
 
 const toNumber = (value) => Number(value || 0);
 const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
@@ -440,6 +441,7 @@ export const getLotProjectDashboard = async (req, res) => {
           upcomingDues: [],
           sellerPerformance: [],
           groupPerformance: [],
+          overdueAging: { days1To30: 0, days31To60: 0, days61To90: 0, daysOver90: 0 },
           recentUnits: [],
         },
       });
@@ -780,6 +782,29 @@ export const getLotProjectDashboard = async (req, res) => {
           upcomingDueAmount: 0,
         }]];
 
+    // Operational aging uses current unpaid balances as of today; it does not
+    // claim to reconstruct historical balances from a past report end date.
+    const [agingRows] = hasSchedules
+      ? await connection.query(`
+          SELECT
+            COALESCE(SUM(CASE WHEN DATEDIFF(CURDATE(), s.due_date) BETWEEN 1 AND 30 THEN ${dueBalanceExpr} ELSE 0 END), 0) AS days1To30,
+            COALESCE(SUM(CASE WHEN DATEDIFF(CURDATE(), s.due_date) BETWEEN 31 AND 60 THEN ${dueBalanceExpr} ELSE 0 END), 0) AS days31To60,
+            COALESCE(SUM(CASE WHEN DATEDIFF(CURDATE(), s.due_date) BETWEEN 61 AND 90 THEN ${dueBalanceExpr} ELSE 0 END), 0) AS days61To90,
+            COALESCE(SUM(CASE WHEN DATEDIFF(CURDATE(), s.due_date) > 90 THEN ${dueBalanceExpr} ELSE 0 END), 0) AS daysOver90
+          FROM lot_project_payment_schedules s
+          INNER JOIN lot_project_listings l ON l.lot_project_listing_id = s.lot_project_listing_id
+          LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_client_profile_id = s.lot_project_client_profile_id
+          WHERE s.lot_project_id = ?
+            AND l.current_account_id = s.lot_project_account_id
+            AND s.due_date < CURDATE()
+            AND s.schedule_status IN ('Unpaid','Partial','Overdue')
+            AND ${getLatestActiveScheduleGenerationPredicate('s')}
+        `, [project.lot_project_id])
+      : [[{}]];
+    const currentOverdueAging = Object.fromEntries(
+      ['days1To30', 'days31To60', 'days61To90', 'daysOver90'].map((key) => [key, toNumber(agingRows[0]?.[key])])
+    );
+
     const [upcomingDueRows] = hasSchedules
       ? await connection.query(
           `
@@ -1027,86 +1052,6 @@ export const getLotProjectDashboard = async (req, res) => {
           [project.lot_project_id, dateRange.from, dateRange.to]
         );
 
-    const sellerPerformanceQuery = hasCommissions
-      ? `
-        SELECT
-          acs.accredited_seller_id,
-          sg.seller_group_id,
-          COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)), ''), 'Unassigned Seller') AS seller_name,
-          u.role AS seller_role,
-          COALESCE(sg.seller_group_name, 'No Group') AS seller_group_name,
-          COUNT(DISTINCT c.lot_project_listing_id) AS unit_count,
-          COALESCE(SUM(c.commission_base_amount), 0) AS sales_amount,
-          COALESCE(SUM(c.gross_commission_amount), 0) AS gross_commission,
-          COALESCE(SUM(${releaseEligibleExpr}), 0) AS eligible_commission,
-          COALESCE(SUM(${releaseReleasedExpr}), 0) AS released_commission,
-          COALESCE(SUM(${releaseDeductionExpr}), 0) AS deduction_amount,
-          COALESCE(SUM(GREATEST(c.gross_commission_amount - ${releaseReleasedExpr} - ${releaseDeductionExpr}, 0)), 0) AS remaining_commission
-        FROM lot_project_commissions c
-        LEFT JOIN accredited_sellers acs
-          ON acs.accredited_seller_id = c.accredited_seller_id
-        LEFT JOIN users u
-          ON u.id = acs.user_id
-        LEFT JOIN seller_groups sg
-          ON sg.seller_group_id = acs.seller_group_id
-        ${releaseSummaryJoin}
-        WHERE c.lot_project_id = ?
-          AND DATE(c.created_at) BETWEEN ? AND ?
-        GROUP BY acs.accredited_seller_id, sg.seller_group_id, u.first_name, u.middle_name, u.last_name, u.role, sg.seller_group_name
-        ORDER BY sales_amount DESC, gross_commission DESC, seller_name ASC
-      `
-      : '';
-
-    const groupPerformanceQuery = hasCommissions
-      ? `
-        SELECT
-          group_data.seller_group_id,
-          group_data.seller_group_name,
-          COUNT(*) AS unit_count,
-          COALESCE(SUM(group_data.sales_amount), 0) AS sales_amount,
-          COALESCE(SUM(group_data.gross_commission), 0) AS gross_commission,
-          COALESCE(SUM(group_data.eligible_commission), 0) AS eligible_commission,
-          COALESCE(SUM(group_data.released_commission), 0) AS released_commission,
-          COALESCE(SUM(group_data.deduction_amount), 0) AS deduction_amount,
-          COALESCE(SUM(group_data.remaining_commission), 0) AS remaining_commission
-        FROM (
-          SELECT
-            COALESCE(sg.seller_group_id, 0) AS seller_group_id,
-            COALESCE(sg.seller_group_name, 'No Group') AS seller_group_name,
-            c.lot_project_listing_id,
-            MAX(c.commission_base_amount) AS sales_amount,
-            SUM(c.gross_commission_amount) AS gross_commission,
-            SUM(${releaseEligibleExpr}) AS eligible_commission,
-            SUM(${releaseReleasedExpr}) AS released_commission,
-            SUM(${releaseDeductionExpr}) AS deduction_amount,
-            SUM(GREATEST(c.gross_commission_amount - ${releaseReleasedExpr} - ${releaseDeductionExpr}, 0)) AS remaining_commission
-          FROM lot_project_commissions c
-          LEFT JOIN accredited_sellers acs
-            ON acs.accredited_seller_id = c.accredited_seller_id
-          LEFT JOIN seller_groups sg
-            ON sg.seller_group_id = acs.seller_group_id
-          ${releaseSummaryJoin}
-          WHERE c.lot_project_id = ?
-            AND DATE(c.created_at) BETWEEN ? AND ?
-          GROUP BY COALESCE(sg.seller_group_id, 0), COALESCE(sg.seller_group_name, 'No Group'), c.lot_project_listing_id
-        ) group_data
-        GROUP BY group_data.seller_group_id, group_data.seller_group_name
-        ORDER BY sales_amount DESC, gross_commission DESC, seller_group_name ASC
-        LIMIT 8
-      `
-      : '';
-
-    const [sellerRows] = hasCommissions
-      ? await connection.query(
-          sellerPerformanceQuery,
-          [project.lot_project_id, dateRange.from, dateRange.to]
-        )
-      : [[]];
-
-    const [groupRows] = hasCommissions
-      ? await connection.query(groupPerformanceQuery, [project.lot_project_id, dateRange.from, dateRange.to])
-      : [[]];
-
     const [sellerTrendRows] = hasCommissions
       ? await connection.query(
           `
@@ -1335,6 +1280,15 @@ export const getLotProjectDashboard = async (req, res) => {
       + toNumber(summary.pendingCancellation)
       + toNumber(summary.cancelled);
 
+    // A separate account-attribution query powers rankings, not financial KPIs.
+    // Missing optional profit tables are supported during non-destructive rollouts.
+    const rankings = hasCommissions && hasCommissionReleases && hasPayments && hasClientProfiles
+      ? await loadProjectPerformance(connection, project.lot_project_id, dateRange.from, dateRange.to, {
+          hasProfit: await tableExists(connection, 'lot_project_network_profit_accounts')
+            && await tableExists(connection, 'lot_project_network_profit_releases'),
+        })
+      : { sellerPerformance: [], groupPerformance: [] };
+
     return res.json({
       success: true,
       data: {
@@ -1407,30 +1361,9 @@ export const getLotProjectDashboard = async (req, res) => {
           discount: toNumber(row.discount_amount),
           balanceDue: toNumber(row.balance_due),
         })),
-        sellerPerformance: sellerRows.map((row) => ({
-          id: row.accredited_seller_id,
-          seller: row.seller_name,
-          role: row.seller_role,
-          group: row.seller_group_name,
-          units: toNumber(row.unit_count),
-          salesAmount: toNumber(row.sales_amount),
-          grossCommission: toNumber(row.gross_commission),
-          eligibleCommission: toNumber(row.eligible_commission),
-          releasedCommission: toNumber(row.released_commission),
-          cashAdvanceDeductions: toNumber(row.deduction_amount),
-          remainingCommission: toNumber(row.remaining_commission),
-        })),
-        groupPerformance: groupRows.map((row) => ({
-          id: row.seller_group_id,
-          group: row.seller_group_name,
-          units: toNumber(row.unit_count),
-          salesAmount: toNumber(row.sales_amount),
-          grossCommission: toNumber(row.gross_commission),
-          eligibleCommission: toNumber(row.eligible_commission),
-          releasedCommission: toNumber(row.released_commission),
-          cashAdvanceDeductions: toNumber(row.deduction_amount),
-          remainingCommission: toNumber(row.remaining_commission),
-        })),
+        sellerPerformance: rankings.sellerPerformance,
+        groupPerformance: rankings.groupPerformance,
+        overdueAging: currentOverdueAging,
         recentUnits: recentRows.map((row) => {
           const tcp = toNumber(row.lot_project_listing_tcp);
           const cashCollected = toNumber(row.total_paid);
@@ -1488,6 +1421,43 @@ export const getLotProjectDashboard = async (req, res) => {
   }
 };
 
+
+// Performance CSV export is read-only to financial records but leaves an audit event.
+// The router applies LOT_REPORTS_EXPORT and per-project slug access checks.
+export const auditLotProjectPerformanceExport = async (req, res) => {
+  const from = String(req.body?.from || '');
+  const to = String(req.body?.to || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to
+      || !parseDateOnly(from) || !parseDateOnly(to)
+      || toDateOnly(parseDateOnly(from)) !== from || toDateOnly(parseDateOnly(to)) !== to) {
+    return res.status(400).json({ success: false, message: 'A valid performance date range is required.' });
+  }
+  const project = await getProjectBySlug(String(req.params.projectSlug || '').trim());
+  if (!project) return res.status(404).json({ success: false, message: 'Lot project not found.' });
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await writeAuditLog(connection, req, {
+      action: 'export', module: 'Reports', entityType: 'lot_project_performance',
+      entityId: String(project.lot_project_id), entityLabel: project.lot_project_name,
+      title: 'Exported Lot Project performance rankings to CSV',
+      description: `Prepared seller and Network performance for ${project.lot_project_name}: ${from} through ${to}.`,
+      metadata: {
+        from, to, projectId: project.lot_project_id,
+        ranking: String(req.body?.ranking || '').slice(0, 32),
+        networkType: String(req.body?.networkType || '').slice(0, 32),
+        filename: String(req.body?.filename || '').slice(0, 180),
+      },
+    });
+    await connection.commit();
+    return res.json({ success: true });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(500).json({ success: false, message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
 
 export const getLotProjectPriceList = async (req, res) => {
   const connection = await db.getConnection();
@@ -1601,4 +1571,5 @@ export const auditLotProjectPriceListPrint = async (req, res) => {
     connection.release();
   }
 };
+
 

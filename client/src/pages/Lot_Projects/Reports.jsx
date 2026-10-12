@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import PerformanceLeaderboard from '../../components/Reports/PerformanceLeaderboard'
+import ReportPerformanceInsights from '../../components/Reports/ReportPerformanceInsights'
 import { useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -30,7 +32,9 @@ import {
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
-import { useFetch } from '../../utils/useFetch'
+import { useFetch, useFetchPost } from '../../utils/useFetch'
+import useCurrentUser from '../../utils/useCurrentUser'
+import { PERMISSIONS, hasPermission } from '../../config/permissions'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
 const compactMoney = (value) => new Intl.NumberFormat('en-PH', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0))
@@ -322,41 +326,6 @@ const InfoMetric = ({ label, value, helper }) => (
   </div>
 )
 
-const PerformanceTable = ({ rows = [], type = 'seller' }) => (
-  <div className="overflow-x-auto rounded-2xl border border-slate-200">
-    <table className="min-w-[880px] w-full divide-y divide-slate-200 text-sm">
-      <thead className="bg-slate-50">
-        <tr>
-          {[type === 'seller' ? 'Seller' : 'Network', 'Sales', 'Sales Value', 'Gross', 'Eligible', 'Released', 'Remaining'].map((head) => (
-            <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-100">
-        {rows.length ? rows.map((row) => (
-          <tr key={`${type}-${row.id || row.seller || row.group}`} className="align-top transition hover:bg-slate-50">
-            <td className="px-4 py-4">
-              <p className="font-black text-slate-950">{type === 'seller' ? row.seller : row.group}</p>
-              {type === 'seller' ? <p className="mt-0.5 text-xs font-semibold text-slate-500">{row.role || '-'} · {row.group || '-'}</p> : null}
-            </td>
-            <td className="px-4 py-4 font-black text-slate-900">{row.units || 0}</td>
-            <td className="px-4 py-4 font-black text-blue-700">{money(row.salesAmount)}</td>
-            <td className="px-4 py-4 font-black text-slate-900">{money(row.grossCommission)}</td>
-            <td className="px-4 py-4 font-black text-blue-700">{money(row.eligibleCommission)}</td>
-            <td className="px-4 py-4 font-semibold text-emerald-700">{money(row.releasedCommission)}</td>
-            <td className="px-4 py-4 font-black text-amber-700">{money(row.remainingCommission)}</td>
-          </tr>
-        )) : (
-          <tr>
-            <td colSpan={7} className="px-4 py-10 text-center font-semibold text-slate-500">No performance data yet.</td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  </div>
-)
-
-
 const PaginationControls = ({ page, pageSize, totalItems, onPageChange, onPageSizeChange }) => {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
   const currentPage = Math.min(page, totalPages)
@@ -378,24 +347,15 @@ const PaginationControls = ({ page, pageSize, totalItems, onPageChange, onPageSi
   )
 }
 
-const buildBreakdownChartData = (rows = [], labelKey) => rows.slice(0, 8).map((row) => ({
-  name: shortLabel(row[labelKey], 18),
-  salesCount: Number(row.units || 0),
-  salesAmount: Number(row.salesAmount || 0),
-  grossCommission: Number(row.grossCommission || 0),
-  eligibleCommission: Number(row.eligibleCommission || 0),
-  releasedCommission: Number(row.releasedCommission || 0),
-}))
-
 const Reports = () => {
   const { projectSlug } = useParams()
   const queryClient = useQueryClient()
+  const { data: currentUserData } = useCurrentUser()
+  const canExportPerformance = hasPermission(currentUserData?.user || {}, PERMISSIONS.LOT_REPORTS_EXPORT)
   const [alert, setAlert] = useState(null)
   const [dateRange, setDateRange] = useState('this_month')
   const [dateFrom, setDateFrom] = useState(() => defaultDateRange().from)
   const [dateTo, setDateTo] = useState(() => defaultDateRange().to)
-  const [sellerPage, setSellerPage] = useState(1)
-  const [sellerPageSize, setSellerPageSize] = useState(10)
   const [recentUnitPage, setRecentUnitPage] = useState(1)
   const [recentUnitPageSize, setRecentUnitPageSize] = useState(10)
   const hasInvalidDateRange = dateRange === 'custom' && (!dateFrom || !dateTo || dateFrom > dateTo)
@@ -427,6 +387,14 @@ const Reports = () => {
   const groupPerformance = data?.data?.groupPerformance || []
   const salesTrend = data?.data?.salesTrend || []
   const stats = data?.data?.stats || {}
+
+  const handlePerformanceExport = async ({ ranking, networkType, metric }) => {
+    if (!canExportPerformance || !canLoadDateRange) throw new Error('You do not have permission to export this report.')
+    await useFetchPost(`/projects/lot-projects/${projectSlug}/performance-export-audit`, {
+      from: dateFrom, to: dateTo, ranking, networkType, metric,
+      filename: `DC-Prime-${ranking}-performance_${dateFrom}_to_${dateTo}.csv`,
+    }, { confirmationHandled: 'technical' })
+  }
 
   const handleRefresh = () => {
     if (!canLoadDateRange) return
@@ -471,11 +439,6 @@ const Reports = () => {
     { label: 'Cancelled', count: Number(stats.cancelled || 0), color: chartColors.red },
   ]
 
-  const sellerChartData = buildBreakdownChartData(sellerPerformance, 'seller')
-  const groupChartData = buildBreakdownChartData(groupPerformance, 'group')
-  const sellerTotalPages = Math.max(1, Math.ceil(sellerPerformance.length / sellerPageSize))
-  const sellerCurrentPage = Math.min(sellerPage, sellerTotalPages)
-  const paginatedSellerPerformance = sellerPerformance.slice((sellerCurrentPage - 1) * sellerPageSize, sellerCurrentPage * sellerPageSize)
   const recentUnitTotalPages = Math.max(1, Math.ceil(recentUnits.length / recentUnitPageSize))
   const recentUnitCurrentPage = Math.min(recentUnitPage, recentUnitTotalPages)
   const paginatedRecentUnits = recentUnits.slice((recentUnitCurrentPage - 1) * recentUnitPageSize, recentUnitCurrentPage * recentUnitPageSize)
@@ -520,20 +483,10 @@ const Reports = () => {
         </div>
       </section>
 
+      <ReportPerformanceInsights stats={stats} aging={data?.data?.overdueAging || {}} networks={groupPerformance} scope="project" />
+
       <section className="grid gap-6 grid-cols-1">
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader title="Seller Performance Details" description="Sales and commission totals by seller for the selected date range." />
-          <div className="mt-4">
-            <PerformanceTable rows={paginatedSellerPerformance} type="seller" />
-          </div>
-          <PaginationControls
-            page={sellerCurrentPage}
-            pageSize={sellerPageSize}
-            totalItems={sellerPerformance.length}
-            onPageChange={setSellerPage}
-            onPageSizeChange={(size) => { setSellerPageSize(size); setSellerPage(1) }}
-          />
-        </div>
+        <PerformanceLeaderboard sellers={sellerPerformance} networks={groupPerformance} scope="project" allowExport={canExportPerformance} onBeforeExport={handlePerformanceExport} />
 
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
@@ -570,25 +523,6 @@ const Reports = () => {
             onPageSizeChange={(size) => { setRecentUnitPageSize(size); setRecentUnitPage(1) }}
           />
         </div>
-      </section>
-
-      <section className="grid gap-6 grid-cols-1">
-        <ChartCard title="Network Sales Comparison" description="Column-line chart for sales value and sales count by Network.">
-          {groupChartData.length ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={groupChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend />
-                <Bar yAxisId="money" dataKey="salesAmount" name="Sales Value" fill={chartColors.indigo} radius={[8, 8, 0, 0]} />
-                <Line yAxisId="count" type="monotone" dataKey="salesCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={3} dot />
-              </ComposedChart>
-            </ResponsiveContainer>
-          ) : <EmptyChart message="No Network performance data yet." />}
-        </ChartCard>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
@@ -662,4 +596,5 @@ const Reports = () => {
 }
 
 export default Reports
+
 

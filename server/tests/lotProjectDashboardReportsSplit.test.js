@@ -34,10 +34,11 @@ test('Lot Project workspace separates operational Dashboard from Reports', () =>
   assert.match(reports, /Reports`}/)
   assert.match(reports, /Graph Date Filter/)
   assert.match(reports, /Business Snapshot/)
-  assert.match(reports, /Seller Performance Details/)
+  assert.match(reports, /PerformanceLeaderboard/)
   assert.doesNotMatch(reports, />View Details<\/button>/)
   assert.doesNotMatch(reports, />Edit Project<\/button>/)
   assert.doesNotMatch(reports, />Price List<\/button>/)
   assert.match(reports, /export default Reports/)
 })
+
 

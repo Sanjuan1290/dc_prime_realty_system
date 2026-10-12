@@ -16,7 +16,8 @@ test('custom dashboard dates are not expanded to complete months', () => {
   assert.doesNotMatch(controller, /fromDate = startOfMonth\(requestedFrom\)/);
   assert.doesNotMatch(controller, /toDate = endOfMonth\(requestedTo\)/);
   assert.match(controller, /FROM lot_project_commissions c[\s\S]*DATE\(c\.created_at\) BETWEEN \? AND \?/);
-  assert.match(controller, /groupPerformanceQuery[\s\S]*DATE\(c\.created_at\) BETWEEN \? AND \?/);
+  const performanceService = read('server/controllers/Lot_Projects/Dashboard/reportPerformance.service.js');
+  assert.match(performanceService, /DATE\(COALESCE\(a\.reservation_date, p\.lot_project_client_profile_created_at\)\) BETWEEN \? AND \?/);
 });
 
 test('System and Lot dashboards send the selected exact dates', () => {
@@ -71,4 +72,5 @@ test('Lot Project Business Snapshot matches the System Reports metric definition
   assert.doesNotMatch(lotDashboard, /label: 'Settled Value'/);
   assert.doesNotMatch(lotDashboard, /label: 'Payable Commission'/);
 });
+
 
