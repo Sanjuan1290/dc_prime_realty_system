@@ -1,3 +1,4 @@
+import NetworkProfitAcknowledgementLibrary from '../../components/Lot_Projects/CommissionComponents/NetworkProfitAcknowledgementLibrary'
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
@@ -909,6 +910,7 @@ const Accredited = () => {
   const [limit, setLimit] = useState(10);
   const [alert, setAlert] = useState(null);
   const [proofSeller, setProofSeller] = useState(null);
+  const [showCompanyProfit, setShowCompanyProfit] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
   const queryString = new URLSearchParams({
@@ -1045,6 +1047,16 @@ const Accredited = () => {
         <div className="flex flex-col gap-3 border-t border-slate-200 p-4 md:flex-row md:items-center md:justify-between"><p className="text-sm font-semibold text-slate-500">Showing page {pagination.page} of {pagination.totalPages} • {pagination.total} records</p><div className="flex items-center gap-2"><select value={limit} onChange={(event) => { setLimit(Number(event.target.value)); setPage(1); }} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select><button disabled={!pagination.hasPrev} onClick={() => setPage((current) => Math.max(current - 1, 1))} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Prev</button><button disabled={!pagination.hasNext} onClick={() => setPage((current) => current + 1)} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Next</button></div></div>
       </section>
 
+      {canOpenProofWorkspace && hasPermission(actor, PERMISSIONS.LOT_COMMISSIONS_VIEW) ? <section className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+        <h2 className="text-base font-black text-blue-950">Proof of Income & Network Company Profit</h2>
+        <p className="mt-1 text-sm text-blue-800">Seller Proof of Income is available beside each seller. Network Company Profit is a separate receipt category for the Network/Realty payee.</p>
+        <button type="button" onClick={() => setShowCompanyProfit(true)} className="mt-3 rounded-xl bg-blue-700 px-4 py-2 text-sm font-bold text-white">Network Company Profit Acknowledgments</button>
+      </section> : null}
+      {showCompanyProfit ? <NetworkProfitAcknowledgementLibrary
+        canViewFiles={hasPermission(actor, PERMISSIONS.LOT_COMMISSIONS_VIEW)}
+        canUpload={hasPermission(actor, PERMISSIONS.LOT_COMMISSIONS_RELEASE)}
+        onClose={() => setShowCompanyProfit(false)} /> : null}
+
       {proofSeller && canOpenProofWorkspace ? (
         <ProofOfIncomeReceiptModal
           seller={proofSeller}
@@ -1059,4 +1071,3 @@ const Accredited = () => {
 };
 
 export default Accredited;
-

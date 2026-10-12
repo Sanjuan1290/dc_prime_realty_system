@@ -1,5 +1,11 @@
 import express from 'express';
 import {
+  getNetworkProfitSignedCopy, createNetworkProfitSignedUploadSignature,
+  saveNetworkProfitSignedCopy, getNetworkProfitSignedContent, getNetworkProfitSignedAccessStatus,
+} from '../../controllers/Lot_Projects/Commissions/NetworkCompanyProfitFiles.controller.js';
+
+import { getNetworkCompanyProfit, releaseNetworkCompanyProfit } from '../../controllers/Lot_Projects/Commissions/NetworkCompanyProfit.controller.js';
+import {
   authenticateUser,
   requireCurrentPassword,
   requirePermission,
@@ -192,6 +198,14 @@ router.post('/lot-projects/:projectSlug/price-list/print-audit', requirePermissi
 router.get('/lot-projects/:projectSlug/listings', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListings);
 router.get('/lot-projects/:projectSlug/payment-logs', requirePermission(PERMISSIONS.LOT_PAYMENT_LOGS_VIEW), getLotProjectPaymentLogs);
 router.get('/lot-projects/:projectSlug/commissions', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getLotProjectCommissions);
+router.get('/lot-projects/:projectSlug/network-company-profit', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getNetworkCompanyProfit);
+router.post('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId', requirePermission(PERMISSIONS.LOT_COMMISSIONS_RELEASE), releaseNetworkCompanyProfit);
+router.get('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId/signed-copy', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getNetworkProfitSignedCopy);
+router.post('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId/signed-copy/upload-signature', requirePermission(PERMISSIONS.LOT_COMMISSIONS_RELEASE), createNetworkProfitSignedUploadSignature);
+router.post('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId/signed-copy', requirePermission(PERMISSIONS.LOT_COMMISSIONS_RELEASE), saveNetworkProfitSignedCopy);
+router.get('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId/signed-copy/content', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getNetworkProfitSignedContent);
+router.get('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId/signed-copy/access-url', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getNetworkProfitSignedAccessStatus);
+
 router.get('/lot-projects/:projectSlug/reservation-agents', requirePermission(PERMISSIONS.LOT_RESERVATIONS_CREATE), getReservationAgents);
 router.get('/lot-projects/:projectSlug/commission-preview', requirePermission(PERMISSIONS.LOT_RESERVATIONS_CREATE), getReservationCommissionPreviewController);
 router.patch('/lot-projects/:projectSlug/commissions/:commissionId', requireCommissionActionPermission, updateLotProjectCommission);
@@ -279,4 +293,3 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
-

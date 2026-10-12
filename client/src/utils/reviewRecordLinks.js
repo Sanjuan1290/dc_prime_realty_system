@@ -30,6 +30,8 @@ export const getReviewRecordLink = ({
   const paymentId = Number(recordPaymentId || after?.paymentId || before?.paymentId || 0)
   if (type === 'lot_project_settings' && slug)
     return `/portal/lot-projects/${slug}/settings?workflowAction=project_settings_correction&reviewId=${encodeURIComponent(reviewId)}${suffix}`
+  if (type === 'lot_project_network_profit_release' && slug)
+    return `/portal/lot-projects/${slug}/commissions?workflowAction=commission_stage_review&reviewId=${encodeURIComponent(reviewId)}&networkProfitReleaseId=${encodeURIComponent(review.entity_id)}${suffix}`
   if (type === 'lot_project_commission' && slug)
     return `/portal/lot-projects/${slug}/commissions?workflowAction=commission_stage_review&reviewId=${encodeURIComponent(reviewId)}&commissionId=${encodeURIComponent(review.entity_id)}${suffix}`
   if (type === 'lot_project_listing_import' && slug)
@@ -45,4 +47,3 @@ export const getReviewRecordLink = ({
   }
   return null
 }
-

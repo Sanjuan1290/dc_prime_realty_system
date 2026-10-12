@@ -194,6 +194,18 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
       acknowledgementFilesUpdated = Number(result.affectedRows || 0);
     }
 
+    let networkCompanyProfitFilesUpdated = 0;
+    if (await tableExists(connection, 'lot_project_network_profit_signed_files')) {
+      const [result] = await connection.query(`
+        UPDATE lot_project_network_profit_signed_files
+        SET malware_scan_status = ?, malware_scan_provider = 'perception_point',
+            malware_scan_reason = ?, malware_scanned_at = NOW()
+        WHERE cloudinary_public_id = ?`,
+        [scanState.status, scanState.reason, publicId]
+      );
+      networkCompanyProfitFilesUpdated = Number(result.affectedRows || 0);
+    }
+
     await updateClientDocumentSnapshots(connection, publicId, scanState);
     await writeAuditLog(connection, req, {
       action: 'system',
@@ -211,6 +223,7 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
           buyerDocumentFiles: Number(clientFileUpdate.affectedRows || 0),
           paymentProofs: Number(paymentProofUpdate.affectedRows || 0),
           commissionReceiptFiles: commissionReceiptFilesUpdated,
+          networkCompanyProfitFiles: networkCompanyProfitFilesUpdated,
           paymentAcknowledgementFiles: acknowledgementFilesUpdated,
         },
       },
@@ -226,4 +239,3 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
     connection.release();
   }
 };
-

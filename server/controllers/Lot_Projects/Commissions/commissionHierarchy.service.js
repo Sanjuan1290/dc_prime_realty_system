@@ -1,3 +1,4 @@
+import { provisionNetworkCompanyProfit } from '../../../services/networkCompanyProfit.service.js';
 import { columnExists, tableExists } from '../_shared/lotProject.shared.js';
 import { isExternalGroupRole, validateSellerReportingChain } from '../../System/sellerHierarchyRules.js';
 import {
@@ -675,6 +676,18 @@ export const replaceReservationCommissions = async (
     });
   }
 
+  if (preview.groupType === 'in_house' && Number(preview.companyProfitRate || 0) > 0) {
+    await provisionNetworkCompanyProfit(connection, {
+      projectId,
+      listingId: listing.lot_project_listing_id,
+      clientProfileId,
+      networkId: Number(preview.assignedSeller?.seller_group_id || 0),
+      commissionBase: preview.commissionBase,
+      companyProfitRate: preview.companyProfitRate,
+      sourceCommissionId: insertedRows[0]?.commissionId,
+    });
+  }
+
   return insertedRows;
 };
 
@@ -693,4 +706,3 @@ export const hasReleasedCommissionActivity = ({
   Number(releasedCommissionCount || 0) > 0 ||
   Number(releasedStageCount || 0) > 0 ||
   Number(receiptCount || 0) > 0;
-

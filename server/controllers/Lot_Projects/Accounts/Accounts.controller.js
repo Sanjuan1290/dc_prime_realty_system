@@ -142,6 +142,7 @@ const getPurgePreview = async (connection, account) => {
     documents: await countRows(connection, 'lot_project_client_documents', 'lot_project_client_profile_id = ?', [profileId]),
     documentFiles: await countRows(connection, 'lot_project_client_document_files', 'lot_project_account_id = ?', [accountId]),
     commissions: await countRows(connection, 'lot_project_commissions', 'lot_project_client_profile_id = ?', [profileId]),
+    networkProfitAccounts: await countRows(connection, 'lot_project_network_profit_accounts', 'lot_project_account_id = ?', [accountId]),
     receipts: await countRows(connection, 'lot_project_commission_receipts', 'lot_project_client_profile_id = ?', [profileId]),
     reservationHistory: await countRows(
       connection,
@@ -329,6 +330,21 @@ export const requestLotProjectAccountPurgeCode = async (req, res) => {
       return res.status(400).json({ message: `Type DELETE ${account.account_reference} to continue.` });
     }
 
+    // Never delete financial evidence for an actual Network Company Profit payout.
+    // Check BEFORE any Cloudinary deletion is attempted.
+    if (await tableExists(connection, 'lot_project_network_profit_accounts')) {
+      const [[networkProfitEvidence]] = await connection.query(`
+        SELECT COUNT(*) AS total FROM lot_project_network_profit_releases release_row
+        JOIN lot_project_network_profit_accounts profit ON profit.id = release_row.profit_account_id
+        WHERE profit.lot_project_account_id = ? AND release_row.release_status = 'Released'`,
+        [account.lot_project_account_id]
+      );
+      if (Number(networkProfitEvidence?.total || 0) > 0) {
+        await connection.rollback();
+        return res.status(409).json({ message: 'This buyer account has released Network Company Profit payments. Its payout history must be retained and cannot be permanently deleted.' });
+      }
+    }
+
     const preview = await getPurgePreview(connection, account);
     if (preview.unpaidEarnedStages > 0) {
       await connection.rollback();
@@ -478,6 +494,21 @@ const deleteAccountDatabaseRows = async (connection, account) => {
     counts[name] = Number(result.affectedRows || 0);
   };
 
+  // Network Company Profit is buyer-account owned, but released payouts are
+  // protected from account purge before the irreversible Cloudinary phase.
+  if (await tableExists(connection, 'lot_project_network_profit_accounts')) {
+    if (await tableExists(connection, 'lot_project_network_profit_signed_files')) {
+      await execute('lot_project_network_profit_signed_files', `DELETE file FROM lot_project_network_profit_signed_files file
+        JOIN lot_project_network_profit_releases release_row ON release_row.id = file.profit_release_id
+        JOIN lot_project_network_profit_accounts profit ON profit.id = release_row.profit_account_id
+        WHERE profit.lot_project_account_id = ?`, [accountId]);
+    }
+    await execute('lot_project_network_profit_releases', `DELETE release_row FROM lot_project_network_profit_releases release_row
+      JOIN lot_project_network_profit_accounts profit ON profit.id = release_row.profit_account_id
+      WHERE profit.lot_project_account_id = ?`, [accountId]);
+    await execute('lot_project_network_profit_accounts', 'DELETE FROM lot_project_network_profit_accounts WHERE lot_project_account_id = ?', [accountId]);
+  }
+
   await execute('lot_project_commission_receipt_files', 'DELETE FROM lot_project_commission_receipt_files WHERE lot_project_account_id = ?', [accountId]);
   await execute('lot_project_payment_acknowledgement_files', 'DELETE FROM lot_project_payment_acknowledgement_files WHERE lot_project_account_id = ?', [accountId]);
 
@@ -590,6 +621,21 @@ export const purgeLotProjectAccount = async (req, res) => {
       return res.status(409).json({ message: 'Deletion request details changed. Request a new code.' });
     }
 
+    // Never delete financial evidence for an actual Network Company Profit payout.
+    // Check BEFORE any Cloudinary deletion is attempted.
+    if (await tableExists(connection, 'lot_project_network_profit_accounts')) {
+      const [[networkProfitEvidence]] = await connection.query(`
+        SELECT COUNT(*) AS total FROM lot_project_network_profit_releases release_row
+        JOIN lot_project_network_profit_accounts profit ON profit.id = release_row.profit_account_id
+        WHERE profit.lot_project_account_id = ? AND release_row.release_status = 'Released'`,
+        [account.lot_project_account_id]
+      );
+      if (Number(networkProfitEvidence?.total || 0) > 0) {
+        await connection.rollback();
+        return res.status(409).json({ message: 'This buyer account has released Network Company Profit payments. Its payout history must be retained and cannot be permanently deleted.' });
+      }
+    }
+
     const preview = await getPurgePreview(connection, account);
     if (preview.unpaidEarnedStages > 0) {
       await connection.rollback();
@@ -663,4 +709,3 @@ export const purgeLotProjectAccount = async (req, res) => {
     connection.release();
   }
 };
-

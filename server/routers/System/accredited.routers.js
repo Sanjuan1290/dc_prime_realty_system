@@ -1,4 +1,5 @@
 import express from 'express';
+import { getNetworkCompanyProfitAcknowledgments } from '../../controllers/Lot_Projects/Commissions/NetworkCompanyProfit.controller.js';
 import {
   getAccredited,
   getAccreditedExport,
@@ -25,6 +26,7 @@ router.use(authenticateUser);
 router.get('/', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccredited);
 router.get('/export', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedExport);
 router.get('/parents', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getParentSellers);
+router.get('/network-company-profit-acknowledgments', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getNetworkCompanyProfitAcknowledgments);
 router.get('/:sellerId/proof-of-income-receipts', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerProofOfIncomeData);
 router.get('/:sellerId/income-range', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerIncomeRangeReport);
 router.post('/:sellerId/proof-of-income-receipts', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF), createAccreditedSellerProofOfIncomeReceipt);
@@ -37,4 +39,3 @@ router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/delete',
 router.post('/:sellerId/proof-of-income', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF), uploadAccreditedSellerProofOfIncome);
 
 export default router;
-

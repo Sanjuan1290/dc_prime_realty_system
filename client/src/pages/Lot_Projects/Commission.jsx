@@ -5,6 +5,7 @@ import { FiDollarSign, FiEye, FiRefreshCw, FiSearch, FiUsers } from 'react-icons
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ReleaseDetailsModal from '../../components/Lot_Projects/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal'
+import NetworkCompanyProfitPanel from '../../components/Lot_Projects/CommissionComponents/NetworkCompanyProfitPanel'
 import { groupCommissionRecords } from '../../utils/commissionRecords'
 import { useFetch as fetchJson, useFetchPatch as patchJson } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
@@ -482,6 +483,8 @@ const Commission = () => {
         </div>
       </section>
 
+      <NetworkCompanyProfitPanel projectSlug={projectSlug} canRelease={canRelease} />
+
       {selected ? (
         <ReleaseDetailsModal
           commissionGroup={selected}
@@ -503,4 +506,3 @@ const Commission = () => {
 }
 
 export default Commission
-
