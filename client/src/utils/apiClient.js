@@ -21,6 +21,9 @@ const TECHNICAL_MUTATION_PATTERNS = [
   /\/system-settings\/code$/i,
   /\/projects\/reports\/export-audit$/i,
   /\/projects\/lot-projects\/[^/]+\/price-list\/print-audit$/i,
+  // Audit-only export and validation preview; neither mutates listing inventory.
+  /\/projects\/lot-projects\/[^/]+\/listing-bulk\/export-audit$/i,
+  /\/projects\/lot-projects\/[^/]+\/listing-bulk\/validate$/i,
   /\/projects\/lot-projects\/\d+\/edit-preflight$/i,
   /\/purge-code$/i,
   /\/audit-logs\/archive\/request$/i,
@@ -310,6 +313,7 @@ export const requestApiBlob = async (
     }
   }
 }
+
 
 
 
