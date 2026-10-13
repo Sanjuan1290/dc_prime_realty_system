@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx-js-style'
 import { FiDownload, FiFileText, FiUpload, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetchPost } from '../../../../utils/useFetch'
+import { classifyListingWorkbook } from '../../../../utils/listingWorkbookType'
 
 const HEADERS = [
   'Cadastral Lot No.',
@@ -67,13 +68,14 @@ const normalizeSheetRow = (row = {}, index = 0) => ({
   annualInterestRate: row['Annual Interest Rate (%)'],
 })
 
-const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported }) => {
+const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported, onOpenBulkEdit }) => {
   const fileInputRef = useRef(null)
   const [file, setFile] = useState(null)
   const [parsedRows, setParsedRows] = useState([])
   const [fileHash, setFileHash] = useState('')
   const [validation, setValidation] = useState(null)
   const [alert, setAlert] = useState(null)
+  const [wrongWorkbook, setWrongWorkbook] = useState(false)
   const [isWorking, setIsWorking] = useState(false)
 
   const projectName = project.name || project.lot_project_name || 'Lot Project'
@@ -147,12 +149,23 @@ const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported }) 
     setAlert({ type: 'loading', message: 'Reading and validating the Excel file...' })
     setIsWorking(true)
     setValidation(null)
+    setWrongWorkbook(false)
     try {
       const extension = String(selectedFile.name || '').split('.').pop()?.toLowerCase() || ''
       if (!ALLOWED_FILE_EXTENSIONS.has(extension)) throw new Error('Please select an Excel .xlsx file.')
       if (Number(selectedFile.size || 0) > MAX_FILE_SIZE_BYTES) throw new Error('The Excel file is too large. Maximum file size is 10 MB.')
       const data = await selectedFile.arrayBuffer()
       const workbook = XLSX.read(data, { type: 'array', cellDates: false })
+      const workbookType = classifyListingWorkbook(workbook, XLSX)
+      if (workbookType === 'bulk-edit' || workbookType === 'inventory-export') {
+        setWrongWorkbook(workbookType === 'bulk-edit')
+        throw new Error(workbookType === 'bulk-edit'
+          ? 'This file contains existing listings. Use Bulk Edit Existing Listings instead of Import New Listings.'
+          : 'This is a listings report, not a new-listing template. To update existing units, export an Editable Listings Template and use Bulk Edit Existing Listings.')
+      }
+      if (workbookType !== 'new-listings') {
+        throw new Error('The Excel columns do not match the New Listings template. Download the Project Template and try again.')
+      }
       const sheetName = workbook.SheetNames.includes('Listings') ? 'Listings' : workbook.SheetNames[0]
       if (!sheetName) throw new Error('The workbook does not contain a worksheet.')
       const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '', raw: false })
@@ -236,6 +249,7 @@ const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported }) 
 
         <div className="overflow-y-auto p-6">
           {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
+          {wrongWorkbook && onOpenBulkEdit ? <button type="button" onClick={onOpenBulkEdit} className="mt-3 inline-flex h-10 items-center rounded-xl bg-blue-600 px-4 text-sm font-black text-white hover:bg-blue-700">Open Bulk Edit Existing Listings</button> : null}
 
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <button type="button" onClick={downloadTemplate} className="flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-left transition hover:bg-blue-100">
@@ -296,4 +310,5 @@ const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported }) 
 }
 
 export default ListingImportModal
+
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiClock, FiDownload, FiEye, FiFileText, FiGrid, FiPlus, FiSearch, FiTrash2, FiUpload } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
@@ -9,7 +9,6 @@ import AddListingModal from '../../components/Lot_Projects/ListingComponents/Add
 import ListingImportModal from '../../components/Lot_Projects/ListingComponents/ListingImportModal/ListingImportModal'
 import ListingImportHistoryModal from '../../components/Lot_Projects/ListingComponents/ListingImportModal/ListingImportHistoryModal'
 import ExportListingsModal from '../../components/Lot_Projects/ListingComponents/ExportListingsModal'
-import BulkEditListingsModal from '../../components/Lot_Projects/ListingComponents/BulkEditListingsModal'
 import ListingImportChoiceModal from '../../components/Lot_Projects/ListingComponents/ListingImportChoiceModal'
 import {useFetch, useFetchDelete, useFetchPost, getDoubleCheckNotice} from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
@@ -27,6 +26,8 @@ const statusTone = (status) => {
 
 const Listings = () => {
   const { projectSlug } = useParams()
+  const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
   const user = currentUserData?.user
@@ -45,7 +46,6 @@ const Listings = () => {
   const [showImportChoice, setShowImportChoice] = useState(false)
   const [showImportHistory, setShowImportHistory] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
-  const [showBulkModal, setShowBulkModal] = useState(false)
   const [listingToDelete, setListingToDelete] = useState(null)
   const [alert, setAlert] = useState(null)
   const [page, setPage] = useState(1)
@@ -158,6 +158,7 @@ const Listings = () => {
         </div>
       </section>
 
+      {location.state?.bulkResult ? <StatusAlert type="success" message={location.state.bulkResult} onClose={() => navigate(location.pathname, { replace: true, state: null })} /> : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
       {isLoading ? <StatusAlert type="loading" message="Loading listings from database..." /> : null}
       {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing listings..." /> : null}
@@ -206,16 +207,15 @@ const Listings = () => {
       </section>
 
       {showExportModal ? <ExportListingsModal projectSlug={projectSlug} projectName={project.name} canPrint={canPrint} onClose={() => setShowExportModal(false)} /> : null}
-      {showBulkModal && canBulkEdit ? <BulkEditListingsModal projectSlug={projectSlug} project={project} onClose={() => setShowBulkModal(false)} onSaved={async (result) => { setShowBulkModal(false); setAlert({ type: 'success', message: result?.message || 'Bulk update completed.' }); await queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['listing-bulk-history', projectSlug] }) }} /> : null}
       {showAddModal && canCreate ? <AddListingModal project={project} projectDefaultDocuments={project.defaultDocuments || []} libraryDocuments={documentsData?.documents || []} documentTemplates={templatesData?.templates || []} templateDocuments={templatesData?.template_documents || []} isLoadingDefaults={isDocumentsLoading || isTemplatesLoading} onClose={() => setShowAddModal(false)} onSave={handleAddListing} isSaving={addListingMutation.isPending} /> : null}
       {showImportChoice && (canImport || canBulkEdit) ? <ListingImportChoiceModal
         canCreateListings={canImport}
         canEditListings={canBulkEdit}
         onClose={() => setShowImportChoice(false)}
         onCreate={() => { setShowImportChoice(false); setShowImportModal(true) }}
-        onEdit={() => { setShowImportChoice(false); setShowBulkModal(true) }}
+        onEdit={() => { setShowImportChoice(false); navigate(`/portal/lot-projects/${projectSlug}/listings/bulk-edit`) }}
       /> : null}
-      {showImportModal && canImport ? <ListingImportModal project={project} projectSlug={projectSlug} onClose={() => setShowImportModal(false)} onImported={async () => { setShowImportModal(false); setAlert({ type: 'success', message: 'Listing import completed. You can review or undo it from Import History.' }); await queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['listing-import-history', projectSlug] }) }} /> : null}
+      {showImportModal && canImport ? <ListingImportModal project={project} projectSlug={projectSlug} onOpenBulkEdit={canBulkEdit ? () => { setShowImportModal(false); navigate(`/portal/lot-projects/${projectSlug}/listings/bulk-edit`) } : undefined} onClose={() => setShowImportModal(false)} onImported={async () => { setShowImportModal(false); setAlert({ type: 'success', message: 'Listing import completed. You can review or undo it from Import History.' }); await queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['listing-import-history', projectSlug] }) }} /> : null}
       {showImportHistory && canImport ? <ListingImportHistoryModal projectSlug={projectSlug} canUndo={canUndoImport} onClose={() => setShowImportHistory(false)} /> : null}
       <ConfirmActionModal
         open={canDelete && Boolean(listingToDelete)}

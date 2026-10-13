@@ -23,7 +23,7 @@ test('workflow query caches are account-aware so one role never sees another acc
   const center = read('client/src/pages/System/ReviewCenter.jsx')
   assert.match(center, /\['workflow-summary', actor\.id \|\| 0, actor\.role \|\| ''\]/)
   assert.match(center, /\['workflow-reviews', actor\.id \|\| 0, actor\.role \|\| '', reviewScope, status, reviewPage\]/)
-  assert.match(center, /\['workflow-notifications', actor\.id \|\| 0, actor\.role \|\| ''\]/)
+  assert.match(center, /\['workflow-notifications', actor\.id \|\| 0, actor\.role \|\| '', notificationPage\]/)
   assert.match(center, /\['workflow-review', actor\.id \|\| 0, actor\.role \|\| '', reviewId\]/)
 })
 
@@ -38,4 +38,5 @@ test('review details never render raw JSON blocks and use user-facing Network ra
   assert.doesNotMatch(center, /<pre/)
   assert.doesNotMatch(center, /JSON\.stringify\(value, null, 2\)/)
 })
+
 

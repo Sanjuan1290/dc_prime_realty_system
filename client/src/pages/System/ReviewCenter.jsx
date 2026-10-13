@@ -1,5 +1,5 @@
 import { formatPhilippineDateTime } from '../../utils/formatDateTime'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Navigate, useNavigate } from 'react-router-dom'
 import {
@@ -531,6 +531,8 @@ const ReviewCenter = () => {
   const [status, setStatus] = useState('')
   const [reviewScope, setReviewScope] = useState('queue')
   const [reviewPage, setReviewPage] = useState(1)
+  const [notificationPage, setNotificationPage] = useState(1)
+  const notificationPageSize = 10
   const [search, setSearch] = useState('')
   const [approvalStatus, setApprovalStatus] = useState('')
   const [notice, setNotice] = useState(null)
@@ -538,7 +540,7 @@ const ReviewCenter = () => {
   const summary = useQuery({ queryKey: ['workflow-summary', actor.id || 0, actor.role || ''], queryFn: () => useFetch('/workflow/summary'), enabled: REVIEW_CENTER_ROLES.has(actor.role), refetchInterval: 30_000 })
   const reviews = useQuery({ queryKey: ['workflow-reviews', actor.id || 0, actor.role || '', reviewScope, status, reviewPage], queryFn: () => useFetch(`/workflow/reviews?limit=10&page=${reviewPage}&scope=${reviewScope}${status ? `&status=${encodeURIComponent(status)}` : ''}`), enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'reviews' })
   const approvals = useQuery({ queryKey: ['workflow-protected-changes', approvalStatus], queryFn: () => useFetch(`/workflow/protected-changes?limit=100${approvalStatus ? `&status=${encodeURIComponent(approvalStatus)}` : ''}`), enabled: REVIEW_CENTER_ROLES.has(actor.role) && isHead && tab === 'approvals' })
-  const notifications = useQuery({ queryKey: ['workflow-notifications', actor.id || 0, actor.role || ''], queryFn: () => useFetch('/workflow/notifications?limit=100'), enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'notifications' })
+  const notifications = useQuery({ queryKey: ['workflow-notifications', actor.id || 0, actor.role || '', notificationPage], queryFn: () => useFetch(`/workflow/notifications?limit=${notificationPageSize}&page=${notificationPage}`), enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'notifications' })
   const approvalMutation = useMutation({
     mutationFn: ({ id, decision }) => useFetchPost(`/workflow/protected-changes/${id}/review`, { decision }, { confirmationHandled: 'compact' }),
     onSuccess: async (result) => { setNotice({ type: 'success', message: result.message }); await Promise.all([approvals.refetch(), summary.refetch()]) },
@@ -566,6 +568,11 @@ const ReviewCenter = () => {
     return rows.filter((row) => [row.review_number, row.entity_label, row.action_label, row.action_key, row.lot_project_name, row.initiated_by_name].some((v) => String(v || '').toLowerCase().includes(needle)))
   }, [reviews.data, search])
   const counts = summary.data?.data || {}
+  const notificationTotal = Number(notifications.data?.pagination?.total || 0)
+  const notificationTotalPages = Math.max(1, Math.ceil(notificationTotal / notificationPageSize))
+  useEffect(() => {
+    if (notifications.data?.pagination && notificationPage > notificationTotalPages) setNotificationPage(notificationTotalPages)
+  }, [notificationPage, notificationTotalPages, notifications.data?.pagination])
   const visibleUnread = (notifications.data?.data || []).filter((item) => !item.read_at).length
   const hasUnreadNotifications = visibleUnread > 0 || (counts.notificationCountsAvailable !== false && Number(counts.unreadNotifications || 0) > 0)
   const notificationBusy = markRead.isPending || markAllRead.isPending
@@ -633,12 +640,17 @@ const ReviewCenter = () => {
               </div>
             </div>)}
           </div> : <StatusAlert type="info" message="No internal workflow notifications yet." />}
+        {!notifications.isLoading && !notifications.isError && notificationTotal > 0 ? <nav aria-label="Internal Notifications pages" className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+          <span className="text-sm font-semibold text-slate-600">Showing {(notificationPage - 1) * notificationPageSize + 1}–{Math.min(notificationPage * notificationPageSize, notificationTotal)} of {notificationTotal} notifications</span>
+          <div className="flex items-center gap-2"><button type="button" disabled={notificationPage <= 1} onClick={() => setNotificationPage((page) => Math.max(1, page - 1))} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold disabled:opacity-40">Previous</button><span className="text-sm font-black">Page {notificationPage} of {notificationTotalPages}</span><button type="button" disabled={notificationPage >= notificationTotalPages} onClick={() => setNotificationPage((page) => page + 1)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold disabled:opacity-40">Next</button></div>
+        </nav> : null}
       </div> : null}
     </section>
   </main>
 }
 
 export default ReviewCenter
+
 
 
 

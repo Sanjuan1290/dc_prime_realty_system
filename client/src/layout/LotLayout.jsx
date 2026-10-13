@@ -27,6 +27,7 @@ import { hasPermission, hasProjectScope, isSystemUserRole, PERMISSIONS } from '.
 
 const getPageTitle = (pathname, projectName) => {
   if (pathname.includes('/reports')) return `${projectName || 'Lot Project'} Reports`
+  if (pathname.includes('/listings/bulk-edit')) return 'Bulk Edit Listings'
   if (pathname.includes('/listings/')) return 'Listing Profile'
   if (pathname.includes('/listings')) return 'Listings / Units'
   if (pathname.includes('/payments-audit')) return 'Payments Audit / Logs'
@@ -265,4 +266,5 @@ const LotLayout = () => {
 }
 
 export default LotLayout
+
 

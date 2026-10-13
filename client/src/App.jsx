@@ -64,6 +64,7 @@ const AttendanceKiosk = lazy(() => import('./pages/Public/AttendanceKiosk'))
 const LotDashboard = lazy(() => import('./pages/Lot_Projects/Dashboard'))
 const LotReports = lazy(() => import('./pages/Lot_Projects/Reports'))
 const LotListings = lazy(() => import('./pages/Lot_Projects/Listings'))
+const LotBulkEditListings = lazy(() => import('./pages/Lot_Projects/BulkEditListings'))
 const LotListingProfile = lazy(() => import('./pages/Lot_Projects/ListingProfile'))
 const LotPaymentLogs = lazy(() => import('./pages/Lot_Projects/PaymentLogs'))
 const LotCommission = lazy(() => import('./pages/Lot_Projects/Commission'))
@@ -201,6 +202,7 @@ const App = () => {
           <Route index element={protect(PERMISSIONS.LOT_DASHBOARD_VIEW, <LotDashboard />, { projectScoped: true })} />
           <Route path="reports" element={protect(PERMISSIONS.LOT_REPORTS_VIEW, <LotReports />, { projectScoped: true })} />
           <Route path="listings" element={protect(PERMISSIONS.LOT_LISTINGS_VIEW, <LotListings />, { projectScoped: true })} />
+          <Route path="listings/bulk-edit" element={protect(PERMISSIONS.LOT_LISTINGS_EDIT, <LotBulkEditListings />, { projectScoped: true })} />
           <Route path="listings/:listingId" element={protect(PERMISSIONS.LOT_LISTING_PROFILE_VIEW, <LotListingProfile />, { projectScoped: true })} />
           <Route path="listings/:listingId/accounts/:accountId" element={protect(PERMISSIONS.LOT_LISTING_PROFILE_VIEW, <LotListingProfile />, { projectScoped: true })} />
           <Route path="payments-audit" element={protect(PERMISSIONS.LOT_PAYMENT_LOGS_VIEW, <LotPaymentLogs />, { projectScoped: true })} />
@@ -231,3 +233,4 @@ const App = () => {
 }
 
 export default App
+

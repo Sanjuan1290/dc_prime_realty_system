@@ -80,7 +80,7 @@ test('Dashboard Price List replaced by Listings Export; new and update imports s
   assert.match(importerChoices, /Import New Listings/)
   assert.match(importerChoices, /Bulk Edit Existing Listings/)
   assert.match(listings, /canImport \|\| canBulkEdit/)
-  assert.match(listings, /onEdit=\{\(\) => \{ setShowImportChoice\(false\); setShowBulkModal\(true\) \}\}/)
+  assert.match(listings, /navigate\(`\/portal\/lot-projects\/\$\{projectSlug\}\/listings\/bulk-edit`\)/)
   assert.match(listings, /Import Excel/)
   assert.match(exportModal, /price-list\/print-audit/)
   assert.match(excel, /Original Values/)
