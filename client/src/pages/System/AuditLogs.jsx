@@ -5,6 +5,7 @@ import {
   FiArchive,
   FiClock,
   FiDatabase,
+  FiDownload,
   FiPlus,
   FiRefreshCw,
   FiTrash2,
@@ -15,6 +16,8 @@ import ArchiveAuditLogsModal from '../../components/System/auditLogsComponents/A
 import AuditLogDetailsModal from '../../components/System/auditLogsComponents/AuditLogDetailsModal'
 import AuditLogFilters from '../../components/System/auditLogsComponents/AuditLogFilters'
 import AuditLogTable from '../../components/System/auditLogsComponents/AuditLogTable'
+import ExportAuditReportModal from '../../components/System/auditLogsComponents/ExportAuditReportModal'
+import { PERMISSIONS, hasPermission } from '../../config/permissions'
 import { useFetch, useFetchPost } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
 
@@ -126,10 +129,14 @@ const AuditLogs = () => {
   const [limit, setLimit] = useState(10)
   const [selectedLog, setSelectedLog] = useState(null)
   const [showArchiveModal, setShowArchiveModal] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
   const [archiveRequest, setArchiveRequest] = useState(null)
   const [archiveError, setArchiveError] = useState('')
 
   const canArchive = ['super_admin', 'system_admin'].includes(currentUserData?.user?.role)
+  const canExport = hasPermission(currentUserData?.user, PERMISSIONS.AUDIT_LOGS_EXPORT)
+  const canIncludeArchived = hasPermission(currentUserData?.user, PERMISSIONS.AUDIT_LOGS_ARCHIVE)
+  const canIncludeCaseHistory = hasPermission(currentUserData?.user, PERMISSIONS.WORKFLOW_AUDIT_REVIEW)
 
   const resolvedDateRange = useMemo(
     () => resolveAuditDateRange(dateRange, from, to),
@@ -273,6 +280,8 @@ const AuditLogs = () => {
             Refresh
           </button>
 
+          {canExport ? <button type="button" onClick={() => setShowExportModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-white px-5 text-sm font-black text-blue-700 shadow-sm transition hover:bg-blue-50"><FiDownload className="h-4 w-4" />Export Audit Report</button> : null}
+
           <button
             type="button"
             onClick={() => canArchive && openArchiveModal()}
@@ -347,6 +356,17 @@ const AuditLogs = () => {
         <AuditLogDetailsModal log={selectedLog} onClose={() => setSelectedLog(null)} />
       ) : null}
 
+      {showExportModal ? (
+        <ExportAuditReportModal
+          initial={{ dateRange, from, to, action, module, search }}
+          modules={modules}
+          actorName={[currentUserData?.user?.first_name,currentUserData?.user?.last_name].filter(Boolean).join(' ') || currentUserData?.user?.email || 'Authorized user'}
+          canIncludeArchived={canIncludeArchived}
+          canIncludeCaseHistory={canIncludeCaseHistory}
+          onClose={() => setShowExportModal(false)}
+        />
+      ) : null}
+
       {showArchiveModal ? (
         <ArchiveAuditLogsModal
           actorRole={currentUserData?.user?.role}
@@ -368,5 +388,6 @@ const AuditLogs = () => {
 }
 
 export default AuditLogs
+
 
 

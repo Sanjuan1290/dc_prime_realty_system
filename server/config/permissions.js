@@ -26,6 +26,7 @@ export const PERMISSIONS = Object.freeze({
   SYSTEM_NOTIFICATIONS_MANAGE: 'system.notifications.manage',
   SYSTEM_DATA_INTEGRITY_VIEW: 'system.data_integrity.view',
   AUDIT_LOGS_VIEW: 'audit.logs.view',
+  AUDIT_LOGS_EXPORT: 'audit.logs.export',
   AUDIT_LOGS_ARCHIVE: 'audit.logs.archive',
   SYSTEM_ACCESS_CONTROL_VIEW: 'system.access_control.view',
   SYSTEM_ACCESS_CONTROL_MANAGE: 'system.access_control.manage',
@@ -265,6 +266,7 @@ const AUDITOR_ENFORCED_PERMISSIONS = new Set([
 ]);
 
 const AUDITOR_OPTIONAL_PERMISSIONS = new Set([
+  PERMISSIONS.AUDIT_LOGS_EXPORT,
   PERMISSIONS.SYSTEM_REPORTS_EXPORT,
   PERMISSIONS.SYSTEM_PROJECTS_PRINT_PRICE_LIST,
   PERMISSIONS.SYSTEM_ACCREDITED_PRINT,
@@ -353,4 +355,5 @@ export const ROLE_PERMISSIONS = Object.freeze({
   super_admin: allPermissions,
   auditor: AUDITOR_ALLOWED_PERMISSIONS,
 });
+
 

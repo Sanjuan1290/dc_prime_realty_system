@@ -26,6 +26,7 @@ export const PERMISSIONS = Object.freeze({
   SYSTEM_NOTIFICATIONS_MANAGE: 'system.notifications.manage',
   SYSTEM_DATA_INTEGRITY_VIEW: 'system.data_integrity.view',
   AUDIT_LOGS_VIEW: 'audit.logs.view',
+  AUDIT_LOGS_EXPORT: 'audit.logs.export',
   AUDIT_LOGS_ARCHIVE: 'audit.logs.archive',
   SYSTEM_ACCESS_CONTROL_VIEW: 'system.access_control.view',
   SYSTEM_ACCESS_CONTROL_MANAGE: 'system.access_control.manage',
@@ -382,4 +383,5 @@ export const hasProjectScope = (user = {}, projectSlug = '') => {
   const normalizedSlug = String(projectSlug).trim().toLowerCase()
   return projects.some((project) => String(project?.slug || project?.lot_project_slug || '').trim().toLowerCase() === normalizedSlug)
 }
+
 

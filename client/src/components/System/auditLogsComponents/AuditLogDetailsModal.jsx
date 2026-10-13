@@ -1,5 +1,6 @@
 import { FiInfo, FiX } from 'react-icons/fi'
 import { formatDateTime } from '../../../utils/formatDateTime'
+import { getAuditChanges } from '../../../utils/auditReportEvidence'
 
 
 const formatAttendanceDate = (value) => {
@@ -127,6 +128,7 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
   const attendanceEmployeeCode = log.metadata?.employeeCode || entityParts[0] || '-'
   const attendanceDate = log.metadata?.attendanceDate || entityParts[1] || ''
   const settingsChanges = getSettingsChanges(log)
+  const evidenceChanges = getAuditChanges(log)
   const isSettingsAudit = Boolean(settingsChangeDefinitions[log.module])
   const settingsAuthorization = getAuthorizationLabel(log.metadata?.verificationMethod)
 
@@ -206,6 +208,17 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
           ) : null}
 
 
+          {!isSettingsAudit && evidenceChanges.length ? (
+            <section className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-blue-700">Recorded Before & After Changes</p>
+              <div className="mt-3 space-y-2">{evidenceChanges.map((change,index) => (
+                <div key={`${change.path}-${index}`} className="rounded-xl border bg-white p-3">
+                  <p className="text-xs font-bold text-slate-600">{change.field}</p>
+                  <div className="mt-2 grid grid-cols-2 gap-3 text-sm"><div><span className="text-xs text-slate-500">Before</span><p className="break-words font-semibold">{change.before}</p></div><div><span className="text-xs text-slate-500">After</span><p className="break-words font-semibold">{change.after}</p></div></div>
+                </div>
+              ))}</div>
+            </section>
+          ) : null}
           {isSettingsAudit ? (
             <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -255,4 +268,5 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
 }
 
 export default AuditLogDetailsModal
+
 
