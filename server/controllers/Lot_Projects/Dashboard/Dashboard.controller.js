@@ -1,3 +1,4 @@
+import { BULK_STATUS_OPTIONS } from '../Listings/listingBulkFields.js';
 import {
   db,
   getErrorMessage,
@@ -1530,7 +1531,7 @@ export const getLotProjectPriceList = async (req, res) => {
       : `NULL AS cadastral_lots,`;
 
     const requestedStatus = String(req.query.status || 'available').trim().toLowerCase();
-    const supportedStatuses = new Set(['available', 'all', 'hold', 'sold', 'fully_paid', 'pending_for_cancellation', 'cancelled']);
+    const supportedStatuses = new Set(BULK_STATUS_OPTIONS.map(([value]) => value));
     const statusFilter = supportedStatuses.has(requestedStatus) ? requestedStatus : 'available';
     const statusSql = statusFilter === 'all'
       ? ''
@@ -1583,7 +1584,7 @@ export const auditLotProjectPriceListPrint = async (req, res) => {
     if (!project) return res.status(404).json({ success: false, message: 'Lot project not found.' });
 
     const requestedStatus = String(req.body?.status || 'available').trim().toLowerCase();
-    const supportedStatuses = new Set(['available', 'all', 'hold', 'sold', 'fully_paid', 'pending_for_cancellation', 'cancelled']);
+    const supportedStatuses = new Set(BULK_STATUS_OPTIONS.map(([value]) => value));
     const status = supportedStatuses.has(requestedStatus) ? requestedStatus : 'available';
     const months = Math.max(1, Math.min(120, Math.round(Number(req.body?.straightPaymentMonths || 20))));
 
@@ -1612,5 +1613,6 @@ export const auditLotProjectPriceListPrint = async (req, res) => {
     connection.release();
   }
 };
+
 
 

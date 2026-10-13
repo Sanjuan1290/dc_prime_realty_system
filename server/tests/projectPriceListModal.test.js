@@ -4,24 +4,23 @@ import { readFile } from 'node:fs/promises';
 
 const read = (relativePath) => readFile(new URL(relativePath, import.meta.url), 'utf8');
 
-test('Price List button opens a month-setting modal before printing', async () => {
-  const [dashboard, details] = await Promise.all([
+test('Price List remains printable from Export Listings rather than the Dashboard', async () => {
+  const [dashboard, details, listings, modal] = await Promise.all([
     read('../../client/src/pages/Lot_Projects/Dashboard.jsx'),
     read('../../client/src/components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal.jsx'),
+    read('../../client/src/pages/Lot_Projects/Listings.jsx'),
+    read('../../client/src/components/Lot_Projects/ListingComponents/ExportListingsModal.jsx'),
   ]);
-
-  assert.match(dashboard, /const PriceListPrintModal/);
-  assert.match(dashboard, /Straight Payment \(Months\)/);
-  assert.match(dashboard, /DEFAULT_STRAIGHT_PAYMENT_MONTHS = 20/);
-  assert.match(dashboard, /parsedMonths < 1 \|\| parsedMonths > 120/);
-  assert.match(dashboard, /setShowPriceListModal\(true\)/);
-  assert.match(dashboard, /new URLSearchParams\(\{ straightPaymentMonths:/);
-  assert.match(dashboard, /status \}/);
-  assert.match(dashboard, /PRICE_LIST_STATUS_OPTIONS/);
-  assert.match(dashboard, /Unit Status/);
-  assert.match(dashboard, /Print Price List/);
-  assert.match(details, /onClick=\{onPrintPriceList\}[\s\S]*?Print Price List/);
-  assert.match(dashboard, /onPrintPriceList=\{\(\) => \{ setShowDetails\(false\); setShowPriceListModal\(true\) \}\}/);
+  assert.doesNotMatch(dashboard, /setShowPriceListModal|>Price List<\/button>/);
+  assert.match(details, /onClick=\{onGoListings\}[\s\S]*Open Listings/);
+  assert.match(listings, /Export Listings/);
+  assert.match(modal, /Straight Payment \(Months\)/);
+  assert.match(modal, /Number\(months\) < 1 \|\| Number\(months\) > 120/);
+  assert.match(modal, /new URLSearchParams\(\{ straightPaymentMonths: months, status \}\)/);
+  assert.match(modal, /LISTING_EXPORT_STATUS_OPTIONS/);
+  assert.match(modal, /Unit Status/);
+  assert.match(modal, /Print Price List/);
+  assert.match(modal, /price-list\/print-audit/);
 });
 
 test('Straight Payment Months is not stored in Add or Edit Project data', async () => {
@@ -75,3 +74,4 @@ test('Add and Edit Lot Project use two separate floating document modals', async
   assert.match(projectModal, /onClick=\{handleSave\}/);
   assert.match(editModal, /mode="edit"/);
 });
+

@@ -28,7 +28,7 @@ test('Lot Project workspace separates operational Dashboard from Reports', () =>
   assert.doesNotMatch(dashboard, /Graph Date Filter/)
   assert.match(dashboard, />View Details<\/button>/)
   assert.match(dashboard, />Edit Project<\/button>/)
-  assert.match(dashboard, />Price List<\/button>/)
+  assert.doesNotMatch(dashboard, />Price List<\/button>/)
 
   assert.match(reports, /const Reports = \(\) =>/)
   assert.match(reports, /Reports`}/)
@@ -41,5 +41,6 @@ test('Lot Project workspace separates operational Dashboard from Reports', () =>
   assert.doesNotMatch(reports, />Price List<\/button>/)
   assert.match(reports, /export default Reports/)
 })
+
 
 

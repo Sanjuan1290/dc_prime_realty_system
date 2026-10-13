@@ -472,6 +472,12 @@ const getListingProtection = async (connection, listingId) => {
     const [[countRow]] = await connection.query(`SELECT COUNT(*) AS total FROM ${table} WHERE lot_project_listing_id = ?`, [listingId])
     if (Number(countRow?.total || 0) > 0) reasons.push(label)
   }
+  if (await tableExists(connection, 'lot_project_listing_bulk_rows')) {
+    const [[bulkRow]] = await connection.query(
+      'SELECT COUNT(*) AS total FROM lot_project_listing_bulk_rows WHERE lot_project_listing_id = ?', [listingId]
+    )
+    if (Number(bulkRow?.total || 0) > 0) reasons.push('bulk listing adjustment history')
+  }
   if (await tableExists(connection, 'lot_project_reservation_corrections')) {
     const [[correctionRow]] = await connection.query(
       `SELECT COUNT(*) AS total FROM lot_project_reservation_corrections
@@ -650,5 +656,6 @@ export const revertLotProjectListingImport = async (req, res) => {
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) })
   } finally { connection.release() }
 }
+
 
 

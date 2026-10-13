@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FiAlertTriangle,
@@ -12,16 +12,14 @@ import {
   FiFileText,
   FiGrid,
   FiHome,
-  FiPrinter,
   FiRefreshCw,
   FiShield,
-  FiX,
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ProjectDetailsModal from '../../components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal'
 import EditProjectModal from '../../components/Lot_Projects/DashboardComponents/EditProjectModal/EditProjectModal'
-import { useFetch, useFetchPost, useFetchPut, getDoubleCheckNotice } from '../../utils/useFetch'
+import { useFetch, useFetchPut, getDoubleCheckNotice } from '../../utils/useFetch'
 
 const money = (value) => new Intl.NumberFormat('en-PH', {
   style: 'currency',
@@ -116,92 +114,13 @@ const toProjectView = (project = {}) => ({
 })
 
 
-const DEFAULT_STRAIGHT_PAYMENT_MONTHS = 20
-
-const PRICE_LIST_STATUS_OPTIONS = [
-  { value: 'available', label: 'Available Only' },
-  { value: 'all', label: 'All Statuses' },
-  { value: 'hold', label: 'Hold' },
-  { value: 'sold', label: 'Sold / Active' },
-  { value: 'fully_paid', label: 'Fully Paid' },
-  { value: 'pending_for_cancellation', label: 'Pending Cancellation' },
-  { value: 'cancelled', label: 'Cancelled' },
-]
-
-const PriceListPrintModal = ({ projectName, onClose, onPrint }) => {
-  const [months, setMonths] = useState(String(DEFAULT_STRAIGHT_PAYMENT_MONTHS))
-  const [status, setStatus] = useState('available')
-  const [errorMessage, setErrorMessage] = useState('')
-
-  const handleSubmit = (event) => {
-    event.preventDefault()
-    const parsedMonths = Number(months)
-
-    if (!Number.isInteger(parsedMonths) || parsedMonths < 1 || parsedMonths > 120) {
-      setErrorMessage('Straight Payment (Months) must be a whole number from 1 to 120.')
-      return
-    }
-
-    onPrint(parsedMonths, status)
-  }
-
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-      <form onSubmit={handleSubmit} className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-          <div>
-            <h2 className="text-xl font-black text-slate-950">Print Price List</h2>
-            <p className="mt-1 text-sm font-semibold text-slate-500">Choose which units to include and set the straight-payment term for {projectName || 'this project'}.</p>
-          </div>
-          <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100" aria-label="Close price list settings">
-            <FiX className="h-5 w-5" />
-          </button>
-        </header>
-
-        <div className="grid gap-5 p-5">
-          <label className="grid gap-2">
-            <span className="text-xs font-black uppercase tracking-wide text-slate-600">Unit Status</span>
-            <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-12 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
-              {PRICE_LIST_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-            <span className="text-xs font-semibold text-slate-500">Choose available inventory only, all units, or one specific unit status. Buyer information is never included in the price list.</span>
-          </label>
-
-          <label className="grid gap-2">
-            <span className="text-xs font-black uppercase tracking-wide text-slate-600">Straight Payment (Months)</span>
-            <input
-              type="number"
-              min="1"
-              max="120"
-              step="1"
-              data-example="20 months"
-              value={months}
-              onChange={(event) => { setMonths(event.target.value); setErrorMessage('') }}
-              className="h-12 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-            />
-            <span className="text-xs font-semibold text-slate-500">The printed monthly amount uses the installment selling price without LMF, less the reservation fee, divided by this month count.</span>
-          </label>
-
-          {errorMessage ? <StatusAlert type="error" message={errorMessage} className="mt-4" /> : null}
-        </div>
-
-        <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end">
-          <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-100">Cancel</button>
-          <button type="submit" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700"><FiPrinter /> Print Price List</button>
-        </footer>
-      </form>
-    </div>
-  )
-}
-
-
 const Dashboard = () => {
   const { projectSlug } = useParams()
+  const navigate = useNavigate()
   const basePath = `/portal/lot-projects/${projectSlug}`
   const queryClient = useQueryClient()
   const [showDetails, setShowDetails] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
-  const [showPriceListModal, setShowPriceListModal] = useState(false)
   const [alert, setAlert] = useState(null)
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
@@ -248,22 +167,6 @@ const Dashboard = () => {
 
   const handleSaveProject = (updatePayload, reviewData) => updateProjectMutation.mutateAsync({ payload: updatePayload, reviewData })
 
-  const handlePrintPriceList = async (straightPaymentMonths, status = 'available') => {
-    const printWindow = window.open('about:blank', '_blank')
-    if (printWindow) printWindow.opener = null
-    try {
-      await useFetchPost(`/projects/lot-projects/${projectSlug}/price-list/print-audit`, { straightPaymentMonths, status }, { confirmationHandled: 'technical' })
-      const params = new URLSearchParams({ straightPaymentMonths: String(straightPaymentMonths), status })
-      const printUrl = `/portal/lot-projects/${projectSlug}/price-list/print?${params.toString()}`
-      if (printWindow) printWindow.location.replace(printUrl)
-      else window.open(printUrl, '_blank', 'noopener,noreferrer')
-      setShowPriceListModal(false)
-    } catch (printError) {
-      try { printWindow?.close() } catch {}
-      setAlert({ type: 'error', message: printError?.message || 'Unable to prepare the price list.' })
-    }
-  }
-
   const attentionUnits = useMemo(() => recentUnits.filter((row) => (
     Number(row.overdueCount || 0) > 0
     || row.documentsComplete === false
@@ -302,7 +205,6 @@ const Dashboard = () => {
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setShowDetails(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"><FiEye className="h-4 w-4" />View Details</button>
           <button type="button" onClick={() => setShowEdit(true)} disabled={isDocumentsLoading || isTemplatesLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiEdit3 className="h-4 w-4" />Edit Project</button>
-          <button type="button" onClick={() => setShowPriceListModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Price List</button>
           <button
             type="button"
             onClick={() => refetch()}
@@ -423,12 +325,12 @@ const Dashboard = () => {
         </div>
       </section>
 
-      {showPriceListModal ? <PriceListPrintModal projectName={project.project_bailen_name} onClose={() => setShowPriceListModal(false)} onPrint={handlePrintPriceList} /> : null}
-      {showDetails ? <ProjectDetailsModal project={project} onClose={() => setShowDetails(false)} onEdit={() => { setShowDetails(false); setShowEdit(true) }} onPrintPriceList={() => { setShowDetails(false); setShowPriceListModal(true) }} /> : null}
+      {showDetails ? <ProjectDetailsModal project={project} onClose={() => setShowDetails(false)} onEdit={() => { setShowDetails(false); setShowEdit(true) }} onGoListings={() => { setShowDetails(false); navigate(`${basePath}/listings`) }} /> : null}
       {showEdit ? <EditProjectModal project={project} documents={documentsData?.documents || []} templates={templatesData?.templates || []} templateDocuments={templatesData?.template_documents || []} onClose={() => setShowEdit(false)} onSave={handleSaveProject} isSaving={updateProjectMutation.isPending} /> : null}
     </main>
   )
 }
 
 export default Dashboard
+
 

@@ -47,6 +47,7 @@ import {
   requestLotProjectCancellationActionCode,
   deleteLotProjectListing,
 } from '../../controllers/Lot_Projects/Listings/Listings.controller.js';
+import { getBulkListingExport, auditBulkListingExport, validateBulkListingEdit, applyBulkListingEdit, getBulkListingHistory } from '../../controllers/Lot_Projects/Listings/ListingBulk.controller.js';
 import {
   validateLotProjectListingImport,
   importLotProjectListings,
@@ -199,6 +200,11 @@ router.get('/lot-projects/:projectSlug/dashboard', requirePermission(PERMISSIONS
 router.get('/lot-projects/:projectSlug/price-list', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_PRINT_PRICE_LIST), getLotProjectPriceList);
 router.post('/lot-projects/:projectSlug/price-list/print-audit', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_PRINT_PRICE_LIST), auditLotProjectPriceListPrint);
 router.get('/lot-projects/:projectSlug/listings', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListings);
+router.get('/lot-projects/:projectSlug/listing-bulk/export', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getBulkListingExport);
+router.post('/lot-projects/:projectSlug/listing-bulk/export-audit', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), auditBulkListingExport);
+router.get('/lot-projects/:projectSlug/listing-bulk/history', requirePermission(PERMISSIONS.LOT_LISTINGS_EDIT), getBulkListingHistory);
+router.post('/lot-projects/:projectSlug/listing-bulk/validate', requirePermission(PERMISSIONS.LOT_LISTINGS_EDIT), validateBulkListingEdit);
+router.post('/lot-projects/:projectSlug/listing-bulk/apply', requirePermission(PERMISSIONS.LOT_LISTINGS_EDIT), applyBulkListingEdit);
 router.get('/lot-projects/:projectSlug/payment-logs', requirePermission(PERMISSIONS.LOT_PAYMENT_LOGS_VIEW), getLotProjectPaymentLogs);
 router.get('/lot-projects/:projectSlug/commissions', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getLotProjectCommissions);
 router.get('/lot-projects/:projectSlug/network-company-profit', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getNetworkCompanyProfit);
@@ -297,4 +303,5 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
+
 

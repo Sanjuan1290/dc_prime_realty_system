@@ -1,6 +1,7 @@
   import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { BULK_STATUS_OPTIONS } from '../controllers/Lot_Projects/Listings/listingBulkFields.js';
 
 const readDashboardController = () =>
   readFile(new URL('../controllers/Lot_Projects/Dashboard/Dashboard.controller.js', import.meta.url), 'utf8');
@@ -21,7 +22,13 @@ test('project price list uses listing inventory pricing without an out-of-scope 
   assert.match(source, /SELECT\s+l\.\*,\s+\$\{cadastralSelect\}/s);
   assert.match(source, /listings:\s*rows\.map\(mapListingRow\)/);
   assert.match(source, /requestedStatus = String\(req\.query\.status \|\| 'available'\)/);
-  assert.match(source, /supportedStatuses = new Set\(\['available', 'all', 'hold', 'sold', 'fully_paid', 'pending_for_cancellation', 'cancelled'\]\)/);
+  // Price List now reuses the canonical status options used by Excel exports.
+  // Verify the actual statuses and the connection instead of expecting a duplicate inline array.
+  assert.deepEqual(BULK_STATUS_OPTIONS.map(([value]) => value), [
+    'available', 'all', 'hold', 'sold', 'fully_paid', 'pending_for_cancellation', 'cancelled',
+  ]);
+  assert.match(await readDashboardController(), /import\s*\{\s*BULK_STATUS_OPTIONS\s*\}\s*from\s*'\.\.\/Listings\/listingBulkFields\.js'/);
+  assert.match(source, /supportedStatuses = new Set\(BULK_STATUS_OPTIONS\.map\(\(\[value\]\) => value\)\)/);
   assert.match(source, /statusFilter === 'all'/);
   assert.match(source, /statusFilter === 'fully_paid'/);
   assert.match(source, /statusFilter === 'sold'/);
@@ -88,4 +95,5 @@ test('project price list print audit endpoint is registered', async () => {
     /router\.post\('\/lot-projects\/:projectSlug\/price-list\/print-audit',\s*requirePermission\(PERMISSIONS\.SYSTEM_PROJECTS_PRINT_PRICE_LIST\),\s*auditLotProjectPriceListPrint\);/
   );
 });
+
 

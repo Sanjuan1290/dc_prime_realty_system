@@ -1078,7 +1078,7 @@ const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId
  * inside the listing transaction. The completedMoves array is used as a
  * compensation log if a later database operation fails.
  */
-const syncListingDocumentCloudinaryUnitFolder = async (
+export const syncListingDocumentCloudinaryUnitFolder = async (
   connection,
   listingId,
   previousUnitId,
@@ -1247,7 +1247,7 @@ const syncListingDocumentCloudinaryUnitFolder = async (
  * External Cloudinary changes cannot be rolled back by MySQL, so reverse every
  * completed asset move when the listing transaction fails.
  */
-const rollbackListingDocumentCloudinaryMoves = async (completedMoves = []) => {
+export const rollbackListingDocumentCloudinaryMoves = async (completedMoves = []) => {
   const failures = [];
 
   for (const move of [...completedMoves].reverse()) {
@@ -2992,6 +2992,20 @@ export const deleteLotProjectListing = async (req, res) => {
       }
     }
 
+    // Preserve historical before/after evidence for any listing changed by a
+    // bulk pricing or re-survey adjustment. The history FK is restrictive too,
+    // but return a deliberate 409 instead of an opaque SQL 500 error.
+    if (await tableExists(connection, 'lot_project_listing_bulk_rows')) {
+      const [[bulkHistory]] = await connection.query(
+        'SELECT COUNT(*) AS total FROM lot_project_listing_bulk_rows WHERE lot_project_listing_id = ?',
+        [existingListing.lot_project_listing_id]
+      );
+      if (Number(bulkHistory?.total || 0) > 0) {
+        await connection.rollback();
+        return res.status(409).json({ message: 'This listing has bulk adjustment or re-survey history and cannot be deleted.' });
+      }
+    }
+
     if (await tableExists(connection, 'lot_project_reservation_corrections')) {
       const [[correctionHistory]] = await connection.query(
         `SELECT COUNT(*) AS total
@@ -3128,5 +3142,6 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 
 

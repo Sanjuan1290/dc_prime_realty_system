@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const read = (relativePath) => readFile(new URL(relativePath, import.meta.url), 'utf8');
 
-test('Lot Project Reports initializes to This Month while Dashboard owns project actions and Price List', async () => {
+test('Lot Project Reports initializes to This Month while Dashboard owns project actions and listings owns Price List', async () => {
   const [reports, dashboard, details] = await Promise.all([
     read('../../client/src/pages/Lot_Projects/Reports.jsx'),
     read('../../client/src/pages/Lot_Projects/Dashboard.jsx'),
@@ -16,9 +16,9 @@ test('Lot Project Reports initializes to This Month while Dashboard owns project
   assert.doesNotMatch(reports, /useState\('3_months'\)/);
   assert.match(dashboard, />View Details<\/button>/);
   assert.match(dashboard, />Edit Project<\/button>/);
-  assert.match(dashboard, />Price List<\/button>/);
-  assert.match(details, /onClick=\{onPrintPriceList\}[\s\S]*?Print Price List/);
-  assert.match(dashboard, /onPrintPriceList=\{\(\) => \{ setShowDetails\(false\); setShowPriceListModal\(true\) \}\}/);
+  assert.doesNotMatch(dashboard, />Price List<\/button>/);
+  assert.match(details, /onClick=\{onGoListings\}[\s\S]*?Open Listings/);
+  assert.match(dashboard, /onGoListings/);
   assert.doesNotMatch(reports, />View Details<\/button>/);
   assert.doesNotMatch(reports, />Edit Project<\/button>/);
   assert.doesNotMatch(reports, />Price List<\/button>/);
@@ -39,4 +39,5 @@ test('commission rate examples are field-authored instead of inheriting the dail
   assert.doesNotMatch(decorator, /if \(\/rate\|percentage\|percent[\s\S]*?return '0\.05%'/);
   assert.doesNotMatch(decorator, /custom\.\*daily\.\*penalty\.\*rate/);
 });
+
 
