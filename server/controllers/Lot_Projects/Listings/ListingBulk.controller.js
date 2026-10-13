@@ -4,14 +4,14 @@ import {
 import { calculateContractPricing } from '../_shared/listingPricing.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { createOperationalReview } from '../../../services/operationalReview.service.js';
+import { authorizeGovernedAction } from '../../../services/governedAction.service.js';
 import { hasBuyerFormSchema, revokeOpenBuyerFormLinks } from '../BuyerForms/buyerForm.shared.js';
 import { syncListingDocumentCloudinaryUnitFolder, rollbackListingDocumentCloudinaryMoves } from './Listings.controller.js';
-import { BULK_FIELDS, normalizedListing, normalizeBulkInput, listingChanges, statusFilterSQL, validateBulkListing } from './listingBulkFields.js';
+import { BULK_FIELDS, isContractProtected, getProtectedFieldErrors, normalizedListing, normalizeBulkInput, listingChanges, statusFilterSQL, validateBulkListing } from './listingBulkFields.js';
 
 const MAX_BATCH_ROWS = 5000;
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const hasChanged = (item) => Object.keys(item.changes).length > 0;
-const listSnapshot = (listing) => ({ ...normalizedListing(listing), listingId: Number(listing.lot_project_listing_id), status: listing.lot_project_listing_status, soldSubstatus: listing.lot_project_listing_sold_substatus });
 
 const cadastralSQL = `(
  SELECT GROUP_CONCAT(c.lot_project_cadastral_lot_number ORDER BY c.lot_project_cadastral_lot_number SEPARATOR ', ')
@@ -85,29 +85,33 @@ const planRows = async (connection, project, rows, { forUpdate = false } = {}) =
     const excelRow = Number(row.excelRowNumber || 0);
     const rowErrors = [];
     let after = null;
-    if (!row.original || !row.values || !row.expectedStatus) rowErrors.push('Missing original values, edited values, or status.');
+    if (!row.original || !row.values || !row.expectedStatus) rowErrors.push('Workbook information is missing. Download a new editable template and try again.');
     else {
       try {
         const original = normalizeBulkInput(row.original, {});
-        if (BULK_FIELDS.some((field) => original[field] !== before[field])) rowErrors.push('Listing changed since the workbook was exported. Download a fresh template.');
+        if (BULK_FIELDS.some((field) => original[field] !== before[field])) rowErrors.push('This unit was updated after you exported the Excel file. Download a fresh template so you do not overwrite newer changes.');
         after = normalizeBulkInput(row.values, before);
         rowErrors.push(...validateBulkListing(after, project.lot_project_location_code));
         const priorIds = before.oldUnitIds ? before.oldUnitIds.split(', ').filter(Boolean) : [];
         const nextIds = new Set(after.oldUnitIds ? after.oldUnitIds.split(', ').filter(Boolean) : []);
-        if (priorIds.some((id) => !nextIds.has(id))) rowErrors.push('Previously recorded Old Unit IDs must be retained.');
+        if (priorIds.some((id) => !nextIds.has(id))) rowErrors.push('Do not remove previous Unit IDs from Old Unit IDs. Restore the missing IDs to keep the unit history complete.');
       } catch (error) { rowErrors.push(error.message); }
     }
     const expectedStatus = mapListingRow(listing).status;
-    if (row.expectedStatus !== expectedStatus) rowErrors.push('Status changed since the workbook was exported.');
+    if (row.expectedStatus !== expectedStatus) rowErrors.push('This unit’s status changed after the Excel file was exported. Download a new template and check the latest status.');
     if (after) {
       const changed = listingChanges(before, after);
-      if (Object.keys(changed).length && !['available', 'hold'].includes(String(listing.lot_project_listing_status))) {
-        rowErrors.push('Protected sale/cancellation listing: use the individual Edit Listing approval workflow; buyer contract fields are frozen.');
+      // Contracted units can correct their identity, never lot area or pricing.
+      // A buyer account is expected for a sold unit and must not block these
+      // governed identity-only corrections.
+      rowErrors.push(...getProtectedFieldErrors(changed, listing.lot_project_listing_status));
+      if (!isContractProtected(listing.lot_project_listing_status) && Number(listing.current_account_id || 0) > 0 && Object.keys(changed).length) {
+        rowErrors.push('This unit still has a linked buyer account, even though it is marked Available or Hold. Ask an administrator to check the unit status before editing.');
       }
-      if (Object.keys(changed).length && Number(listing.current_account_id || 0) > 0) rowErrors.push('A current buyer account is linked to this listing.');
       const cadastralNames = after.cadastralLots ? after.cadastralLots.split(', ').filter(Boolean) : [];
-      for (const name of cadastralNames) if (!allCadastral.has(name)) rowErrors.push(`Unknown cadastral lot: ${name}`);
-      planned.push({ listing, before, after, changes: changed, cadastralNames, excelRowNumber: excelRow });
+      for (const name of cadastralNames) if (!allCadastral.has(name)) rowErrors.push(`Cadastral lot ${name} was not found in this project. Choose an existing cadastral lot number.`);
+      planned.push({ listing, before, after, changes: changed, cadastralNames, excelRowNumber: excelRow,
+        contractProtected: isContractProtected(listing.lot_project_listing_status) });
     }
     if (rowErrors.length) errors.push({ listingId: row.listingId, excelRowNumber: excelRow, unitCode: before.unitCode, errors: [...new Set(rowErrors)] });
   }
@@ -115,7 +119,7 @@ const planRows = async (connection, project, rows, { forUpdate = false } = {}) =
   const seenCodes = new Map();
   for (const item of changed) {
     const code = item.after.unitCode;
-    if (seenCodes.has(code)) errors.push({ listingId: item.listing.lot_project_listing_id, excelRowNumber: item.excelRowNumber, errors: [`Duplicate Unit ID ${code} in this batch.`] });
+    if (seenCodes.has(code)) errors.push({ listingId: item.listing.lot_project_listing_id, excelRowNumber: item.excelRowNumber, errors: [`Unit ID ${code} is repeated in this Excel file. Each unit needs a unique Unit ID.`] });
     seenCodes.set(code, true);
   }
   if (changed.length) {
@@ -133,12 +137,24 @@ const planRows = async (connection, project, rows, { forUpdate = false } = {}) =
     for (const item of changed) {
       const id = item.listing.lot_project_listing_id;
       if (item.after.unitCode !== item.before.unitCode && claimedByOther(item.after.unitCode, id)) {
-        errors.push({ listingId: id, excelRowNumber: item.excelRowNumber, errors: [`Unit ID ${item.after.unitCode} is already used by another listing or its Old Unit IDs.`] });
+        errors.push({ listingId: id, excelRowNumber: item.excelRowNumber, errors: [`Unit ID ${item.after.unitCode} already belongs to another unit or appears in its Old Unit IDs. Choose a unique Unit ID.`] });
       }
       const originalAliases = new Set(item.before.oldUnitIds ? item.before.oldUnitIds.split(', ') : []);
       const newAliases = item.after.oldUnitIds ? item.after.oldUnitIds.split(', ').filter((alias) => !originalAliases.has(alias)) : [];
       for (const alias of newAliases) {
-        if (claimedByOther(alias, id)) errors.push({ listingId: id, excelRowNumber: item.excelRowNumber, errors: [`Historical Unit ID ${alias} belongs to another listing.`] });
+        if (claimedByOther(alias, id)) errors.push({ listingId: id, excelRowNumber: item.excelRowNumber, errors: [`Old Unit ID ${alias} is already linked to another unit. Remove this duplicate alias or correct the source record.`] });
+      }
+    }
+    const nextClaims = new Map();
+    for (const item of changed) {
+      const unitId = Number(item.listing.lot_project_listing_id);
+      const codes = [item.after.unitCode, ...(item.after.oldUnitIds ? item.after.oldUnitIds.split(', ').filter(Boolean) : [])];
+      for (const code of codes) {
+        if (nextClaims.has(code) && nextClaims.get(code) !== unitId) {
+          errors.push({ listingId: unitId, excelRowNumber: item.excelRowNumber, unitCode: item.before.unitCode,
+            errors: [`Unit ID ${code} is assigned to more than one unit in this Excel file. Use a different ID.`] });
+        }
+        nextClaims.set(code, unitId);
       }
     }
   }
@@ -154,7 +170,9 @@ export const validateBulkListingEdit = async (req, res) => {
     return res.json({ success: true, valid: plan.errors.length === 0, errors: plan.errors,
       total: plan.planned.length, changedCount: plan.changed.length,
       unchangedCount: plan.planned.length - plan.changed.length,
+      protectedCount: plan.changed.filter((item) => item.contractProtected).length,
       preview: plan.changed.map((item) => ({ listingId: item.listing.lot_project_listing_id, excelRowNumber: item.excelRowNumber,
+        contractProtected: item.contractProtected, status: mapListingRow(item.listing).status,
         before: item.before, after: item.after, changes: item.changes })),
     });
   } catch (error) { return res.status(error.statusCode || 400).json({ message: getErrorMessage(error) }); }
@@ -177,9 +195,43 @@ export const applyBulkListingEdit = async (req, res) => {
     const plan = await planRows(connection, project, req.body?.rows, { forUpdate: true });
     if (plan.errors.length) {
       await connection.rollback();
-      return res.status(409).json({ message: 'Bulk update rejected; download a new template or correct the errors. No changes were saved.', errors: plan.errors });
+      return res.status(409).json({ message: 'Some rows need correction. Read the messages below, fix the Excel file, and validate again. No changes were saved.', errors: plan.errors });
     }
     if (!plan.changed.length) { await connection.rollback(); return res.status(400).json({ message: 'No listing values were changed.' }); }
+    // Approval requests are saved separately, BEFORE any inventory writes.
+    // Nothing in a mixed batch changes until every protected identity correction
+    // has received the required Operations Head approval.
+    const protectedApprovals = new Map();
+    const approvalPending = [];
+    for (const item of plan.changed.filter((entry) => entry.contractProtected)) {
+      const listingId = Number(item.listing.lot_project_listing_id);
+      const payload = { listingId, before: item.before, after: item.after, changes: item.changes, reason };
+      const governance = await authorizeGovernedAction(connection, {
+        actor: req.authUser, actionKey: 'listing.protected_edit', projectId: project.lot_project_id,
+        entityId: listingId, entityLabel: item.before.unitCode,
+        payload, reason, consume: false,
+      });
+      protectedApprovals.set(listingId, { payload, governance });
+      if (governance.pending) approvalPending.push({ listingId, unitCode: item.before.unitCode,
+        requestNumber: governance.pending.requestNumber, status: governance.pending.status });
+    }
+    if (approvalPending.length) {
+      await connection.commit(); committed = true; // Commit ONLY approval requests; inventory is unchanged.
+      return res.status(202).json({ success: true, approvalPending: true,
+        message: `${approvalPending.length} protected unit correction(s) are waiting for Operations Head approval. No listing changes were saved. After approval, click Apply Approved Changes again using this same Excel file.`,
+        pending: approvalPending });
+    }
+    // All requests exist and are approved (or the user is an authorized Head/Admin).
+    // Consume the approvals atomically with the updates, so any error rolls back both.
+    for (const [listingId, { payload, governance }] of protectedApprovals) {
+      const result = await authorizeGovernedAction(connection, {
+        actor: req.authUser, actionKey: 'listing.protected_edit', projectId: project.lot_project_id,
+        entityId: listingId, entityLabel: payload.before.unitCode,
+        payload, reason, approvalRequestId: governance.approvalRequestId, consume: true,
+      });
+      if (!result.authorized) throw fail(`Operations Head approval is still needed for ${payload.before.unitCode}. No listing changes were saved.`, 409);
+      protectedApprovals.set(listingId, { payload, governance: result });
+    }
     const filename = String(req.body?.filename || 'Bulk Edit Listings.xlsx').slice(0, 255);
     const [batchResult] = await connection.query(
       `INSERT INTO lot_project_listing_bulk_batches (lot_project_id, changed_by_user_id, source_filename, adjustment_reason, changed_count)
@@ -192,31 +244,72 @@ export const applyBulkListingEdit = async (req, res) => {
       if (after.unitCode !== before.unitCode) {
         await syncListingDocumentCloudinaryUnitFolder(connection, id, before.unitCode, after.unitCode, completedCloudinaryMoves);
       }
-      const price = calculateContractPricing({ lotAreaSqm: after.lotAreaSqm, pricePerSqm: after.installmentPricePerSqm, legalMiscRate: after.legalMiscRate });
-      await connection.query(
-        `UPDATE lot_project_listings SET lot_project_listing_unit_id = ?, lot_project_listing_old_unit_ids = ?,
-          lot_project_listing_unit_type = ?, lot_project_listing_area_sqm = ?,
-          lot_project_listing_price_per_sqm = ?, lot_project_listing_installment_price_per_sqm = ?,
-          lot_project_listing_cash_price_per_sqm = ?, lot_project_listing_net_selling_price = ?,
-          lot_project_listing_lmf_rate = ?, lot_project_listing_lmf_amount = ?, lot_project_listing_tcp = ?,
-          lot_project_listing_reservation_fee = ?, annual_interest_rate = ?
-         WHERE lot_project_listing_id = ? AND lot_project_id = ?`,
-        [after.unitCode, after.oldUnitIds || null, after.lotType, after.lotAreaSqm, after.installmentPricePerSqm,
-          after.installmentPricePerSqm, after.cashPricePerSqm, price.netSellingPrice, after.legalMiscRate,
-          price.lmfAmount, price.tcp, after.reservationFee, after.annualInterestRate, id, project.lot_project_id]
-      );
-      if (before.cadastralLots !== after.cadastralLots) {
-        await connection.query('DELETE FROM lot_project_listing_cadastral_lots WHERE lot_project_listing_id = ?', [id]);
-        if (cadastralNames.length) {
-          const [lotRows] = await connection.query(
-            `SELECT lot_project_cadastral_lot_number_id FROM lot_project_cadastral_lot_numbers
-             WHERE lot_project_id = ? AND UPPER(lot_project_cadastral_lot_number) IN (${cadastralNames.map(() => '?').join(',')})`,
-            [project.lot_project_id, ...cadastralNames]
+      if (item.contractProtected) {
+        // Identity-only: never update area, prices, LMF, interest, reservation
+        // fee, or stored TCP on a unit with a signed/cancelled contract.
+        await connection.query(
+          `UPDATE lot_project_listings SET lot_project_listing_unit_id = ?,
+           lot_project_listing_old_unit_ids = ?, lot_project_listing_unit_type = ?
+           WHERE lot_project_listing_id = ? AND lot_project_id = ?`,
+          [after.unitCode, after.oldUnitIds || null, after.lotType, id, project.lot_project_id]
+        );
+        if (after.unitCode !== before.unitCode && Number(listing.current_account_id || 0) > 0) {
+          const [accounts] = await connection.query(
+            `SELECT lot_project_account_id, lot_project_reservation_history_id FROM lot_project_accounts
+             WHERE lot_project_account_id = ? AND lot_project_id = ? AND lot_project_listing_id = ? FOR UPDATE`,
+            [listing.current_account_id, project.lot_project_id, id]
           );
-          if (lotRows.length !== cadastralNames.length) throw fail('Cadastral lot list changed. Try again.', 409);
-          for (const lot of lotRows) await connection.query(
+          const account = accounts[0];
+          if (!account) throw fail(`Could not verify the buyer account for ${before.unitCode}. No changes were saved.`, 409);
+          await connection.query('UPDATE lot_project_accounts SET unit_id_snapshot = ?, updated_at = NOW() WHERE lot_project_account_id = ?',
+            [after.unitCode, account.lot_project_account_id]);
+          if (account.lot_project_reservation_history_id) {
+            await connection.query('UPDATE lot_project_reservation_history SET unit_id_snapshot = ?, updated_at = NOW() WHERE lot_project_reservation_history_id = ?',
+              [after.unitCode, account.lot_project_reservation_history_id]);
+            if (await tableExists(connection, 'lot_project_cancelled_sale_archives')) {
+              await connection.query('UPDATE lot_project_cancelled_sale_archives SET unit_id_snapshot = ? WHERE lot_project_reservation_history_id = ?',
+                [after.unitCode, account.lot_project_reservation_history_id]);
+            }
+          }
+        }
+      } else {
+        const price = calculateContractPricing({ lotAreaSqm: after.lotAreaSqm, pricePerSqm: after.installmentPricePerSqm, legalMiscRate: after.legalMiscRate });
+        await connection.query(
+          `UPDATE lot_project_listings SET lot_project_listing_unit_id = ?, lot_project_listing_old_unit_ids = ?,
+            lot_project_listing_unit_type = ?, lot_project_listing_area_sqm = ?,
+            lot_project_listing_price_per_sqm = ?, lot_project_listing_installment_price_per_sqm = ?,
+            lot_project_listing_cash_price_per_sqm = ?, lot_project_listing_net_selling_price = ?,
+            lot_project_listing_lmf_rate = ?, lot_project_listing_lmf_amount = ?, lot_project_listing_tcp = ?,
+            lot_project_listing_reservation_fee = ?, annual_interest_rate = ?
+           WHERE lot_project_listing_id = ? AND lot_project_id = ?`,
+          [after.unitCode, after.oldUnitIds || null, after.lotType, after.lotAreaSqm, after.installmentPricePerSqm,
+            after.installmentPricePerSqm, after.cashPricePerSqm, price.netSellingPrice, after.legalMiscRate,
+            price.lmfAmount, price.tcp, after.reservationFee, after.annualInterestRate, id, project.lot_project_id]
+        );
+      }
+      if (before.cadastralLots !== after.cadastralLots) {
+        // Difference-based changes, just like individual Edit Listing. Do not
+        // remove/recreate unchanged cadastral links for contracted units.
+        const [availableLots] = await connection.query('SELECT lot_project_cadastral_lot_number, lot_project_cadastral_lot_number_id FROM lot_project_cadastral_lot_numbers WHERE lot_project_id = ?', [project.lot_project_id]);
+        const allCadastral = new Map(availableLots.map((lot) => [String(lot.lot_project_cadastral_lot_number).toUpperCase(), lot.lot_project_cadastral_lot_number_id]));
+        const previousNames = before.cadastralLots ? before.cadastralLots.split(', ').filter(Boolean) : [];
+        const removed = previousNames.filter((name) => !cadastralNames.includes(name));
+        const added = cadastralNames.filter((name) => !previousNames.includes(name));
+        if (removed.length) {
+          const removedIds = removed.map((name) => allCadastral.get(name));
+          if (removedIds.some((value) => !value)) throw fail(`Cadastral lot data changed for ${before.unitCode}. Download a fresh template.`, 409);
+          await connection.query(
+            `DELETE FROM lot_project_listing_cadastral_lots WHERE lot_project_listing_id = ?
+             AND lot_project_cadastral_lot_number_id IN (${removedIds.map(() => '?').join(',')})`,
+            [id, ...removedIds]
+          );
+        }
+        for (const name of added) {
+          const lotId = allCadastral.get(name);
+          if (!lotId) throw fail(`Cadastral lot ${name} does not exist for ${before.unitCode}.`, 409);
+          await connection.query(
             'INSERT INTO lot_project_listing_cadastral_lots (lot_project_listing_id, lot_project_cadastral_lot_number_id) VALUES (?,?)',
-            [id, lot.lot_project_cadastral_lot_number_id]
+            [id, lotId]
           );
         }
       }
@@ -235,9 +328,13 @@ export const applyBulkListingEdit = async (req, res) => {
         description: `Updated ${after.unitCode} from bulk listing batch ${batchId}. Reason: ${reason}`,
         metadata: { batchId, reason, before: beforeSnapshot, after: afterSnapshot, changes },
       });
-      await createOperationalReview(connection, { actor: req.authUser, actionKey: 'listing.edit', department: 'operations',
+      const approval = protectedApprovals.get(id)?.governance;
+      await createOperationalReview(connection, { actor: req.authUser,
+        actionKey: item.contractProtected ? 'listing.protected_edit' : 'listing.edit', department: 'operations',
         projectId: project.lot_project_id, entityType: 'lot_project_listing', entityId: id,
-        entityLabel: `Unit ${after.unitCode} — ${project.lot_project_name}`, beforeSnapshot, afterSnapshot });
+        entityLabel: `Unit ${after.unitCode} — ${project.lot_project_name}`, beforeSnapshot, afterSnapshot,
+        ...(item.contractProtected ? { headPreApprovedByUserId: approval?.headPreApprovedByUserId || null } : {}),
+      });
     }
     await writeAuditLog(connection, req, { action: 'import', module: 'Listings', entityType: 'lot_project_listing_bulk_batch',
       entityId: String(batchId), entityLabel: `Bulk listing batch ${batchId}`, title: 'Bulk listing adjustment completed',

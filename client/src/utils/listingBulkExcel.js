@@ -14,13 +14,16 @@ export const FIELD_HEADERS = {
   annualInterestRate: 'Annual Interest Rate (%)',
 }
 export const FIELDS = Object.keys(FIELD_HEADERS)
+export const PROTECTED_IDENTITY_FIELDS = ['unitCode', 'oldUnitIds', 'cadastralLots', 'lotType']
+export const isProtectedListingRow = (item) => !['available', 'hold'].includes(String(item.rawStatus || '').toLowerCase())
 const formatValue = (field, value) => field === 'cadastralLots' ? (Array.isArray(value) ? value.join(', ') : value || '') : value === 'oldUnitIds' ? (value === '-' ? '' : value || '') : value
-const validHeaders = (row) => ['Listing ID', 'Project ID', 'Status', ...Object.values(FIELD_HEADERS)].every((name) => Object.prototype.hasOwnProperty.call(row, name))
+const validHeaders = (row) => ['Listing ID', 'Project ID', 'Status', 'Contract Protection', ...Object.values(FIELD_HEADERS)].every((name) => Object.prototype.hasOwnProperty.call(row, name))
 export const exportListingWorkbook = ({ listings, project, status, editable }) => {
   const rows = listings.map((item) => ({
     'Listing ID': Number(item.id ?? item.lot_project_listing_id),
     'Project ID': Number(project.id ?? project.lot_project_id),
     'Status': item.status,
+    'Contract Protection': isProtectedListingRow(item) ? 'Protected — identity corrections only' : 'Editable inventory',
     ...Object.fromEntries(FIELDS.map((field) => [FIELD_HEADERS[field], formatValue(field, item[field] ?? (field === 'lotAreaSqm' ? item.area : field === 'legalMiscRate' ? item.lmfRate : item[field]) )])),
     ...(editable ? {} : {
       'Installment TCP': item.installmentTcp ?? item.tcp,
@@ -28,13 +31,35 @@ export const exportListingWorkbook = ({ listings, project, status, editable }) =
     }),
   }))
   const wb = XLSX.utils.book_new()
-  const sheet = XLSX.utils.json_to_sheet(rows, { header: rows.length ? undefined : ['Listing ID', 'Project ID', 'Status', ...Object.values(FIELD_HEADERS)] })
-  sheet['!cols'] = Object.keys(rows[0] || { 'Listing ID': '', 'Project ID': '', 'Status': '', ...Object.fromEntries(FIELDS.map(x => [FIELD_HEADERS[x], ''])) }).map((key) => ({ wch: Math.min(42, Math.max(15, key.length + 3)) }))
+  const sheet = XLSX.utils.json_to_sheet(rows, { header: rows.length ? undefined : ['Listing ID', 'Project ID', 'Status', 'Contract Protection', ...Object.values(FIELD_HEADERS)] })
+  sheet['!cols'] = Object.keys(rows[0] || { 'Listing ID': '', 'Project ID': '', 'Status': '', 'Contract Protection': '', ...Object.fromEntries(FIELDS.map(x => [FIELD_HEADERS[x], ''])) }).map((key) => ({ wch: Math.min(42, Math.max(15, key.length + 3)) }))
   if (rows.length) {
     Object.keys(rows[0]).forEach((_, index) => {
       const address = XLSX.utils.encode_cell({ r: 0, c: index })
       sheet[address].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1D4ED8' } } }
     })
+  }
+  if (editable) {
+    // Visual cue only. The backend ALWAYS validates the current unit status and
+    // compares every contract field even if spreadsheet protection is removed.
+    const headers = Object.keys(rows[0] || {});
+    rows.forEach((item, rowIndex) => {
+      const protectedRow = String(item['Contract Protection'] || '').startsWith('Protected');
+      headers.forEach((header, columnIndex) => {
+        const address = XLSX.utils.encode_cell({ r: rowIndex + 1, c: columnIndex });
+        const cell = sheet[address];
+        if (!cell) return;
+        const field = FIELDS.find((key) => FIELD_HEADERS[key] === header);
+        const allowed = Boolean(field) && (!protectedRow || PROTECTED_IDENTITY_FIELDS.includes(field));
+        cell.s = {
+          ...(cell.s || {}),
+          protection: { locked: !allowed },
+          ...(protectedRow && !allowed ? { fill: { fgColor: { rgb: 'E5E7EB' } }, font: { color: { rgb: '6B7280' } } } : {}),
+          ...(allowed ? { fill: { fgColor: { rgb: 'EFF6FF' } } } : {}),
+        };
+      });
+    });
+    sheet['!protect'] = { selectLockedCells: true, selectUnlockedCells: true };
   }
   sheet['!autofilter'] = { ref: sheet['!ref'] || 'A1:A1' }
   XLSX.utils.book_append_sheet(wb, sheet, 'Listings')
@@ -53,7 +78,11 @@ export const exportListingWorkbook = ({ listings, project, status, editable }) =
       ['Edit only the existing listing values on the Listings tab. Do not change Listing ID, Project ID, or Status.'],
       ['Unit ID is matched by permanent Listing ID. Previous Unit ID is automatically appended to Old Unit IDs.'],
       ['Old Unit IDs and Cadastral Lots are comma-separated. Cadastral lot numbers must exist in the selected project.'],
-      ['Available/Hold inventory can be edited; Sold/Cancelled/Pending Cancellation corrections require the individual protected listing workflow.'],
+      ['Available/Hold: regular listing and price updates are allowed.'],
+      ['Sold/Active, Fully Paid, Pending Cancellation and Cancelled: Unit ID, Old Unit IDs, Cadastral Lots and Lot Type may be corrected with Operations Head approval.'],
+      ['Contract-protected financial fields, reservation fee, interest rate and lot area must stay exactly the same. Do not change grey cells.'],
+      ['Changes to a protected unit need Operations Head approval before ANY rows in the batch are saved.'],
+      ['If validation finds a contract-field change, the ENTIRE batch is rejected. Restore the original value and validate again.'],
       ['A completed workbook is not saved until server validation and final confirmation are completed.'],
     ])
     help['!cols'] = [{ wch: 115 }]
@@ -75,7 +104,7 @@ export const parseBulkWorkbook = async (file, projectId) => {
   if (originalRows.length !== records.length) throw new Error('Workbook rows must not be added or deleted.')
   const ids = new Set()
   return records.map((row, index) => {
-    if (!validHeaders(row)) throw new Error(`Excel row ${index + 2}: Missing mandatory columns. Use an unmodified exported template.`)
+    if (!validHeaders(row)) throw new Error(`Excel row ${index + 2}: This file is missing required listing columns. Download a new Editable Listings Template from Export Listings and copy your permitted edits into it.`)
     const listingId = Number(row['Listing ID'])
     if (!Number.isSafeInteger(listingId) || listingId <= 0 || ids.has(listingId)) throw new Error(`Excel row ${index + 2}: Duplicate or invalid Listing ID.`)
     if (Number(row['Project ID']) !== Number(projectId)) throw new Error(`Excel row ${index + 2}: This listing belongs to another project.`)

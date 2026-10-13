@@ -9,6 +9,25 @@ export const BULK_FIELDS = Object.freeze([
   'installmentPricePerSqm', 'cashPricePerSqm', 'reservationFee',
   'legalMiscRate', 'annualInterestRate',
 ]);
+// Contracted units keep their signed financial terms, but their identity may
+// need administrative correction after cadastral changes or a re-survey.
+export const PROTECTED_IDENTITY_FIELDS = Object.freeze([
+  'unitCode', 'oldUnitIds', 'cadastralLots', 'lotType',
+]);
+export const BULK_FIELD_LABELS = Object.freeze({
+  unitCode: 'Unit ID', oldUnitIds: 'Old Unit IDs', cadastralLots: 'Cadastral Lot Numbers',
+  lotType: 'Lot Type', lotAreaSqm: 'Lot Area (SQM)',
+  installmentPricePerSqm: 'Installment Price / SQM', cashPricePerSqm: 'Cash Price / SQM',
+  reservationFee: 'Reservation Fee', legalMiscRate: 'Legal / Misc Rate',
+  annualInterestRate: 'Annual Interest Rate',
+});
+export const isContractProtected = (status) => !['available', 'hold'].includes(String(status || '').toLowerCase());
+export const getProtectedFieldErrors = (changes, status) => {
+  if (!isContractProtected(status)) return [];
+  return Object.keys(changes).filter((field) => !PROTECTED_IDENTITY_FIELDS.includes(field)).map((field) =>
+    `${BULK_FIELD_LABELS[field] || field} cannot be changed: this unit has a sale or cancellation record, so its contract amounts are fixed. Restore the original value in Excel. For a surveyed area correction, use the separate approved re-survey process.`
+  );
+};
 export const NUMERIC_FIELDS = Object.freeze([
   'lotAreaSqm', 'installmentPricePerSqm', 'cashPricePerSqm',
   'reservationFee', 'legalMiscRate', 'annualInterestRate',
@@ -31,8 +50,8 @@ export const normalizeBulkInput = (raw, original = {}) => {
   const normalized = {};
   for (const field of BULK_FIELDS) {
     const value = raw?.[field];
-    if (value === undefined) throw new Error(`${field} is missing from the workbook.`);
-    if (value == null && !['oldUnitIds', 'cadastralLots'].includes(field)) throw new Error(`${field} is blank.`);
+    if (value === undefined) throw new Error(`${BULK_FIELD_LABELS[field] || field} is missing from the workbook. Download a new editable template.`);
+    if (value == null && !['oldUnitIds', 'cadastralLots'].includes(field)) throw new Error(`${BULK_FIELD_LABELS[field] || field} is blank. Enter a value or restore the original.`);
     normalized[field] = NUMERIC_FIELDS.includes(field) ? Number(value) : String(value ?? '').trim();
   }
   normalized.unitCode = normalized.unitCode.toUpperCase();
@@ -51,9 +70,9 @@ export const validateBulkListing = (next, locationCode) => {
   if (!next.unitCode || next.unitCode.length > 50 || !next.unitCode.startsWith(`${locationCode}-`)) errors.push(`Unit ID must begin with ${locationCode}- and be 50 characters or fewer.`);
   if (!['Inner', 'Corner', 'End'].includes(next.lotType)) errors.push('Lot type must be Inner, Corner, or End.');
   for (const key of NUMERIC_FIELDS) {
-    if (!Number.isFinite(next[key])) errors.push(`${key} must be a valid number.`);
-    else if (['lotAreaSqm', 'installmentPricePerSqm', 'cashPricePerSqm'].includes(key) && next[key] <= 0) errors.push(`${key} must be greater than zero.`);
-    else if (next[key] < 0 || (['annualInterestRate', 'legalMiscRate'].includes(key) && next[key] > 100)) errors.push(`${key} is outside the allowed range.`);
+    if (!Number.isFinite(next[key])) errors.push(`${BULK_FIELD_LABELS[key]} must be a valid number.`);
+    else if (['lotAreaSqm', 'installmentPricePerSqm', 'cashPricePerSqm'].includes(key) && next[key] <= 0) errors.push(`${BULK_FIELD_LABELS[key]} must be greater than zero.`);
+    else if (next[key] < 0 || (['annualInterestRate', 'legalMiscRate'].includes(key) && next[key] > 100)) errors.push(`${BULK_FIELD_LABELS[key]} is outside the allowed range.`);
   }
   if (next.oldUnitIds.length > 65500) errors.push('Old Unit IDs are too long.');
   if (normalizeCodes(next.oldUnitIds).includes(next.unitCode)) errors.push('Old Unit IDs cannot contain the current Unit ID.');

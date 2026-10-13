@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { normalizedListing, normalizeBulkInput, listingChanges, validateBulkListing, statusFilterSQL, BULK_STATUS_OPTIONS } from '../controllers/Lot_Projects/Listings/listingBulkFields.js'
+import { normalizedListing, normalizeBulkInput, listingChanges, validateBulkListing, statusFilterSQL, BULK_STATUS_OPTIONS, isContractProtected, getProtectedFieldErrors } from '../controllers/Lot_Projects/Listings/listingBulkFields.js'
 
 const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf8')
 
@@ -54,7 +54,8 @@ test('bulk edit is transactionally audited and protects buyer contracts', () => 
   assert.match(backend, /connection\.commit\(\)/)
   assert.match(backend, /createOperationalReview\(/)
   assert.match(backend, /writeAuditLog\(/)
-  assert.match(backend, /\['available', 'hold'\]/)
+  assert.match(backend, /isContractProtected\(/)
+  assert.match(backend, /getProtectedFieldErrors\(/)
   assert.match(backend, /current_account_id/)
   assert.match(backend, /calculateContractPricing/)
   assert.match(backend, /revokeOpenBuyerFormLinks/)
