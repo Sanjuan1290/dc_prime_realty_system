@@ -97,7 +97,7 @@ test('Excel remains editable while protected cells are clearly marked and server
   assert.doesNotMatch(ui, /Sold, fully paid and cancelled units: only Unit ID/); // requested banner removed; server protection remains
   assert.match(excel, /originalRow\.Status/);
   assert.match(ui, /Excel Row/);
-  assert.match(ui, /Contract protected · Head approval/);
+  assert.match(ui, /Head approval required/);
   assert.match(ui, /Apply Approved Changes/);
   assert.match(ui, /No units were updated/);
 });
