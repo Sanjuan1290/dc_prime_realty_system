@@ -83,11 +83,18 @@ test('protected updates write only identity fields and synchronize current buyer
   assert.match(backend, /No changes were saved/);
 });
 
-test('Excel includes all statuses with protected fields visually locked; server remains authority', () => {
+test('Excel remains editable while protected cells are clearly marked and server remains authority', () => {
   assert.match(excel, /Contract Protection/);
   assert.match(excel, /isProtectedListingRow/);
   assert.match(excel, /PROTECTED_IDENTITY_FIELDS\.includes\(field\)/);
-  assert.match(excel, /sheet\['!protect'\]/);
+  assert.doesNotMatch(excel, /sheet\['!protect'\]\s*=/)
+  assert.doesNotMatch(excel, /protection:\s*\{\s*locked:/)
+  assert.match(excel, /allowed \? \{ fill:/)
+  assert.match(excel, /rgb: 'E5E7EB'/)
+  assert.match(excel, /cellStyles: true/)
+  assert.match(excel, /BLUE cells/)
+  assert.match(excel, /GREY cells/)
+  assert.match(ui, /Grey Excel cells show contract-protected values/);
   assert.match(excel, /originalRow\.Status/);
   assert.match(ui, /Excel Row/);
   assert.match(ui, /Contract protected · Head approval/);

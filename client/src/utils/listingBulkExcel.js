@@ -40,8 +40,9 @@ export const exportListingWorkbook = ({ listings, project, status, editable }) =
     })
   }
   if (editable) {
-    // Visual cue only. The backend ALWAYS validates the current unit status and
-    // compares every contract field even if spreadsheet protection is removed.
+    // Keep the worksheet fully editable. xlsx-js-style does not reliably persist
+    // unlocked-cell styles, so Excel sheet protection can accidentally lock EVERY
+    // cell. Cell colors are guidance only; the server rejects protected changes.
     const headers = Object.keys(rows[0] || {});
     rows.forEach((item, rowIndex) => {
       const protectedRow = String(item['Contract Protection'] || '').startsWith('Protected');
@@ -53,13 +54,12 @@ export const exportListingWorkbook = ({ listings, project, status, editable }) =
         const allowed = Boolean(field) && (!protectedRow || PROTECTED_IDENTITY_FIELDS.includes(field));
         cell.s = {
           ...(cell.s || {}),
-          protection: { locked: !allowed },
           ...(protectedRow && !allowed ? { fill: { fgColor: { rgb: 'E5E7EB' } }, font: { color: { rgb: '6B7280' } } } : {}),
           ...(allowed ? { fill: { fgColor: { rgb: 'EFF6FF' } } } : {}),
         };
       });
     });
-    sheet['!protect'] = { selectLockedCells: true, selectUnlockedCells: true };
+    // Do NOT set sheet['!protect']: it would lock valid Available/Hold edits.
   }
   sheet['!autofilter'] = { ref: sheet['!ref'] || 'A1:A1' }
   XLSX.utils.book_append_sheet(wb, sheet, 'Listings')
@@ -75,12 +75,13 @@ export const exportListingWorkbook = ({ listings, project, status, editable }) =
   if (editable) {
     const help = XLSX.utils.aoa_to_sheet([
       ['Bulk Edit Listings — Instructions'],
+      ['The Listings worksheet is editable. BLUE cells are permitted changes; GREY cells are contract-protected reference values.'],
       ['Edit only the existing listing values on the Listings tab. Do not change Listing ID, Project ID, or Status.'],
       ['Unit ID is matched by permanent Listing ID. Previous Unit ID is automatically appended to Old Unit IDs.'],
       ['Old Unit IDs and Cadastral Lots are comma-separated. Cadastral lot numbers must exist in the selected project.'],
       ['Available/Hold: regular listing and price updates are allowed.'],
       ['Sold/Active, Fully Paid, Pending Cancellation and Cancelled: Unit ID, Old Unit IDs, Cadastral Lots and Lot Type may be corrected with Operations Head approval.'],
-      ['Contract-protected financial fields, reservation fee, interest rate and lot area must stay exactly the same. Do not change grey cells.'],
+      ['Do not change grey cells for contracted units: prices, reservation fee, LMF, interest rate and lot area must stay unchanged. The server checks these fields even if you type in them.'],
       ['Changes to a protected unit need Operations Head approval before ANY rows in the batch are saved.'],
       ['If validation finds a contract-field change, the ENTIRE batch is rejected. Restore the original value and validate again.'],
       ['A completed workbook is not saved until server validation and final confirmation are completed.'],
@@ -90,7 +91,7 @@ export const exportListingWorkbook = ({ listings, project, status, editable }) =
     wb.Workbook.Sheets.push({ Hidden: 0 })
   }
   const safeName = String(project.name || 'project').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 50)
-  XLSX.writeFile(wb, `${safeName}_${editable ? 'Bulk_Edit_Listings' : 'Listings'}_${status}.xlsx`)
+  XLSX.writeFile(wb, `${safeName}_${editable ? 'Bulk_Edit_Listings' : 'Listings'}_${status}.xlsx`, { compression: true, cellStyles: true })
 }
 export const parseBulkWorkbook = async (file, projectId) => {
   if (!/\.xlsx$/i.test(file.name) || file.size > 10 * 1024 * 1024) throw new Error('Select an .xlsx file smaller than 10 MB.')
