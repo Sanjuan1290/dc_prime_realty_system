@@ -33,7 +33,7 @@ export const NUMERIC_FIELDS = Object.freeze([
   'reservationFee', 'legalMiscRate', 'annualInterestRate',
 ]);
 const normalizeCodes = (value) => [...new Set(String(value ?? '').split(/[,;\n]+/)
-  .map((item) => item.trim().toUpperCase()).filter(Boolean))];
+  .map((item) => item.trim().toUpperCase()).filter((item) => item && item !== '-' && item !== '—'))];
 export const normalizedListing = (listing) => ({
   unitCode: String(listing.lot_project_listing_unit_id ?? listing.unitCode ?? '').trim().toUpperCase(),
   oldUnitIds: normalizeCodes(listing.lot_project_listing_old_unit_ids ?? listing.oldUnitIds).join(', '),
@@ -65,6 +65,18 @@ export const normalizeBulkInput = (raw, original = {}) => {
 export const listingChanges = (before, after) => Object.fromEntries(
   BULK_FIELDS.filter((key) => before[key] !== after[key]).map((key) => [key, { before: before[key], after: after[key] }])
 );
+// Compare what the user actually edited against the workbook's Original Values.
+// Unedited rows are not stale conflicts and must not overwrite newer database data.
+export const prepareBulkListingRow = (before, workbookOriginal, workbookValues) => {
+  const original = normalizeBulkInput(workbookOriginal, {});
+  const edited = normalizeBulkInput(workbookValues, original);
+  const intendedEdits = Object.keys(listingChanges(original, edited)).length > 0;
+  return {
+    intendedEdits,
+    stale: intendedEdits && BULK_FIELDS.some((field) => original[field] !== before[field]),
+    after: intendedEdits ? normalizeBulkInput(workbookValues, before) : before,
+  };
+};
 export const validateBulkListing = (next, locationCode) => {
   const errors = [];
   if (!next.unitCode || next.unitCode.length > 50 || !next.unitCode.startsWith(`${locationCode}-`)) errors.push(`Unit ID must begin with ${locationCode}- and be 50 characters or fewer.`);

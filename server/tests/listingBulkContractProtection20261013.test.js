@@ -94,7 +94,7 @@ test('Excel remains editable while protected cells are clearly marked and server
   assert.match(excel, /cellStyles: true/)
   assert.match(excel, /BLUE cells/)
   assert.match(excel, /GREY cells/)
-  assert.match(ui, /Grey Excel cells show contract-protected values/);
+  assert.match(ui, /Prices and lot area are locked/);
   assert.match(excel, /originalRow\.Status/);
   assert.match(ui, /Excel Row/);
   assert.match(ui, /Contract protected · Head approval/);

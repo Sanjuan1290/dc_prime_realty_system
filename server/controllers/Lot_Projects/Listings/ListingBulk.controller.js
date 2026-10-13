@@ -7,7 +7,7 @@ import { createOperationalReview } from '../../../services/operationalReview.ser
 import { authorizeGovernedAction } from '../../../services/governedAction.service.js';
 import { hasBuyerFormSchema, revokeOpenBuyerFormLinks } from '../BuyerForms/buyerForm.shared.js';
 import { syncListingDocumentCloudinaryUnitFolder, rollbackListingDocumentCloudinaryMoves } from './Listings.controller.js';
-import { BULK_FIELDS, isContractProtected, getProtectedFieldErrors, normalizedListing, normalizeBulkInput, listingChanges, statusFilterSQL, validateBulkListing } from './listingBulkFields.js';
+import { isContractProtected, getProtectedFieldErrors, normalizedListing, prepareBulkListingRow, listingChanges, statusFilterSQL, validateBulkListing } from './listingBulkFields.js';
 
 const MAX_BATCH_ROWS = 5000;
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
@@ -85,20 +85,29 @@ const planRows = async (connection, project, rows, { forUpdate = false } = {}) =
     const excelRow = Number(row.excelRowNumber || 0);
     const rowErrors = [];
     let after = null;
+    let intendedEdits = false;
     if (!row.original || !row.values || !row.expectedStatus) rowErrors.push('Workbook information is missing. Download a new editable template and try again.');
     else {
       try {
-        const original = normalizeBulkInput(row.original, {});
-        if (BULK_FIELDS.some((field) => original[field] !== before[field])) rowErrors.push('This unit was updated after you exported the Excel file. Download a fresh template so you do not overwrite newer changes.');
-        after = normalizeBulkInput(row.values, before);
-        rowErrors.push(...validateBulkListing(after, project.lot_project_location_code));
-        const priorIds = before.oldUnitIds ? before.oldUnitIds.split(', ').filter(Boolean) : [];
-        const nextIds = new Set(after.oldUnitIds ? after.oldUnitIds.split(', ').filter(Boolean) : []);
-        if (priorIds.some((id) => !nextIds.has(id))) rowErrors.push('Do not remove previous Unit IDs from Old Unit IDs. Restore the missing IDs to keep the unit history complete.');
+        const proposed = prepareBulkListingRow(before, row.original, row.values);
+        intendedEdits = proposed.intendedEdits;
+        if (intendedEdits) {
+          if (proposed.stale) {
+            rowErrors.push('This unit changed since the Excel file was downloaded. Export a fresh template, copy your edits to it, and try again.');
+          }
+          after = proposed.after;
+          rowErrors.push(...validateBulkListing(after, project.lot_project_location_code));
+          const priorIds = before.oldUnitIds ? before.oldUnitIds.split(', ').filter(Boolean) : [];
+          const nextIds = new Set(after.oldUnitIds ? after.oldUnitIds.split(', ').filter(Boolean) : []);
+          if (priorIds.some((id) => !nextIds.has(id))) rowErrors.push('Do not remove previous Unit IDs from Old Unit IDs. Restore the missing IDs to keep the unit history complete.');
+        } else {
+          // Keep the database's latest untouched values; this row is NOT an edit.
+          after = before;
+        }
       } catch (error) { rowErrors.push(error.message); }
     }
     const expectedStatus = mapListingRow(listing).status;
-    if (row.expectedStatus !== expectedStatus) rowErrors.push('This unit’s status changed after the Excel file was exported. Download a new template and check the latest status.');
+    if (intendedEdits && row.expectedStatus !== expectedStatus) rowErrors.push('This unit’s status changed after the Excel file was exported. Download a new template and check the latest status.');
     if (after) {
       const changed = listingChanges(before, after);
       // Contracted units can correct their identity, never lot area or pricing.

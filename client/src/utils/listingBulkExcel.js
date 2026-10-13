@@ -16,7 +16,7 @@ export const FIELD_HEADERS = {
 export const FIELDS = Object.keys(FIELD_HEADERS)
 export const PROTECTED_IDENTITY_FIELDS = ['unitCode', 'oldUnitIds', 'cadastralLots', 'lotType']
 export const isProtectedListingRow = (item) => !['available', 'hold'].includes(String(item.rawStatus || '').toLowerCase())
-const formatValue = (field, value) => field === 'cadastralLots' ? (Array.isArray(value) ? value.join(', ') : value || '') : value === 'oldUnitIds' ? (value === '-' ? '' : value || '') : value
+const formatValue = (field, value) => field === 'cadastralLots' ? (Array.isArray(value) ? value.join(', ') : value || '') : value === 'oldUnitIds' ? (value === '-' || value === '—' ? '' : value || '') : value
 const validHeaders = (row) => ['Listing ID', 'Project ID', 'Status', 'Contract Protection', ...Object.values(FIELD_HEADERS)].every((name) => Object.prototype.hasOwnProperty.call(row, name))
 export const exportListingWorkbook = ({ listings, project, status, editable }) => {
   const rows = listings.map((item) => ({

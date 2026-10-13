@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiClock, FiDownload, FiEdit3, FiEye, FiFileText, FiGrid, FiPlus, FiSearch, FiTrash2, FiUpload } from 'react-icons/fi'
+import { FiClock, FiDownload, FiEye, FiFileText, FiGrid, FiPlus, FiSearch, FiTrash2, FiUpload } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ConfirmActionModal from '../../components/Shared/ConfirmActionModal'
@@ -10,6 +10,7 @@ import ListingImportModal from '../../components/Lot_Projects/ListingComponents/
 import ListingImportHistoryModal from '../../components/Lot_Projects/ListingComponents/ListingImportModal/ListingImportHistoryModal'
 import ExportListingsModal from '../../components/Lot_Projects/ListingComponents/ExportListingsModal'
 import BulkEditListingsModal from '../../components/Lot_Projects/ListingComponents/BulkEditListingsModal'
+import ListingImportChoiceModal from '../../components/Lot_Projects/ListingComponents/ListingImportChoiceModal'
 import {useFetch, useFetchDelete, useFetchPost, getDoubleCheckNotice} from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { hasPermission, PERMISSIONS } from '../../config/permissions'
@@ -41,6 +42,7 @@ const Listings = () => {
   const [statusFilter, setStatusFilter] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showImportChoice, setShowImportChoice] = useState(false)
   const [showImportHistory, setShowImportHistory] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
   const [showBulkModal, setShowBulkModal] = useState(false)
@@ -150,9 +152,8 @@ const Listings = () => {
         <PageHeader title={`${project.name || project.lot_project_name || 'Lot Project'} Listings / Units`} description="Database-connected inventory table with price columns, document setup, and unit profile links." icon={FiGrid} />
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setShowExportModal(true)} disabled={isLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-60"><FiDownload />Export Listings</button>
-          {canBulkEdit ? <button type="button" onClick={() => setShowBulkModal(true)} disabled={isLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 hover:bg-blue-100 disabled:opacity-60"><FiEdit3 />Bulk Edit Listings</button> : null}
           {canImport ? <button type="button" onClick={() => setShowImportHistory(true)} disabled={isLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"><FiClock className="h-4 w-4" />Import History</button> : null}
-          {canImport ? <button type="button" onClick={() => setShowImportModal(true)} disabled={isLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"><FiUpload className="h-4 w-4" />Import Excel</button> : null}
+          {(canImport || canBulkEdit) ? <button type="button" onClick={() => setShowImportChoice(true)} disabled={isLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"><FiUpload className="h-4 w-4" />Import Excel</button> : null}
           {canCreate ? <button type="button" onClick={() => setShowAddModal(true)} disabled={isLoading || (canViewSystemDocuments && (isDocumentsLoading || isTemplatesLoading))} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"><FiPlus className="h-4 w-4" />Add Listing</button> : null}
         </div>
       </section>
@@ -207,6 +208,13 @@ const Listings = () => {
       {showExportModal ? <ExportListingsModal projectSlug={projectSlug} projectName={project.name} canPrint={canPrint} onClose={() => setShowExportModal(false)} /> : null}
       {showBulkModal && canBulkEdit ? <BulkEditListingsModal projectSlug={projectSlug} project={project} onClose={() => setShowBulkModal(false)} onSaved={async (result) => { setShowBulkModal(false); setAlert({ type: 'success', message: result?.message || 'Bulk update completed.' }); await queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['listing-bulk-history', projectSlug] }) }} /> : null}
       {showAddModal && canCreate ? <AddListingModal project={project} projectDefaultDocuments={project.defaultDocuments || []} libraryDocuments={documentsData?.documents || []} documentTemplates={templatesData?.templates || []} templateDocuments={templatesData?.template_documents || []} isLoadingDefaults={isDocumentsLoading || isTemplatesLoading} onClose={() => setShowAddModal(false)} onSave={handleAddListing} isSaving={addListingMutation.isPending} /> : null}
+      {showImportChoice && (canImport || canBulkEdit) ? <ListingImportChoiceModal
+        canCreateListings={canImport}
+        canEditListings={canBulkEdit}
+        onClose={() => setShowImportChoice(false)}
+        onCreate={() => { setShowImportChoice(false); setShowImportModal(true) }}
+        onEdit={() => { setShowImportChoice(false); setShowBulkModal(true) }}
+      /> : null}
       {showImportModal && canImport ? <ListingImportModal project={project} projectSlug={projectSlug} onClose={() => setShowImportModal(false)} onImported={async () => { setShowImportModal(false); setAlert({ type: 'success', message: 'Listing import completed. You can review or undo it from Import History.' }); await queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['listing-import-history', projectSlug] }) }} /> : null}
       {showImportHistory && canImport ? <ListingImportHistoryModal projectSlug={projectSlug} canUndo={canUndoImport} onClose={() => setShowImportHistory(false)} /> : null}
       <ConfirmActionModal
