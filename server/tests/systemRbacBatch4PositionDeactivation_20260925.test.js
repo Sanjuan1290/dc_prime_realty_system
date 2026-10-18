@@ -49,11 +49,13 @@ test('deactivation is owner-controlled, verified, and explicitly reversible by a
   assert.match(deactivateModal, /Deactivation Reason/);
   assert.match(deactivateModal, /Administrator Password/);
   assert.match(deactivateModal, /Email Verification Code/);
-  assert.match(deactivateModal, /Verify Password & Send Code/);
+  assert.match(deactivateModal, /sellerConfirmation \? 'Confirm Deactivation'/);
+  assert.match(deactivateModal, /'Send Email Code'/);
+  assert.match(usersController, /req\.body\?\.confirmDeactivation !== true/);
   assert.match(apiClient, /user\\\/deactivate\\\/\\d\+\\\/code/);
   assert.match(deactivateModal, /confirmationHandled: 'technical'/);
   assert.match(usersController, /verifyAndConsumeSensitiveAction/);
-  assert.match(usersController, /verificationMethod: 'administrator_password_email_code'/);
+  assert.match(usersController, /verificationMethod: sellerConfirmation \? 'administrator_confirmation' : 'administrator_password_email_code'/);
 });
 
 test('deactivation invalidates sessions and retains the audit trail for later owner reactivation', () => {

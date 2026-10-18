@@ -2,6 +2,7 @@ import { isOwnerAdministrator } from '../../config/permissions.js';
 import { db } from '../../db/connect.js';
 import { assertSellerIdentityAvailable } from '../../services/sellerIdentity.service.js';
 import { checkSellerCanReactivate } from '../../services/sellerReactivation.service.js';
+import { usesSellerStatusConfirmation } from '../../services/sellerConfirmationPolicy.js';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
@@ -2256,9 +2257,10 @@ export const deactivateUserPermanently = async (req, res) => {
     const verificationId = Number(req.body?.verificationId || req.body?.verification_id || 0);
     const code = String(req.body?.code || req.body?.verificationCode || req.body?.verification_code || '').trim();
     if (reason.length < 5) return res.status(400).json({ message: 'A clear deactivation reason is required.' });
-    if (!verificationId || !/^\d{6}$/.test(code)) {
-      return res.status(400).json({ message: 'Administrator password verification and the six-digit email verification code are required before deactivation.' });
-    }
+    // Sales Agent deactivation is authorized by the authenticated administrator's confirmation.
+    // Non-seller system accounts still require the existing password and email code.
+    // The role check is repeated on the locked DB record below.
+
 
     await connection.beginTransaction();
     const [rows] = await connection.query(
@@ -2270,19 +2272,23 @@ export const deactivateUserPermanently = async (req, res) => {
     assertDeactivationTarget(req, user, userId);
     assertNoManagerDeactivation(user);
 
-    const verificationPayload = buildUserDeactivationVerificationPayload({ actor: req.authUser, target: user, reason });
-    const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
-      verificationId,
-      userId: req.authUser?.id,
-      actionType: USER_DEACTIVATION_ACTION,
-      entityType: USER_DEACTIVATION_ENTITY,
-      entityId: String(userId),
-      code,
-      payload: verificationPayload,
-    });
-    if (!verificationResult.ok) {
-      await connection.commit();
-      return res.status(verificationResult.statusCode || 400).json({ message: verificationResult.message });
+    const sellerConfirmation = user.role === 'sales_agent';
+    if (sellerConfirmation && req.body?.confirmDeactivation !== true) {
+      throw Object.assign(new Error('Confirm this Sales Agent deactivation before saving.'), {statusCode:400});
+    }
+    if (!sellerConfirmation) {
+      if (!verificationId || !/^\d{6}$/.test(code)) {
+        throw Object.assign(new Error('Email verification is required for this system account.'), {statusCode:400});
+      }
+      const verificationPayload = buildUserDeactivationVerificationPayload({ actor: req.authUser, target: user, reason });
+      const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
+        verificationId, userId: req.authUser?.id, actionType: USER_DEACTIVATION_ACTION,
+        entityType: USER_DEACTIVATION_ENTITY, entityId: String(userId), code, payload: verificationPayload,
+      });
+      if (!verificationResult.ok) {
+        await connection.commit();
+        return res.status(verificationResult.statusCode || 400).json({message:verificationResult.message});
+      }
     }
 
     await connection.query(
@@ -2297,11 +2303,18 @@ export const deactivateUserPermanently = async (req, res) => {
       [userId]
     );
 
+    const [[sellerRecord]] = sellerConfirmation ? await connection.query('SELECT accredited_seller_id FROM accredited_sellers WHERE user_id=? LIMIT 1',[userId]) : [[null]];
+    const review = sellerRecord ? await createOperationalReview(connection, {
+      actor: req.authUser, actionKey: 'seller.status', department:'marketing',
+      entityType:'accredited_seller', entityId:String(sellerRecord.accredited_seller_id), entityLabel:user.account_code || buildPersonName(user),
+      beforeSnapshot:{userId,role:user.role,userStatus:user.status,sellerStatus:'active'},
+      afterSnapshot:{userId,role:user.role,userStatus:'inactive',sellerStatus:'inactive',reason},
+    }) : null;
     await writeAuditLog(connection, req, {
       action: 'update', module: 'Users', entityType: 'user', entityId: String(userId),
       entityLabel: user.account_code || buildPersonName(user), title: 'Deactivated user account',
       description: `${user.account_code || user.email} was deactivated.`,
-      metadata: { previousStatus: 'active', nextStatus: 'inactive', reason, verificationId, verificationMethod: 'administrator_password_email_code' },
+      metadata: { previousStatus: 'active', nextStatus: 'inactive', reason, verificationId: sellerConfirmation ? null : verificationId, verificationMethod: sellerConfirmation ? 'administrator_confirmation' : 'administrator_password_email_code', reviewId:review?.reviewId ?? null, reviewNumber:review?.reviewNumber ?? null },
     });
 
     await connection.commit();
@@ -2335,6 +2348,7 @@ export const requestUserReactivationCode = async (req,res) => {
     const [[target]]=await connection.query('SELECT id,role,status,email,account_code FROM users WHERE id=? LIMIT 1 FOR UPDATE',[userId]);
     if (!target) throw Object.assign(new Error('Account not found.'),{statusCode:404});
     if (target.role==='external_group') throw Object.assign(new Error('Use External Networks to manage this account.'),{statusCode:400});
+    if (!actorCanPerformUserAction(req, target.role)) throw Object.assign(new Error('You cannot activate an account at this authority level.'),{statusCode:403});
     if (actor.role==='system_admin' && ['super_admin','system_admin'].includes(target.role)) throw Object.assign(new Error('You cannot reactivate this administrator account.'),{statusCode:403});
     if (target.status==='active') {
       const [[state]]=await connection.query('SELECT accredited_seller_status FROM accredited_sellers WHERE user_id=? LIMIT 1',[userId]);
@@ -2374,6 +2388,7 @@ export const reactivateUser = async (req, res) => {
     const user = rows[0];
     if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
     if (user.role === 'external_group') throw Object.assign(new Error('Manage External Network accounts from the External Networks page.'), { statusCode: 400 });
+    if (!actorCanPerformUserAction(req, user.role)) throw Object.assign(new Error('You cannot activate an account at this authority level.'), {statusCode:403});
     if (actor.role === 'system_admin' && ['super_admin', 'system_admin'].includes(user.role)) {
       throw Object.assign(new Error('System Admin cannot reactivate owner-level accounts.'), { statusCode: 403 });
     }
@@ -2383,14 +2398,20 @@ export const reactivateUser = async (req, res) => {
         throw Object.assign(new Error('This account is already active.'), { statusCode: 409 });
       }
     }
+    const sellerConfirmation = usesSellerStatusConfirmation(user.role);
+    if (sellerConfirmation && req.body?.confirmActivation !== true) {
+      throw Object.assign(new Error('Confirm seller activation before saving.'), {statusCode:400});
+    }
     const verificationId=Number(req.body?.verificationId||0);
     const code=String(req.body?.code||'').trim();
-    if (!verificationId || !/^\d{6}$/.test(code)) throw Object.assign(new Error('Enter the 6-digit email code.'),{statusCode:400});
-    const verification=await verifyAndConsumeSensitiveAction(connection,{
-      verificationId,userId:actor.id,actionType:USER_REACTIVATION_ACTION,entityType:'user',entityId:String(userId),
-      code,payload:buildReactivationPayload({actor,target:user,reason}),
-    });
-    if (!verification.ok){await connection.commit();return res.status(verification.statusCode||400).json({message:verification.message});}
+    if (!sellerConfirmation) {
+      if (!verificationId || !/^\d{6}$/.test(code)) throw Object.assign(new Error('Enter the 6-digit email code.'),{statusCode:400});
+      const verification=await verifyAndConsumeSensitiveAction(connection,{
+        verificationId,userId:actor.id,actionType:USER_REACTIVATION_ACTION,entityType:'user',entityId:String(userId),
+        code,payload:buildReactivationPayload({actor,target:user,reason}),
+      });
+      if (!verification.ok){await connection.commit();return res.status(verification.statusCode||400).json({message:verification.message});}
+    }
     if (sellerRoles.has(user.role)) await checkSellerCanReactivate(connection,userId);
 
     await connection.query(
@@ -2403,11 +2424,18 @@ export const reactivateUser = async (req, res) => {
 
     if (sellerRoles.has(user.role)) await connection.query(
       `UPDATE accredited_sellers SET accredited_seller_status='active' WHERE user_id=?`,[userId]);
+    const [[sellerRecord]] = sellerConfirmation ? await connection.query('SELECT accredited_seller_id FROM accredited_sellers WHERE user_id=? LIMIT 1',[userId]) : [[null]];
+    const review = sellerRecord ? await createOperationalReview(connection, {
+      actor, actionKey:'seller.status',department:'marketing', entityType:'accredited_seller',
+      entityId:String(sellerRecord.accredited_seller_id),entityLabel:user.account_code || buildPersonName(user),
+      beforeSnapshot:{userId,role:user.role,userStatus:user.status,sellerStatus:'inactive'},
+      afterSnapshot:{userId,role:user.role,userStatus:'active',sellerStatus:'active',reason},
+    }) : null;
     await writeAuditLog(connection, req, {
       action: 'update', module: 'Users', entityType: 'user', entityId: String(userId),
       entityLabel: user.account_code || buildPersonName(user), title: 'Reactivated user account',
       description: `${user.account_code || user.email} was reactivated by ${actor.role}.`,
-      metadata: { previousStatus: user.status, nextStatus: 'active', reason, verificationId, sellerStatusRestored:sellerRoles.has(user.role) },
+      metadata: { previousStatus: user.status, nextStatus: 'active', reason, verificationId: sellerConfirmation ? null : verificationId, verificationMethod: sellerConfirmation ? 'administrator_confirmation' : 'administrator_password_email_code', sellerStatusRestored:sellerRoles.has(user.role), reviewId:review?.reviewId ?? null, reviewNumber:review?.reviewNumber ?? null },
     });
 
     await connection.commit();

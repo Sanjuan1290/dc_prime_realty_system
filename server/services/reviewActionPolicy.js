@@ -4,5 +4,6 @@ const distinct = new Set([
   'commission.assigned_seller_change',
   'commission.adjust_unit',
   'seller.manager_replace',
+  'seller.status',
 ]);
 export const requiresDistinctReview = actionKey => distinct.has(String(actionKey || ''));

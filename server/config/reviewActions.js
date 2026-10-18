@@ -71,6 +71,7 @@ export const REVIEW_ACTIONS = Object.freeze({
   'network.members.import.undo': { department: 'marketing', entityType: 'seller_group', label: 'Network member import undo', headApprovalBefore: false },
   'seller.create': { department: 'marketing', entityType: 'accredited_seller', label: 'Accredited seller creation', headApprovalBefore: false },
   'seller.manager_replace': { department: 'marketing', entityType: 'accredited_seller', label: 'Manager replaced', headApprovalBefore: false },
+  'seller.status': { department: 'marketing', entityType: 'accredited_seller', label: 'Seller activation or deactivation', headApprovalBefore: false },
   'seller.edit': { department: 'marketing', entityType: 'accredited_seller', label: 'Accredited seller edit', headApprovalBefore: false },
 });
 

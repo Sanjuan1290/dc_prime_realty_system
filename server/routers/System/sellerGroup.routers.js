@@ -30,7 +30,7 @@ router.get('/', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGro
 router.get('/options', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGroupOptions);
 router.get('/:groupId/managers/replacements', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getManagerReplacementHistory);
 router.get('/:groupId/managers/:userId/replace/preview', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), previewManagerReplacement);
-router.post('/:groupId/managers/:userId/replace/code', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), requireCurrentPassword({field:'password',label:'Administrator password'}), requestManagerReplacementCode);
+router.post('/:groupId/managers/:userId/replace/code', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), requestManagerReplacementCode);
 router.post('/:groupId/managers/:userId/replace/confirm', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), confirmManagerReplacement);
 router.get('/:groupId/setup-check', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getSellerSetupAudit);
 router.get('/pool-shares', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getNetworkPoolShares);
