@@ -62,6 +62,7 @@ import {
   holdLotProjectListing,
   unholdLotProjectListing,
 } from '../../controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js';
+import { getAssignedSellerChangeOptions, previewAssignedSellerChange, requestAssignedSellerChange, confirmAssignedSellerChange } from '../../controllers/Lot_Projects/ListingProfile/AssignedSellerChange.controller.js';
 import { updateLotProjectClientProfile } from '../../controllers/Lot_Projects/ListingProfile/ClientProfile.controller.js';
 import { reserveLotProjectListing } from '../../controllers/Lot_Projects/ListingProfile/ReserveListing.controller.js';
 import {
@@ -240,6 +241,11 @@ router.post(
   requirePermission(PERMISSIONS.LOT_COMMISSIONS_ADJUST),
   adjustLotProjectListingCommission
 );
+// Phase 7: dedicated buyer-account-scoped seller change. Never share the rate-edit endpoint.
+router.get('/lot-projects/:projectSlug/listings/:listingId/change-seller/options', requirePermission(PERMISSIONS.LOT_ASSIGNED_SELLER_EDIT), getAssignedSellerChangeOptions);
+router.post('/lot-projects/:projectSlug/listings/:listingId/change-seller/preview', requirePermission(PERMISSIONS.LOT_ASSIGNED_SELLER_EDIT), previewAssignedSellerChange);
+router.post('/lot-projects/:projectSlug/listings/:listingId/change-seller/request', requirePermission(PERMISSIONS.LOT_ASSIGNED_SELLER_EDIT), requestAssignedSellerChange);
+router.post('/lot-projects/:projectSlug/listings/:listingId/change-seller/confirm', requirePermission(PERMISSIONS.LOT_ASSIGNED_SELLER_EDIT), confirmAssignedSellerChange);
 router.get('/lot-projects/:projectSlug', requirePermission(PERMISSIONS.LOT_PROJECT_VIEW), getLotProjectBySlug);
 
 router.post('/lot-projects', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_CREATE), createLotProject);
@@ -303,5 +309,6 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
+
 
 

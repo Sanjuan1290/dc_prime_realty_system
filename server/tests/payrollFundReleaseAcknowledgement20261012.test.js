@@ -88,3 +88,4 @@ test('TiDB migration is additive, and witness is recorded in the employee payrol
   assert.match(controller, /releaseWitnessName: release\.releaseWitnessName/)
   assert.match(service, /p\.release_witness_name/)
 })
+

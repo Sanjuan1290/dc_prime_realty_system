@@ -96,3 +96,4 @@ test('a real edit to a stale listing remains blocked so newer values are not ove
   assert.equal(prepared.intendedEdits, true);
   assert.equal(prepared.stale, true);
 });
+

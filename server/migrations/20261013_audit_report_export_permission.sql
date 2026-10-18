@@ -6,3 +6,4 @@
 INSERT INTO role_permission_defaults (role, permission_key, allowed)
 VALUES ('auditor','audit.logs.export',1)
 ON DUPLICATE KEY UPDATE permission_key = VALUES(permission_key);
+

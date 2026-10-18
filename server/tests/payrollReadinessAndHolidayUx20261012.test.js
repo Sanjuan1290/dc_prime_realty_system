@@ -98,3 +98,4 @@ test('one visible Holiday Multiplier applies the same approved rate to existing 
   assert.equal(earned.regularHolidayPay + earned.specialHolidayPay, 400);
 });
 
+

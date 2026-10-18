@@ -69,3 +69,4 @@ test('a receipt covering two paid milestones prints both and preserves its total
   assert.equal(outcome.data.data.accreditedSellerId, 27);
   assert.deepEqual(Array.from(outcome.events[1].params), [44, 13, 8]);
 });
+

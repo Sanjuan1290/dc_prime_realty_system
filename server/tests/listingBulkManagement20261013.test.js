@@ -89,3 +89,4 @@ test('Dashboard Price List replaced by Listings Export; new and update imports s
   assert.match(bulkModal, /Validate & Preview/)
   assert.match(bulkModal, /Confirm/)
 })
+

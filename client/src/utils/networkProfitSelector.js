@@ -9,3 +9,4 @@ export const selectCompanyProfitsForAccount = (records, accountId) => {
     (profit) => Number(profit.accountId) === id
   )
 }
+

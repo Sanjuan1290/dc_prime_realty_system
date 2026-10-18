@@ -71,3 +71,4 @@ export const enrichLegacyListingReviewSnapshots = async (connection, review = {}
     snapshotRecoveredFromAuditLog: true,
   };
 };
+

@@ -93,3 +93,4 @@ test('authenticated PATCH route and UI provide individual and bulk controls, wit
   assert.match(client, /if \(row\.operational_review_id\) navigate/)
   assert.doesNotMatch(client.slice(client.indexOf('const ReviewCenter = () => {')), /markAllRead\.mutate\([^)]*status/)
 })
+

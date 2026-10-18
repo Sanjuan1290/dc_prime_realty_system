@@ -18,3 +18,4 @@ export const computeNewHireWorkdayFraction = ({ periodStart, periodEnd, hireDate
   if (!allDays) throw Object.assign(new Error('Cannot calculate a first payroll without scheduled working days.'), { code: 'NEW_HIRE_NO_WORKDAYS', statusCode: 409 });
   return { allDays, eligibleDays, fraction: eligibleDays / allDays };
 };
+

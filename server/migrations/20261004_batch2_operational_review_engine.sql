@@ -80,3 +80,4 @@ CREATE TABLE IF NOT EXISTS internal_notifications (
   CONSTRAINT fk_internal_notification_review FOREIGN KEY (operational_review_id) REFERENCES operational_reviews(operational_review_id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
+

@@ -79,3 +79,4 @@ test('UI offers search, 4 named columns, page sizing, row expand/collapse and co
   assert.match(component, /Confirmation applies every validated change in the workbook/)
   assert.match(component, /\{ rows, filename, reason: reason\.trim\(\) \}/)
 })
+

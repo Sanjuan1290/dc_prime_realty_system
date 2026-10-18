@@ -71,3 +71,4 @@ CREATE TABLE IF NOT EXISTS lot_project_listing_import_rows (
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+

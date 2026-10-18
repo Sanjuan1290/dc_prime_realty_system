@@ -62,3 +62,4 @@ test('Commission Details review uses the shared review-data builder and links ex
   assert.match(modal, /releaseIds: \[missingReceiptChoice\.releaseId\]/)
   assert.doesNotMatch(modal.slice(modal.indexOf('const saveMissingReceipt'),modal.indexOf('const changeBeneficiary')), /action: 'release_stage'/)
 })
+

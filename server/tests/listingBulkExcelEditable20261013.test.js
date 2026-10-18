@@ -69,3 +69,4 @@ test('editable Excel export has no sheet-level lock and keeps protected fields v
   assert.equal(soldPriceCell.s.fill.fgColor.rgb, 'E5E7EB');
   assert.equal(listingSheet.D3.v.startsWith('Protected'), true);
 });
+

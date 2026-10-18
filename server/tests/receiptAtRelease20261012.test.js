@@ -83,3 +83,4 @@ test('TiDB receipt migration is non-destructive and idempotent', () => {
   assert.doesNotMatch(sql,/\b(?:TRUNCATE|DELETE FROM|DROP TABLE)\b/i)
 })
 
+

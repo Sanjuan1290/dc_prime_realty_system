@@ -45,3 +45,4 @@ export default function ReleaseReceiptFields({ value, onChange, disabled = false
     </div>
   </section>
 }
+

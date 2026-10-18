@@ -8,3 +8,4 @@ UPDATE `system_settings`
 SET `attendance_regular_work_minutes` = 600
 WHERE `system_setting_id` = 1;
 
+

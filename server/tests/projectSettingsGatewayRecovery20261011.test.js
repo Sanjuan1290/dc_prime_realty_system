@@ -74,3 +74,4 @@ test('payment notification validation and protected settings authorization still
   assert.match(backend, /createOperationalReview/)
   assert.match(auth, /getSettingsAuthorizationLabel/)
 })
+

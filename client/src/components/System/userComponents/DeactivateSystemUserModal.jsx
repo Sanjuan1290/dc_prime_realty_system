@@ -88,8 +88,7 @@ const DeactivateSystemUserModal = ({ user, onClose, onSaved }) => {
           {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
 
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-900">
-            <strong>This disables the account and immediately ends its active sessions.</strong><br />
-            Keep this account deactivated when a person changes position. Create a new account for the new role. Only Super Admin or System Admin can reactivate this historical account later.
+            <strong>This ends the seller's login sessions and prevents new reservations.</strong> Past sales and commissions will stay unchanged.
           </div>
 
           <label className="grid gap-1.5 text-sm font-bold">
@@ -154,4 +153,5 @@ const DeactivateSystemUserModal = ({ user, onClose, onSaved }) => {
 }
 
 export default DeactivateSystemUserModal
+
 

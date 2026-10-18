@@ -34,9 +34,13 @@ test('review details never render raw JSON blocks and use user-facing Network ra
   assert.match(center, /Company Profit/)
   assert.match(center, /Division Manager Share/)
   assert.match(center, /Broker Details/)
-  assert.match(center, /Internal field names and raw JSON are intentionally hidden/)
+  const comparison = read('client/src/components/Shared/ReviewFormComparison.jsx')
+  assert.match(center, /<ReviewFormComparison/)
+  assert.match(comparison, /neverShow/)
+  assert.match(comparison, /Not Recorded/)
   assert.doesNotMatch(center, /<pre/)
   assert.doesNotMatch(center, /JSON\.stringify\(value, null, 2\)/)
 })
+
 
 

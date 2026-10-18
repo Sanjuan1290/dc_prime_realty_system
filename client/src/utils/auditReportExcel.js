@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx-js-style'
 import { formatPhilippineDateTime } from './formatDateTime'
 import { getAuditChanges, getAuditExtraFields, getAuditReferences, redactEvidence, safeAuditText } from './auditReportEvidence'
+import { sellerAuditRows } from './sellerAuditHistory'
 
 const NAVY = '10213B', BLUE = '2563EB', PALE = 'EDF4FF', WHITE = 'FFFFFF'
 const timestamp = (value) => value ? formatPhilippineDateTime(value, { timeStyle: 'medium', dateStyle: 'medium', timeZoneLabel: true }) : 'Not recorded'
@@ -55,6 +56,13 @@ export const buildAuditReportWorkbook = ({ logs, cases = {}, filters = {}, gener
     related.push([r.review_number,r.operational_review_id,'',c.case_number,c.audit_case_id,r.entity_label,r.department,'Review record',timestamp(r.created_at),r.initiated_by_user_id,r.initiated_by_name,r.initiated_by_role,'',r.status,'No review events recorded',c.finding,c.head_response,c.correction_summary,c.auditor_resolution,c.status,'Related record — status at export time','',r.initiated_by_user_id,r.initiated_by_name,r.head_reviewed_by_user_id,r.head_reviewed_by_name,r.auditor_reviewed_by_user_id,r.auditor_reviewed_by_name])
   }
   sheet(wb,'Reviews & Audit Cases',['Review Number','Review ID','Review Event ID','Case Number','Case ID','Affected Record','Department','Event','When','Actor User ID','Actor Name','Actor Role','Before Status','After Status','Message','Finding','Head Response','Correction Summary','Auditor Resolution','Case Status At Export','Scope Note','Event Metadata (redacted)','Original Actor ID','Original Actor Name','Head Reviewer ID','Head Reviewer Name','Auditor Reviewer ID','Auditor Reviewer Name'],related,[25,16,18,24,16,30,19,28,23,18,30,22,22,22,70,75,75,75,75,26,60,80,19,30,19,30,19,30])
+  const sellerEvents = sellerAuditRows(logs)
+  sheet(wb,'Seller & Manager Changes',[
+    'Audit Log ID','Related Review ID','Date & Time','Action','Affected Record','Change Reference',
+    'Seller / Position','Previous Seller or Manager','New Seller or Manager','Previous Rate (%)','New Rate (%)',
+    'Previous Commission','New Commission','Reason','Authorization Reference'
+  ],sellerEvents.map(row => row.map((item,index) => index===2 ? timestamp(item) : item)),
+  [17,20,25,37,31,20,28,35,35,20,20,24,24,60,28])
   sheet(wb,'Technical Details',['Audit Log ID','Date & Time','Actor User ID','Actor Role','IP Address','User Agent','Request ID','Entity Type','Entity ID','Archive Batch ID','Record Source','Redacted Recorded Metadata','Metadata Part'], logs.flatMap((r)=>{
     const m = redactEvidence(r.metadata || {}); const json = JSON.stringify(m)
     const parts = json.match(/[\s\S]{1,30000}/g) || ['{}']
@@ -70,3 +78,4 @@ export const downloadAuditReportWorkbook = async (data) => {
   XLSX.writeFile(workbook,filename,{bookType:'xlsx',compression:true})
   return filename
 }
+

@@ -16,3 +16,4 @@ export const classifyListingWorkbook = (workbook, XLSX) => {
   ]
   return required.every((choices) => choices.some((name) => headers.has(name))) ? 'new-listings' : 'invalid'
 }
+

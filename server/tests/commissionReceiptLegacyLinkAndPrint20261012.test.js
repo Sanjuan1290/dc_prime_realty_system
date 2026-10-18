@@ -54,3 +54,4 @@ test('Older grouped receipts display every actual paid tranche associated with t
   assert.match(lookup, /cumulativeTargetPercent: Math\.max/);
   assert.match(lookup, /releases: includedReleases/);
 });
+

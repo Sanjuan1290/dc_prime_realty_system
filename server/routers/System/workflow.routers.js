@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 import {
-  listOperationalReviews,getReviewCenterSummary,getOperationalReview,getOperationalReviewProofContent,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,resubmitManualReviewCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,markAllInternalNotificationsRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
+  listOperationalReviews,getReviewCenterSummary,getOperationalReview,getOperationalReviewProofContent,getOperationalReviewRecordPreview,getOperationalReviewSignedReceiptContent,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,resubmitManualReviewCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,markAllInternalNotificationsRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
 } from '../../controllers/System/workflow.controller.js';
 
 const router=express.Router();
@@ -23,6 +23,8 @@ router.get('/reviews',requireReviewCenterRole,requirePermission(PERMISSIONS.WORK
 router.get('/summary',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getReviewCenterSummary);
 router.get('/reviews/:id',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getOperationalReview);
 router.get('/reviews/:id/proofs/:proofId/content',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getOperationalReviewProofContent);
+router.get('/reviews/:id/record-preview',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getOperationalReviewRecordPreview);
+router.get('/reviews/:id/signed-receipts/:fileId/content',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getOperationalReviewSignedReceiptContent);
 router.post('/reviews/:id/claim',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_REVIEW),claimOperationalReview);
 router.post('/reviews/:id/head-confirm',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_REVIEW),confirmHeadReview);
 router.post('/reviews/:id/return',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_RETURN_FOR_CORRECTION),returnReviewForCorrection);
@@ -39,5 +41,6 @@ router.get('/notifications',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER
 router.patch('/notifications/read-all',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),markAllInternalNotificationsRead);
 router.patch('/notifications/:id/read',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),markInternalNotificationRead);
 export default router;
+
 
 

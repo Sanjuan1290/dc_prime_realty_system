@@ -27,3 +27,4 @@ test('Review Center keeps scoped actorRoot for review and notification navigatio
   assert.match(center, /const actorRoot = actor\.role \? `\/portal\/\$\{actor\.role\}` : ''/)
   assert.match(center, /navigate\(`\$\{actorRoot\}\/review-center\/reviews\/\$\{row\.operational_review_id\}`\)/)
 })
+

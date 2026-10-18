@@ -100,3 +100,4 @@ export const getCommissionReleaseReceipt = async (req, res) => {
   } catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error) }); }
   finally { connection.release(); }
 };
+

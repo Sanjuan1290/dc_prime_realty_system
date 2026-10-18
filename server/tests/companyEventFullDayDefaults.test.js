@@ -29,3 +29,4 @@ test('Server enforces Full Day Present event times from Attendance Settings even
   assert.ok(runtimeCalls.length >= 2, 'create and update event handlers should load Attendance Settings')
 })
 
+

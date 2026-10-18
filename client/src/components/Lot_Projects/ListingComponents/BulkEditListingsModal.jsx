@@ -196,3 +196,4 @@ const BulkEditListingsModal = ({ project, projectSlug, onClose, onSaved }) => {
   )
 }
 export default BulkEditListingsModal
+

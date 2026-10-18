@@ -68,7 +68,7 @@ test('live in-house reservation chains reject skipped positions and require a Ne
       seller(2, 'unit_manager'),
       seller(3, 'sales_director'),
     ], { requireGroupHead: true }),
-    /assign a Division Manager or Sales Director as the In-House Network Hierarchy Head/i
+    /Complete the Sales Agent.*Division Manager assignment/i
   );
 
   assert.equal(validateSellerReportingChain([
@@ -78,4 +78,5 @@ test('live in-house reservation chains reject skipped positions and require a Ne
     seller(4, 'division_manager', { is_group_head: true }),
   ], { requireGroupHead: true }), true);
 });
+
 

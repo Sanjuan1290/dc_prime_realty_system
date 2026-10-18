@@ -24,3 +24,4 @@ test('employee activation and deactivation require a warning confirmation', () =
   assert.match(page, /onConfirm=\{\(\) => confirmEmployee && statusMutation\.mutate\(confirmEmployee\)\}/)
 })
 
+

@@ -39,3 +39,4 @@ if (issues.length) {
 } else {
   console.log(`Local JavaScript import check passed (${sources.length} source files).`)
 }
+

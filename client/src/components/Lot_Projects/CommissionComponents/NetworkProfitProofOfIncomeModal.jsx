@@ -124,3 +124,4 @@ export default function NetworkProfitProofOfIncomeModal({ group, canPrint = fals
       readOnly={!canUpload} onClose={() => setSignedChoice(null)} /> : null}
   </div>
 }
+

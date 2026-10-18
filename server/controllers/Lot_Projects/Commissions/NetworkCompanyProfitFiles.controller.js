@@ -172,3 +172,4 @@ export const getNetworkProfitSignedContent = async (req, res) => {
       fileName: file.file_name, fileMimeType: file.file_mime_type });
   } catch (error) { return fail(res, error); } finally { connection.release(); }
 };
+

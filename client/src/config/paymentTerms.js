@@ -14,3 +14,4 @@ export const formatDailyPenaltyRateOption = (rate) => {
     : label
 }
 
+

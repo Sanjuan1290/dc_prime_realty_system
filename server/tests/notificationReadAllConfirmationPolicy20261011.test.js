@@ -64,3 +64,4 @@ test('Review Center calls bulk and individual read with PATCH and technical poli
 test('technical mutation guard remains in front of fetch', () => {
   assert.ok(apiSource.indexOf('await requireMutationConfirmation({') < apiSource.indexOf('const response = await fetch(url, {'))
 })
+

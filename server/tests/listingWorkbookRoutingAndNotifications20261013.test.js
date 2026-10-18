@@ -70,3 +70,4 @@ test('Internal Notifications uses server pagination, account-specific cache and 
   assert.match(server, /LIMIT \? OFFSET \?/)
   assert.match(server, /markVisibleInternalNotificationsRead/)
 })
+

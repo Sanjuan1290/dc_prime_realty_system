@@ -29,3 +29,4 @@ test('All review-enabled roles have a route at that role path', () => {
   assert.match(appSource, /path=\{`\/portal\/\$\{role\}`\}/)
   assert.match(appSource, /path="review-center\/reviews\/:reviewId"/)
 })
+

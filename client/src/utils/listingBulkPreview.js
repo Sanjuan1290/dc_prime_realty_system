@@ -59,3 +59,4 @@ export const paginateBulkPreview = (items, requestedPage = 1, requestedSize = 10
     to: Math.min(startIndex + size, total),
   };
 };
+

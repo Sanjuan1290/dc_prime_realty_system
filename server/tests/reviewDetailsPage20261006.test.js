@@ -19,13 +19,15 @@ test('Review Center opens a dedicated review route instead of rendering the over
   assert.match(details, /<ReviewDetails/)
 })
 
-test('Dedicated review workspace prioritizes changed fields and keeps full snapshots collapsed', () => {
+test('Dedicated review workspace shows form-based history and compact changes on request', () => {
   const center = read('client/src/pages/System/ReviewCenter.jsx')
   assert.match(center, /Dedicated review workspace/)
-  assert.match(center, /What changed/)
-  assert.match(center, /Show the full record before and after/)
-  assert.match(center, /<ReviewSnapshotDiff[^>]*mode="changes"/)
-  assert.match(center, /<details[\s\S]*<ReviewSnapshotDiff[^>]*mode="full"/)
+  assert.match(center, /<ReviewFormComparison/)
+  const form = read('client/src/components/Shared/ReviewFormComparison.jsx')
+  assert.match(form, /Full Forms/)
+  assert.match(form, /Changes Only/)
+  assert.match(form, /<ReviewSnapshotDiff/)
+  assert.match(form, /Not Recorded/)
   // Snapshots are rendered as labelled fields, never as raw JSON text.
   assert.doesNotMatch(center, /JSON\.stringify\(value, null, 2\)/)
   assert.match(center, /Back to Review Center/)
@@ -47,5 +49,6 @@ test('Dedicated review page preserves Head, Auditor and correction actions', () 
     'Submit Correction Details for Recheck',
   ]) assert.match(center, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 })
+
 
 

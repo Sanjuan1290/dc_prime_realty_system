@@ -95,3 +95,4 @@ test('Company Profit percentage and estimate use existing API keys', () => {
   assert.match(s, /label="Estimated Company Profit" value=\{money\(preview\?\.estimatedCompanyProfit\)\}/);
   assert.doesNotMatch(s, /companyProfitRate \* 100/);
 });
+

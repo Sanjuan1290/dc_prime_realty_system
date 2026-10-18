@@ -21,3 +21,4 @@ export const getNetworkProfitReleaseCalendar = (todayISO, settings = {}) => {
     nextReleaseDate: new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' }).format(next),
   };
 };
+

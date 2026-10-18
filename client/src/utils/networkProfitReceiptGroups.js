@@ -47,3 +47,4 @@ export const profitReceiptProperties = (records = []) => {
     String(a.profit.project || '').localeCompare(String(b.profit.project || '')) ||
     String(a.profit.unit || '').localeCompare(String(b.profit.unit || '')))
 }
+

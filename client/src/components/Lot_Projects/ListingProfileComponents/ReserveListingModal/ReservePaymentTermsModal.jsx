@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FiLoader, FiSearch, FiUser } from 'react-icons/fi'
+import { FiLoader, FiSearch, FiUser, FiAlertTriangle, FiCheckCircle, FiLock } from 'react-icons/fi'
 import { getPaymentCalculations, money } from './reserveUtils'
 import { SectionCard, SelectInput, TextInput } from './ReserveShared'
 import { DAILY_PENALTY_RATE_OPTIONS, formatDailyPenaltyRateOption } from '../../../../config/paymentTerms'
@@ -17,6 +17,8 @@ const AgentPicker = ({
   onSelect,
   isLoading,
   error,
+  showUnavailableSellers = false,
+  setShowUnavailableSellers = () => {},
 }) => {
   const [showResults, setShowResults] = useState(false)
   return (
@@ -35,7 +37,7 @@ const AgentPicker = ({
           className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-4 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
         />
       </div>
-      <p className="text-xs font-semibold text-slate-500">Choose an active In-House Sales Agent or External Network accredited to this project.</p>
+      <label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={showUnavailableSellers} onChange={event=>setShowUnavailableSellers(event.target.checked)}/> Show Unavailable Sellers</label>
 
       {selectedAgent ? (
         <div className="mt-2 flex flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -53,15 +55,18 @@ const AgentPicker = ({
             <button
               key={agent.id}
               type="button"
+              disabled={!agent.ready}
+              title={!agent.ready ? agent.unavailableReason : undefined}
               onClick={() => {
+                if (!agent.ready) return
                 onSelect(String(agent.id))
                 onSearch(agent.name)
                 setShowResults(false)
               }}
-              className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-blue-50 ${String(agent.id) === String(selectedAgentId) ? 'bg-blue-50' : ''}`}
+              className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 ${String(agent.id) === String(selectedAgentId) ? 'bg-blue-50' : ''}`}
             >
-              <div className="flex min-w-0 items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><FiUser /></span><div className="min-w-0"><p className="truncate text-sm font-black text-slate-950">{agent.name}</p><p className="truncate text-xs font-semibold text-slate-500">{agent.isExternalGroup ? `Representative: ${agent.representativeName || '-'}` : `${agent.groupName} · Reports under: ${agent.reportsUnderName}`}</p>{agent.isSystemDummy ? <p className="mt-1 text-[11px] font-black uppercase tracking-wide text-blue-600">System Agent · Owner: {agent.ownerName}</p> : null}</div></div>
-              <span className="shrink-0 rounded-lg bg-blue-50 px-2 py-1 text-xs font-black text-blue-700">{Number(agent.directRate || agent.rateValue || 0).toFixed(4)}%</span>
+              <div className="flex min-w-0 items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><FiUser /></span><div className="min-w-0"><p className="truncate text-sm font-black text-slate-950">{agent.name}</p><p className="truncate text-xs font-semibold text-slate-500">{agent.isExternalGroup ? `Representative: ${agent.representativeName || '-'}` : `${agent.groupName} · Reports under: ${agent.reportsUnderName}`}</p>{!agent.ready && agent.unavailableReason ? <p className="mt-1 flex gap-1 text-xs font-semibold text-amber-700"><FiAlertTriangle className="shrink-0"/>{agent.unavailableReason}</p> : null}{agent.isSystemDummy ? <p className="mt-1 text-[11px] font-black uppercase tracking-wide text-blue-600">System Agent · Owner: {agent.ownerName}</p> : null}</div></div>
+              <span className={`shrink-0 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${agent.ready ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{agent.ready ? <><FiCheckCircle/> Ready</> : <><FiLock/> Unavailable</>}</span>
             </button>
           ))}
         </div>
@@ -78,6 +83,8 @@ const ReservePaymentTermsModal = ({
   paymentForm,
   updatePaymentField,
   agents = [],
+  showUnavailableSellers = false,
+  setShowUnavailableSellers = () => {},
   selectedAgent = null,
   agentSearch = '',
   setAgentSearch,
@@ -146,7 +153,7 @@ const ReservePaymentTermsModal = ({
 
       <SectionCard title="Reservation Setup" description="All new reservations use distributed commission generation.">
         <div className="grid gap-4 md:grid-cols-2">
-          <AgentPicker agents={agents} selectedAgent={selectedAgent} selectedAgentId={paymentForm.sellerId} search={agentSearch} onSearch={setAgentSearch} onSelect={(value) => updatePaymentField('sellerId', value)} isLoading={isLoadingAgents} error={agentsError} />
+          <AgentPicker agents={agents} selectedAgent={selectedAgent} selectedAgentId={paymentForm.sellerId} search={agentSearch} onSearch={setAgentSearch} onSelect={(value) => updatePaymentField('sellerId', value)} isLoading={isLoadingAgents} error={agentsError} showUnavailableSellers={showUnavailableSellers} setShowUnavailableSellers={setShowUnavailableSellers} />
           <SelectInput label="Mode of Payment" value={paymentForm.modeOfPayment} onChange={(value) => updatePaymentField('modeOfPayment', value)}><option value="installment">Installment</option><option value="cash">Cash</option></SelectInput>
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-black uppercase text-emerald-700">Reservation Status</p><p className="mt-1 text-sm font-black text-emerald-900">Reserved automatically after saving</p></div>
         </div>
@@ -296,4 +303,5 @@ const ReservePaymentTermsModal = ({
 }
 
 export default ReservePaymentTermsModal
+
 

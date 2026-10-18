@@ -36,3 +36,4 @@ const GalleryLightbox = ({ images, initialIndex = 0, onClose }) => {
 
 export default GalleryLightbox
 
+

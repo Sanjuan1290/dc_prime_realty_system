@@ -579,6 +579,16 @@ export const getAuditLogs = async (req, res) => {
       values.push(...Array(9).fill(buildLike(req.query.search)));
     }
 
+    const linkedReviewId = cleanText(req.query.reviewId);
+    if (linkedReviewId) {
+      const id = Number(linkedReviewId);
+      if (!Number.isSafeInteger(id) || id < 1) {
+        return res.status(400).json({ message: 'Invalid Review ID.' });
+      }
+      conditions.push(`JSON_UNQUOTE(JSON_EXTRACT(al.metadata_json, '$.reviewId')) = ?`);
+      values.push(String(id));
+    }
+
     if (cleanText(req.query.action) && req.query.action !== 'all') {
       conditions.push('al.action = ?');
       values.push(normalizeAction(req.query.action));
@@ -1151,4 +1161,5 @@ export const downloadAuditLogArchiveExport = async (req, res) => {
     connection.release();
   }
 };
+
 

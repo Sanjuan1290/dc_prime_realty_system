@@ -151,3 +151,4 @@ const GeneratePayrollModal = ({ month, periodType, periodLabel, scheduledRelease
 }
 
 export default GeneratePayrollModal
+

@@ -5,6 +5,9 @@ import {
   FiArrowLeft,
   FiBriefcase,
   FiCheckCircle,
+  FiAlertTriangle,
+  FiXCircle,
+  FiClipboard,
   FiDollarSign,
   FiDownload,
   FiEdit2,
@@ -13,6 +16,7 @@ import {
   FiMapPin,
   FiPhone,
   FiRotateCcw,
+  FiArrowLeftRight,
   FiSearch,
   FiShoppingBag,
   FiTrendingUp,
@@ -21,12 +25,18 @@ import {
   FiUsers,
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
+import ReviewLiveRecordPanel from '../../components/Shared/ReviewLiveRecordPanel'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import EditGroupModal from '../../components/System/sellerGroupComponents/EditGroupModal'
+import SellerSetupCheck from '../../components/System/sellerGroupComponents/SellerSetupCheck'
+import ReplaceManagerModal from '../../components/System/sellerGroupComponents/ReplaceManagerModal'
+import ManagerReplacementHistory from '../../components/System/sellerGroupComponents/ManagerReplacementHistory'
 import NetworkMemberImportModal from '../../components/System/sellerGroupComponents/NetworkMemberImportModal'
 import NetworkMemberImportHistoryModal from '../../components/System/sellerGroupComponents/NetworkMemberImportHistoryModal'
 import CreateUserModal from '../../components/System/userComponents/CreateUserModal'
 import EditUserModal from '../../components/System/userComponents/EditUserModal'
+import DeactivateSystemUserModal from '../../components/System/userComponents/DeactivateSystemUserModal'
+import ReactivateSystemUserModal from '../../components/System/userComponents/ReactivateSystemUserModal'
 import { getSellerRoleLabel } from '../../config/sellerRoles'
 import { useFetch as fetchJson } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
@@ -222,16 +232,26 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const rootPath = `/portal/${portalRole}`
   const [alert, setAlert] = useState(null)
   const [memberSearch, setMemberSearch] = useState('')
+  const [showSellerSetupCheck, setShowSellerSetupCheck] = useState(false)
   const [memberPage, setMemberPage] = useState(1)
   const [showCreateUser, setShowCreateUser] = useState(false)
   const [showMemberImport, setShowMemberImport] = useState(false)
   const [showImportHistory, setShowImportHistory] = useState(false)
   const [selectedMember, setSelectedMember] = useState(null)
+  const [sellerStatusModal, setSellerStatusModal] = useState(null)
+  const [sellerStatusTarget, setSellerStatusTarget] = useState(null)
+  const [replaceManager, setReplaceManager] = useState(null)
+  const [newReplacementRole, setNewReplacementRole] = useState(null)
+  const [resumeReplacement, setResumeReplacement] = useState(null)
+  const [showReplacementHistory, setShowReplacementHistory] = useState(false)
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
   const [range, setRange] = useState(defaultRange)
   const [isExportingMembers, setIsExportingMembers] = useState(false)
   const workflowAutoOpenedRef = useRef(false)
   const workflowAction = searchParams.get('workflowAction') || ''
+  const reviewView = searchParams.get('reviewView') === '1'
+  const reviewEntityType = searchParams.get('reviewEntityType') || ''
+  const reviewAccreditedSellerId = Number(searchParams.get('accreditedSellerId') || 0)
   const workflowReviewId = Number(searchParams.get('reviewId') || 0) || null
   const workflowAuditCaseId = Number(searchParams.get('auditCaseId') || 0) || null
   const workflowSellerId = Number(searchParams.get('sellerId') || 0) || null
@@ -243,6 +263,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
     && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_CREATE)
     && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT)
   const canExportMembers = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW)
+  const canCheckSellerSetup = ['super_admin','system_admin'].includes(actor?.role) && canExportMembers
+  const canChangeSellerStatus = ['super_admin','system_admin'].includes(actor?.role)
 
   const exportMembers = async () => {
     setIsExportingMembers(true)
@@ -478,6 +500,13 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             <FiArrowLeft /> Back
           </NavLink>
 
+          {!isExternal && canCheckSellerSetup ? (
+            <button type="button" onClick={() => setShowSellerSetupCheck(current=>!current)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+              <FiClipboard/> Check Seller Setup
+            </button>
+          ) : null}
+
+          {!isExternal && canCheckSellerSetup ? <button type="button" onClick={()=>setShowReplacementHistory(value=>!value)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FiRotateCcw/> Replacement History</button>:null}
           {!isExternal && canAddMember ? (
             <button
               type="button"
@@ -557,6 +586,11 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
       ) : null}
 
 
+      {showReplacementHistory && !isExternal && canCheckSellerSetup ? <ManagerReplacementHistory groupId={Number(groupId)} onClose={()=>setShowReplacementHistory(false)}/> : null}
+      {showSellerSetupCheck && !isExternal && canCheckSellerSetup ? (
+        <SellerSetupCheck groupId={groupId} onClose={()=>setShowSellerSetupCheck(false)} onViewSeller={(userId)=>{const m=members.find(item=>Number(item.user_id)===Number(userId));if(m)setSelectedMember({...m,id:Number(m.user_id),status:m.user_status,seller_group_id:Number(group.id||groupId),reports_under_user_id:m.accredited_seller_reports_under_user_id||''})}}/>
+      ) : null}
+
       {configuration ? (
         <>
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
@@ -569,9 +603,9 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
               </DetailItem>
 
               <DetailItem label="Status">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold capitalize text-emerald-700 ring-1 ring-emerald-100">
-                  <FiCheckCircle className="h-3.5 w-3.5" />
-                  {group.status || 'active'}
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${group.status === 'active' ? 'bg-emerald-50 text-emerald-700 ring-emerald-100' : 'bg-red-50 text-red-700 ring-red-100'}`}>
+                  {group.status === 'active' ? <FiCheckCircle className="h-3.5 w-3.5"/> : <FiXCircle className="h-3.5 w-3.5"/>}
+                  {group.status === 'active' ? 'Active' : 'Inactive'}
                 </span>
               </DetailItem>
 
@@ -973,7 +1007,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
               <SectionHeading
                 title="In-House Members"
-                description="Each member inherits the fixed project rate for their position."
+                description="View members and their reporting managers."
                 actions={
                   <label className="relative block w-full lg:w-80">
                     <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -983,7 +1017,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                         setMemberSearch(event.target.value)
                         setMemberPage(1)
                       }}
-                      placeholder="Search member, role, or parent..."
+                      placeholder="Search sellers or managers"
                       className="h-10 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-sm font-medium outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
                     />
                   </label>
@@ -1025,9 +1059,11 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                               : 'Not assigned')}
                         </td>
                         <td className="px-5 py-4">
-                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold capitalize text-emerald-700 ring-1 ring-emerald-100">
-                            {member.accredited_seller_status}
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${member.user_status === 'active' && member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700 ring-emerald-100' : 'bg-red-50 text-red-700 ring-red-100'}`}>
+                            {member.user_status === 'active' && member.accredited_seller_status === 'active' ? <FiCheckCircle/> : <FiXCircle/>}
+                            {member.user_status === 'active' && member.accredited_seller_status === 'active' ? 'Active' : 'Inactive'}
                           </span>
+                          {member.user_status !== member.accredited_seller_status && <span className="mt-1 flex items-center gap-1 text-xs text-amber-700"><FiAlertTriangle/> Statuses do not match</span>}
                         </td>
                         <td className="px-5 py-4">
                           <button
@@ -1045,8 +1081,19 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                             className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
                           >
                             <FiEdit2 />
-                            Edit User
+                            Edit Seller
                           </button>
+                          {canChangeSellerStatus && ['division_manager','sales_director','unit_manager'].includes(member.role) && member.user_status === 'active' && member.accredited_seller_status === 'active' && (
+                            <button type="button" onClick={() => setReplaceManager(member)} className="ml-2 inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50"><FiArrowLeftRight/> Replace Manager</button>
+                          )}
+                          {canChangeSellerStatus && !(['division_manager','sales_director','unit_manager'].includes(member.role) && member.user_status === 'active' && member.accredited_seller_status === 'active') && (
+                            <button type="button" onClick={() => {setSellerStatusTarget({...member,id:Number(member.user_id),account_code:member.account_code || member.display_name});setSellerStatusModal(member.user_status === 'active' && member.accredited_seller_status === 'active' ? 'deactivate' : 'reactivate')}}
+                              disabled={member.user_status === 'active' && member.accredited_seller_status === 'active' && ['division_manager','sales_director','unit_manager'].includes(member.role)}
+                              title={['division_manager','sales_director','unit_manager'].includes(member.role) && member.user_status === 'active' && member.accredited_seller_status === 'active' ? 'A replacement manager is required. Available in the team-transfer phase.' : undefined}
+                              className={`ml-2 inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${member.user_status === 'active' && member.accredited_seller_status === 'active' ? 'border-red-200 text-red-700' : 'border-emerald-200 text-emerald-700'}`}>
+                              {member.user_status === 'active' && member.accredited_seller_status === 'active' ? 'Deactivate Seller' : 'Activate Seller'}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1138,23 +1185,28 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
       {showCreateUser ? (
         <CreateUserModal
           setShowCreateUser={setShowCreateUser}
-          allowedRoles={[
-            'division_manager',
-            'sales_director',
-            'unit_manager',
-            'sales_agent',
-          ]}
+          allowedRoles={newReplacementRole ? [newReplacementRole] : ['division_manager','sales_director','unit_manager','sales_agent']}
           actorRole={portalRole}
           initialSellerGroupId={String(group.id || groupId)}
           lockSellerGroup
-          title={`Add User to ${group.name}`}
+          title={newReplacementRole ? 'Create Replacement Manager' : `Add User to ${group.name}`}
           onSaved={(message) => {
             setAlert({ type: 'success', message })
+            if (resumeReplacement) setReplaceManager(resumeReplacement)
+            setResumeReplacement(null)
+            setNewReplacementRole(null)
             refresh()
           }}
         />
       ) : null}
 
+      {replaceManager ? <ReplaceManagerModal groupId={Number(group.id||groupId)} manager={replaceManager} onClose={()=>setReplaceManager(null)} onSaved={(message)=>{setReplaceManager(null);setAlert({type:'success',message});refresh()}} onCreateManager={()=>{setResumeReplacement(replaceManager);setNewReplacementRole(replaceManager.role);setReplaceManager(null);setShowCreateUser(true)}}/> : null}
+      {sellerStatusModal === 'deactivate' && sellerStatusTarget ? (
+        <DeactivateSystemUserModal user={sellerStatusTarget} onClose={() => {setSellerStatusModal(null);setSellerStatusTarget(null)}} onSaved={(message)=>{setAlert({type:'success',message});refresh()}} />
+      ) : null}
+      {sellerStatusModal === 'reactivate' && sellerStatusTarget ? (
+        <ReactivateSystemUserModal user={sellerStatusTarget} onClose={() => {setSellerStatusModal(null);setSellerStatusTarget(null)}} onSaved={(message)=>{setAlert({type:'success',message});refresh()}} />
+      ) : null}
       {selectedMember ? (
         <EditUserModal
           key={selectedMember.id}
@@ -1181,6 +1233,16 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         />
       ) : null}
 
+      {reviewView ? <ReviewLiveRecordPanel
+        entityType={reviewEntityType}
+        reviewId={workflowReviewId}
+        loading={configurationQuery.isLoading}
+        record={reviewEntityType === 'accredited_seller'
+          ? members.find((member) => Number(member.accredited_seller_id) === reviewAccreditedSellerId)
+          : { ...group, ...fixedRates }}
+        error={configurationQuery.isError ? 'You cannot access this Network, or it is no longer available.' : reviewEntityType === 'accredited_seller' && !members.find((member) => Number(member.accredited_seller_id) === reviewAccreditedSellerId) ? 'The selected seller was not found in this Network.' : ''}
+        onClose={() => navigate(`${rootPath}/review-center/reviews/${workflowReviewId}`)}
+      /> : null}
       {showEditGroupModal ? (
         <EditGroupModal
           setShowEditGroupModal={setShowEditGroupModal}
@@ -1199,5 +1261,6 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 }
 
 export default SellerGroupDetails
+
 
 

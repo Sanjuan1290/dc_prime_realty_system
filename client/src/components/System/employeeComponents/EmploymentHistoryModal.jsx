@@ -96,3 +96,4 @@ const EmploymentHistoryModal = ({ employee, onClose }) => {
 
 export default EmploymentHistoryModal
 
+

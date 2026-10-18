@@ -1,3 +1,4 @@
+import { sellerAuditRows } from '../../client/src/utils/sellerAuditHistory.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -62,7 +63,7 @@ test('Frontend includes all modal fields, five sheets, filter reuse and paged re
   const page=read('client/src/pages/System/AuditLogs.jsx')
   const modal=read('client/src/components/System/auditLogsComponents/ExportAuditReportModal.jsx')
   const excel=read('client/src/utils/auditReportExcel.js')
-  for(const name of ['Report Summary','Audit Trail','Before & After Changes','Reviews & Audit Cases','Technical Details']) assert.ok(excel.includes(name),name)
+  for(const name of ['Report Summary','Audit Trail','Before & After Changes','Reviews & Audit Cases','Seller & Manager Changes','Technical Details']) assert.ok(excel.includes(name),name)
   for(const heading of ['User Email','Action','Module','Entity','Title','Description','Reason','IP Address']) assert.ok(excel.includes(heading),heading)
   assert.match(page,/ExportAuditReportModal/)
   assert.match(modal,/result\.hasMore/)
@@ -76,7 +77,7 @@ test('Frontend includes all modal fields, five sheets, filter reuse and paged re
   assert.equal(getAuditExtraFields({title:'Requested client document resubmission',module:'Documents',entityLabel:'Proof of Identity',metadata:{}}).newStatus,'Needs Resubmission')
 })
 
-test('Workbook generator retains full modal details and maps documented changes into five readable sheets', () => {
+test('Workbook generator retains full modal details and maps documented changes into six readable sheets', () => {
   // Use a tiny workbook stand-in so this test remains independent of Vite and
   // the client-only xlsx-js-style package in the text-source test environment.
   const src = read('client/src/utils/auditReportExcel.js')
@@ -92,15 +93,15 @@ test('Workbook generator retains full modal details and maps documented changes 
     encode_cell: encodeCell, encode_range:()=> 'A1:Z90',
     book_append_sheet:(book,ws,name)=>{book.SheetNames.push(name);book.Sheets[name]=ws},
   }}
-  const build = new Function('XLSX','getAuditChanges','getAuditExtraFields','getAuditReferences','redactEvidence','safeAuditText','formatPhilippineDateTime',
-    `${src}\nreturn buildAuditReportWorkbook;`)(XLSX,getAuditChanges,getAuditExtraFields,getAuditReferences,redactEvidence,safeAuditText,(v)=>v)
+  const build = new Function('XLSX','getAuditChanges','getAuditExtraFields','getAuditReferences','redactEvidence','safeAuditText','formatPhilippineDateTime','sellerAuditRows',
+    `${src}\nreturn buildAuditReportWorkbook;`)(XLSX,getAuditChanges,getAuditExtraFields,getAuditReferences,redactEvidence,safeAuditText,(v)=>v,sellerAuditRows)
   const wb=build({logs:[{
     id:12,createdAt:'2026-10-13T03:41:00Z',actorName:'Office Staff',actorEmail:'staff@example.com',actorRole:'operations_staff',
     action:'update',module:'Attendance',entityLabel:'LA-0208',entityType:'listing',entityId:'77',title:'Corrected attendance time',
     description:'Audit explanation exactly as recorded',source:'Current',ipAddress:'1.2.3.4',userAgent:'Browser',
     metadata:{before:{area:300,price:1300},after:{area:322,price:1500},reason:'=formula',actualTimeIn:'10:10:00',actualTimeOut:'20:20:00',reviewId:55,password:'hidden',requestId:'req-a'},
   }],cases:{reviews:[],events:[],cases:[]},filters:{},generatedBy:'Super Admin'})
-  assert.deepEqual(wb.SheetNames,['Report Summary','Audit Trail','Before & After Changes','Reviews & Audit Cases','Technical Details'])
+  assert.deepEqual(wb.SheetNames,['Report Summary','Audit Trail','Before & After Changes','Reviews & Audit Cases','Seller & Manager Changes','Technical Details'])
   const main=wb.Sheets['Audit Trail']
   assert.equal(main['A2'].v,'12')
   assert.equal(main['M2'].v,'Audit explanation exactly as recorded')
@@ -112,3 +113,4 @@ test('Workbook generator retains full modal details and maps documented changes 
   assert.match(wb.Sheets['Technical Details']['L2'].v,/\[REDACTED\]/)
   assert.doesNotMatch(wb.Sheets['Technical Details']['L2'].v,/hidden/)
 })
+

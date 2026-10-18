@@ -231,3 +231,4 @@ test('report-only seller directory endpoint enforces report permission and proje
   assert.match(component,/rosterError/)
   assert.match(system,/rosterError=\{shouldLoadLotProjects && sellerRosterQuery.isError\}/)
 })
+

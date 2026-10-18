@@ -74,3 +74,4 @@ test('salary register backend supports department, payroll status and employee s
   assert.match(service, /e\.employee_code LIKE \?/);
 });
 
+

@@ -98,3 +98,4 @@ It is idempotent (`INSERT IGNORE` only) and TiDB-safe. It was verified on a copy
 
 Staff access remains server-scoped: **Needs My Action** contains only the current user's own `returned_for_correction` reviews, while **History & Tracking** contains only reviews that user originally entered. This migration does not grant Department Head, Auditor, or administrative workflow permissions to Staff.
 
+

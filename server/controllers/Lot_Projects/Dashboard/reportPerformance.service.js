@@ -215,3 +215,4 @@ export const loadProjectPerformance = async (connection, projectId, from, to, { 
   `, [projectId, projectId, projectId]);
   return buildPerformanceRankings({ roster, sales, commissions, profits });
 };
+

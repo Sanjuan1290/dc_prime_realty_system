@@ -1,6 +1,6 @@
 import { FiInfo, FiX } from 'react-icons/fi'
 import { formatDateTime } from '../../../utils/formatDateTime'
-import { getAuditChanges } from '../../../utils/auditReportEvidence'
+import { getAuditChanges, getAuditReferences } from '../../../utils/auditReportEvidence'
 
 
 const formatAttendanceDate = (value) => {
@@ -112,7 +112,7 @@ const DetailRow = ({ label, value }) => (
   </div>
 )
 
-const AuditLogDetailsModal = ({ log, onClose }) => {
+const AuditLogDetailsModal = ({ log, onClose, onViewReview }) => {
   if (!log) return null
 
   const isDocumentResubmission = log.title === 'Requested client document resubmission'
@@ -127,6 +127,7 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
     || log.entityLabel
   const attendanceEmployeeCode = log.metadata?.employeeCode || entityParts[0] || '-'
   const attendanceDate = log.metadata?.attendanceDate || entityParts[1] || ''
+  const { reviewId: linkedReviewId } = getAuditReferences(log.metadata)
   const settingsChanges = getSettingsChanges(log)
   const evidenceChanges = getAuditChanges(log)
   const isSettingsAudit = Boolean(settingsChangeDefinitions[log.module])
@@ -200,6 +201,10 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
             </p>
           </div>
 
+          {linkedReviewId ? <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+            <span className="text-sm font-semibold text-blue-950">Related Review #{linkedReviewId}</span>
+            <button type="button" onClick={() => onViewReview?.(linkedReviewId)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white">View Review</button>
+          </div> : null}
           {log.metadata?.reason ? (
             <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <p className="text-xs font-black uppercase tracking-wide text-amber-700">Reason</p>
@@ -268,5 +273,6 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
 }
 
 export default AuditLogDetailsModal
+
 
 

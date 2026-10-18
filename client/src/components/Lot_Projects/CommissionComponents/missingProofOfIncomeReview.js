@@ -60,3 +60,4 @@ export const buildMissingProofOfIncomeReview = ({ commissionGroup, commission, m
     note: 'The commission payment was already released. This action records only its missing receipt.',
   }
 }
+

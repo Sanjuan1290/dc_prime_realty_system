@@ -10,6 +10,8 @@ import { assertRegisteredReviewAction, getReviewActionLabel } from '../config/re
 export const REVIEW_LOCKING_STATUSES = Object.freeze([]);
 
 const jsonValue = (value) => value == null ? null : JSON.stringify(value);
+export { requiresDistinctReview } from './reviewActionPolicy.js';
+import { requiresDistinctReview } from './reviewActionPolicy.js';
 const reviewNumber = (id) => `REV-${String(id).padStart(8, '0')}`;
 
 export const appendReviewEvent = async (connection, {
@@ -321,7 +323,7 @@ export const createOperationalReview = async (connection, {
   const isDepartmentHead = actor.role === expectedHeadRole;
   const preApprovedHeadId = isEmergency ? 0 : Number(headPreApprovedByUserId || 0);
 
-  if (isDepartmentHead) {
+  if (isDepartmentHead && !requiresDistinctReview(actionKey)) {
     const absorbed = await absorbOpenStaffReviewIntoHeadCorrection(connection, {
       actor, actionKey, department, projectId, entityType, entityId, entityLabel, beforeSnapshot, afterSnapshot,
     });
@@ -331,7 +333,7 @@ export const createOperationalReview = async (connection, {
     }
   }
 
-  const refreshed = await refreshOwnRoutineReview(connection, {
+  const refreshed = requiresDistinctReview(actionKey) ? null : await refreshOwnRoutineReview(connection, {
     actor, actionKey, department, projectId, entityType, entityId, entityLabel, afterSnapshot, link,
   });
   if (refreshed) {
@@ -466,6 +468,14 @@ export const resubmitReturnedOperationalReview = async (connection, {
     fromStatus: 'returned_for_correction',
     toStatus: 'pending_head_review',
     message: message || `${getReviewActionLabel(review.action_key)} corrected and resubmitted for Head review.`,
+    metadata: {
+      previousBeforeSnapshot: review.before_snapshot_json ?? null,
+      previousAfterSnapshot: review.after_snapshot_json ?? null,
+      correctedBeforeSnapshot: beforeSnapshot ?? null,
+      correctedAfterSnapshot: afterSnapshot ?? null,
+      previousRevision: Number(review.revision || 1),
+      reviewRevision: Number(review.revision || 1) + 1,
+    },
   });
   await notifyDepartmentHeads(connection, {
     department,
@@ -496,6 +506,7 @@ export const canActorSeeReview = async (connection, actor, review) => {
 };
 
 export const buildReviewPayloadHash = (payload) => crypto.createHash('sha256').update(JSON.stringify(payload ?? null)).digest('hex');
+
 
 
 

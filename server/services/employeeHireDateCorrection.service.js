@@ -100,3 +100,4 @@ export const correctEmployeeHireDate = async (connection, {
   `, [employeeId]);
   return { changed: true, previous, current: next, reason: note, hasDraft: draftRows.length > 0 };
 };
+

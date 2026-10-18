@@ -117,3 +117,4 @@ export const parseBulkWorkbook = async (file, projectId) => {
       values: Object.fromEntries(FIELDS.map((field) => [field, row[FIELD_HEADERS[field]]])) }
   })
 }
+

@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiEdit2, FiRefreshCw, FiSettings } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
+import ReviewLiveRecordPanel from '../../components/Shared/ReviewLiveRecordPanel'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ProjectSettingsAuthorizationModal from '../../components/Lot_Projects/SettingsComponents/ProjectSettingsAuthorizationModal'
 import EditSettingsModal from '../../components/Lot_Projects/SettingsComponents/EditSettingsModal/EditSettingsModal'
@@ -46,7 +47,10 @@ const SettingCard = ({ title, description, children }) => (
 
 const Settings = () => {
   const { projectSlug } = useParams()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const reviewView = searchParams.get('reviewView') === '1'
+  const reviewId = Number(searchParams.get('reviewId') || 0)
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
   const [showEdit, setShowEdit] = useState(false)
@@ -227,6 +231,14 @@ const Settings = () => {
       </SettingCard>
 
 
+      {reviewView ? <ReviewLiveRecordPanel
+        entityType="lot_project_settings"
+        reviewId={reviewId}
+        loading={isLoading}
+        record={isError ? null : isLoading ? null : settings}
+        error={isError ? 'Settings are unavailable or you do not have access.' : ''}
+        onClose={() => navigate(`/portal/${actorRole || 'super_admin'}/review-center/reviews/${reviewId}`)}
+      /> : null}
       {showEdit ? (
         <EditSettingsModal
           settings={settings}
@@ -257,5 +269,6 @@ const Settings = () => {
 }
 
 export default Settings
+
 
 

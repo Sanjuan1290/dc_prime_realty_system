@@ -32,6 +32,7 @@ export const REVIEW_ACTIONS = Object.freeze({
   'payment.penalty_waiver.create': { department: 'accounting', entityType: 'lot_project_penalty_schedule', label: 'Penalty waiver', headApprovalBefore: true },
   'payment.penalty_restore': { department: 'accounting', entityType: 'lot_project_penalty_schedule', label: 'Penalty waiver restore', headApprovalBefore: true },
   'commission.adjust_unit': { department: 'accounting', entityType: 'lot_project_commission_account', label: 'Unit commission adjustment', headApprovalBefore: true },
+  'commission.assigned_seller_change': { department: 'accounting', entityType: 'lot_project_commission_account', label: 'Assigned seller changed', headApprovalBefore: true },
   'payment_proof.verify': { department: 'accounting', entityType: 'lot_project_payment_proof', label: 'Payment proof change', headApprovalBefore: false },
   'commission.release': { department: 'accounting', entityType: 'lot_project_commission', label: 'Commission release', headApprovalBefore: COMMISSION_STAGE_HEAD_APPROVAL_BEFORE.release },
   'commission.hold': { department: 'accounting', entityType: 'lot_project_commission', label: 'Commission hold', headApprovalBefore: COMMISSION_STAGE_HEAD_APPROVAL_BEFORE.hold },
@@ -69,6 +70,7 @@ export const REVIEW_ACTIONS = Object.freeze({
   'network.members.import': { department: 'marketing', entityType: 'seller_group', label: 'Network member import', headApprovalBefore: false },
   'network.members.import.undo': { department: 'marketing', entityType: 'seller_group', label: 'Network member import undo', headApprovalBefore: false },
   'seller.create': { department: 'marketing', entityType: 'accredited_seller', label: 'Accredited seller creation', headApprovalBefore: false },
+  'seller.manager_replace': { department: 'marketing', entityType: 'accredited_seller', label: 'Manager replaced', headApprovalBefore: false },
   'seller.edit': { department: 'marketing', entityType: 'accredited_seller', label: 'Accredited seller edit', headApprovalBefore: false },
 });
 
@@ -86,6 +88,7 @@ export const assertRegisteredReviewAction = (actionKey, department) => {
 };
 
 export const getReviewActionLabel = (actionKey) => getReviewAction(actionKey)?.label || String(actionKey || '');
+
 
 
 

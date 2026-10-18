@@ -41,6 +41,7 @@ export const getReservationAgents = async (req, res) => {
     const sellers = await getReserveSellerOptions(connection, project.lot_project_id, {
       search,
       limit,
+      showUnavailable: String(req.query.showUnavailable||'')==='1',
     });
 
     return res.json({
@@ -126,4 +127,5 @@ export const getReservationCommissionPreviewController = async (req, res) => {
     connection.release();
   }
 };
+
 

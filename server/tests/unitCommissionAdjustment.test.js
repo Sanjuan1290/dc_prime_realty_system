@@ -139,3 +139,4 @@ test('unit commission adjustment preserves four-decimal rates and allows a CP-re
   assert.equal(payload.rates.find((row) => row.commissionId === 23).rate, 0.791);
 });
 
+

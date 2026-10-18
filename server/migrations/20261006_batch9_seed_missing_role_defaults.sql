@@ -195,3 +195,4 @@ WHERE customised.role IS NULL;
 
 DROP TEMPORARY TABLE IF EXISTS rbac_20261006_seed_role_defaults;
 
+

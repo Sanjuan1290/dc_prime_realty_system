@@ -10,6 +10,7 @@ import { PERMISSIONS } from '../config/permissions'
 const HEAD_APPROVAL = new Set([
   PERMISSIONS.LOT_RESERVATION_CORRECT,
   PERMISSIONS.LOT_COMMISSIONS_ADJUST,
+  PERMISSIONS.LOT_ASSIGNED_SELLER_EDIT,
   PERMISSIONS.LOT_PENALTY_CORRECT,
   PERMISSIONS.LOT_SETTINGS_MANAGE,
   PERMISSIONS.LOT_PAYMENTS_EDIT,
@@ -25,7 +26,7 @@ const HEAD_APPROVAL = new Set([
 // SYSTEM_SELLER_GROUPS_MANAGE permission. Do not mark that broad permission
 // here or ordinary Network create/edit/status actions would be mislabeled.
 
-const SENSITIVE_PATTERN = /delete|purge|archive|deactivate|cancellation|refund|settle|penalt|commissions\.(adjust|release|hold|unhold)|payments\.(edit|delete)|employee_salary\.(finalize|correct_finalized|release)|compensation|access_control\.manage|settings\.manage|emergency|reservation\.correct|system_correction/
+const SENSITIVE_PATTERN = /delete|purge|archive|deactivate|cancellation|refund|settle|penalt|commissions\.(adjust|change_seller|release|hold|unhold)|payments\.(edit|delete)|employee_salary\.(finalize|correct_finalized|release)|compensation|access_control\.manage|settings\.manage|emergency|reservation\.correct|system_correction/
 
 export const getPermissionType = (key = '') => {
   const value = String(key)
@@ -80,4 +81,5 @@ export const getAccessTier = (key = '') => {
   if (type === 'Delete' || isSensitivePermission(key)) return 'full'
   return 'edit'
 }
+
 

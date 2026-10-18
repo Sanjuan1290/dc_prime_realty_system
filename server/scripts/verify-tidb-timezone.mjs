@@ -23,3 +23,4 @@ try {
   connection.release();
   await db.end();
 }
+

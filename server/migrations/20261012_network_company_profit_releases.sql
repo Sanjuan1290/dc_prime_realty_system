@@ -121,3 +121,4 @@ WHERE NOT EXISTS (
   WHERE existing.profit_account_id = profit.id
     AND existing.release_stage = stage.release_stage
 );
+

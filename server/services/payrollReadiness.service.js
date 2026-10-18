@@ -135,3 +135,4 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
     attendance: { recorded_days: recordedDays, incomplete_days: incompleteDays, checked_days: attendance?.rows?.length || 0, rest_days: restDays },
   };
 };
+

@@ -2094,7 +2094,7 @@ export const sortComputedRows = (rows = []) =>
 export const getReserveSellerOptions = async (
   connection,
   lotProjectId,
-  { search = '', limit = 100 } = {}
+  { search = '', limit = 100, showUnavailable = false } = {}
 ) => {
   if (!(await tableExists(connection, 'accredited_sellers'))) return [];
 
@@ -2140,6 +2140,8 @@ export const getReserveSellerOptions = async (
           ELSE TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name))
         END AS name,
         u.role,
+        u.status AS user_status,
+        acs.accredited_seller_status,
         sg.seller_group_type,
         CASE
           WHEN sg.seller_group_type = 'external' THEN group_rate.seller_group_pool_rate
@@ -2170,8 +2172,8 @@ export const getReserveSellerOptions = async (
       LEFT JOIN accredited_sellers parent_acs
         ON parent_acs.user_id = acs.accredited_seller_reports_under_user_id
       LEFT JOIN users parent_user ON parent_user.id = parent_acs.user_id
-      WHERE acs.accredited_seller_status = 'active'
-        AND u.status = 'active'
+      WHERE 1=1
+        ${showUnavailable ? '' : "AND acs.accredited_seller_status = 'active' AND u.status = 'active'"}
         ${hasDummyColumns ? 'AND COALESCE(acs.is_system_dummy, 0) = 0' : ''}
         AND (
           (
@@ -2205,10 +2207,24 @@ export const getReserveSellerOptions = async (
     params
   );
 
-  return rows.map((row) => {
+  const { loadCurrentSellerChain, buildGroupFixedRateDistribution } = await import('../Commissions/commissionHierarchy.service.js');
+  const { loadGroupFixedCommissionRates } = await import('../../System/groupFixedCommissionRates.service.js');
+  return Promise.all(rows.map(async (row) => {
+    let unavailableReason = '';
+    if (row.seller_group_type === 'in_house') {
+      if (row.user_status === 'inactive' || row.accredited_seller_status === 'inactive') unavailableReason='Seller is inactive.';
+      if (!unavailableReason) try {
+        const chain=await loadCurrentSellerChain(connection,row.accredited_seller_id);
+        const fixedRates=await loadGroupFixedCommissionRates(connection,row.seller_group_id,lotProjectId);
+        buildGroupFixedRateDistribution({chain,fixedRates,requireGroupHead:true});
+      } catch(error) { unavailableReason=error.message || 'Seller setup is incomplete.'; }
+    }
+    if (row.seller_group_type === 'external' && (row.user_status !== 'active' || row.accredited_seller_status !== 'active')) unavailableReason='External Network account is inactive.';
     const isExternalGroup = row.seller_group_type === 'external';
     const rateValue = Number(row.rate || 0);
     return {
+      ready: !unavailableReason,
+      unavailableReason,
       id: Number(row.id),
       accredited_seller_id: Number(row.accredited_seller_id),
       user_id: Number(row.user_id),
@@ -2241,7 +2257,7 @@ export const getReserveSellerOptions = async (
           ? `Fixed In-House Network rate · Sales Agent under ${row.reports_under_name}`
           : 'Fixed In-House Network project rate',
     };
-  });
+  }));
 };
 
 
@@ -4601,5 +4617,6 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
+
 
 

@@ -102,3 +102,4 @@ const CorrectPayrollModal = ({ payrollId, onClose, onCorrected }) => {
 
 export default CorrectPayrollModal
 
+

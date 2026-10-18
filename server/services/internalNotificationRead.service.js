@@ -29,3 +29,4 @@ export const markVisibleInternalNotificationsRead = async (connection, actorId, 
   }
   return markedCount;
 };
+

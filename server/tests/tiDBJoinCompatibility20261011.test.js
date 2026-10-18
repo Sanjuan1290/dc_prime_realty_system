@@ -72,3 +72,4 @@ test('Legacy inventory fallback no longer places correlated lookup inside JOIN O
   assert.match(controller, /MAX\(lot_project_client_profile_id\) AS latest_active_profile_id/);
   assert.match(controller, /cp\.lot_project_client_profile_id = cp_current\.latest_active_profile_id/);
 });
+

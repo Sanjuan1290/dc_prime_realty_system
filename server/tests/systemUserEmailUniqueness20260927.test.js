@@ -47,3 +47,4 @@ test('historical deactivated accounts do not block email reuse', () => {
   assert.match(controller, /active_login_email/);
 });
 
+

@@ -24,3 +24,4 @@ test('Project-rate details and review flow remain unchanged', () => {
   assert.match(source, /Sales Agent/)
   assert.match(source, /onConfirm=\{onConfirm\} onCancel=\{onCancel\}/)
 })
+

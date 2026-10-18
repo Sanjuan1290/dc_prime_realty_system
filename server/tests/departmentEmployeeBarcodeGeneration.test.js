@@ -100,3 +100,4 @@ test('Attendance Settings owns department Employee Code prefixes', () => {
   assert.doesNotMatch(systemForm, /Department Barcode Prefixes/);
 });
 
+

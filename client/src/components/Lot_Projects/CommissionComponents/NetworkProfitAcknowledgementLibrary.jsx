@@ -64,3 +64,4 @@ export default function NetworkProfitAcknowledgementLibrary({ canPrint = false, 
     {activeGroup ? <NetworkProfitProofOfIncomeModal group={activeGroup} canPrint={canPrint} canViewFiles={canViewFiles} canUpload={canUpload} onClose={()=>setOpenGroupKey(null)}/> : null}
   </section>
 }
+

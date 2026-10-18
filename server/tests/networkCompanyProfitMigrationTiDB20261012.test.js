@@ -30,3 +30,4 @@ test('retention stage balances rounding to the saved total', () => {
   assert.match(sql, /SELECT 'Retention',100,25/);
   assert.match(sql, /profit\.gross_profit_snapshot - ROUND\(profit\.gross_profit_snapshot \* 0\.20, 2\) \* 3 - ROUND\(profit\.gross_profit_snapshot \* 0\.15, 2\)/);
 });
+

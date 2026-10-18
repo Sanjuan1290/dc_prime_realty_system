@@ -67,6 +67,14 @@ export const validateSellerReportingChain = (
     throw new Error('Only active Sales Agents can be assigned to the in-house commission hierarchy.');
   }
 
+  // A new reservation must never pay commissions to inactive managers.
+  // Old snapshots passed to pure calculations may omit status fields; live
+  // reservation chains always supply these fields from the database.
+  for (const person of chain) {
+    if (person.user_status === 'inactive' || person.accredited_seller_status === 'inactive') {
+      throw new Error(`${sellerLabel(person)} is inactive. Activate or replace this seller before reserving.`);
+    }
+  }
   const groupId = Number(chain[0]?.seller_group_id || 0);
   for (let index = 1; index < chain.length; index += 1) {
     const child = chain[index - 1] || {};
@@ -79,6 +87,10 @@ export const validateSellerReportingChain = (
       );
     }
 
+    if (parent.user_id && Object.hasOwn(child, 'accredited_seller_reports_under_user_id') &&
+        Number(child.accredited_seller_reports_under_user_id || 0) !== Number(parent.user_id)) {
+      throw new Error(`${sellerLabel(child)} is not assigned to the expected manager. Check Seller Setup.`);
+    }
     if (groupId && Number(parent.seller_group_id || 0) !== groupId) {
       throw new Error('Every seller in the commission hierarchy must belong to the same in-house group.');
     }
@@ -86,11 +98,12 @@ export const validateSellerReportingChain = (
 
   if (requireGroupHead) {
     const terminal = chain[chain.length - 1] || {};
-    if (!terminal.is_group_head || !isGroupHeadRole(terminal.role)) {
-      throw new Error('Assign a Division Manager or Sales Director as the in-house Network hierarchy head before reserving this listing.');
+    if (!terminal.is_group_head || terminal.role !== 'division_manager' || chain.length !== 4) {
+      throw new Error('Complete the Sales Agent → Unit Manager → Sales Director → Division Manager assignment before reserving.');
     }
   }
 
   return true;
 };
+
 

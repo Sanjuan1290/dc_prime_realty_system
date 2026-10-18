@@ -35,3 +35,4 @@ test('Server requires each signed-in owner account to enter their own password',
   assert.match(middleware, /req\.authUser\?\.password_hash/)
   assert.match(middleware, /bcrypt\.compare\(password, passwordHash\)/)
 })
+

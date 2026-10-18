@@ -20,3 +20,4 @@ ALTER TABLE system_settings
 -- Persisted role defaults represent ALLOWED permissions only. Leaving these
 -- absent means Admin/Marketing/Sales/Accounting/Operations start with them OFF.
 
+

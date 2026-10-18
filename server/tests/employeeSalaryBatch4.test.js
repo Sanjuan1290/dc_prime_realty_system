@@ -129,3 +129,4 @@ test('Batch 4 UI shows Final Review and flags Attendance changes without enablin
   assert.match(review, /Future promotions, Attendance Settings changes, salary changes, or Attendance corrections will not automatically rewrite this payroll/);
 });
 
+

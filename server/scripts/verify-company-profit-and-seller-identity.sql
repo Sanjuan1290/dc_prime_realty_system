@@ -100,3 +100,4 @@ GROUP BY normalized_tin
 HAVING COUNT(*) > 1
 ORDER BY active_sellers DESC, normalized_tin;
 
+

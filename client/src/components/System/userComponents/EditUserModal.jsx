@@ -587,11 +587,9 @@ const EditUserModal = ({
 
 
                   <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">Status</p>
-                    <select value={form.status} onChange={(event) => updateForm("status", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50">
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
+                    <p className="text-sm font-bold text-slate-700">Account Status</p>
+                    <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700">{form.status === 'active' ? 'Active' : 'Inactive'}</div>
+                    <p className="text-xs text-slate-500">Use the protected Activate or Deactivate action to change status.</p>
                   </label>
 
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
@@ -699,4 +697,5 @@ const EditUserModal = ({
 };
 
 export default EditUserModal;
+
 

@@ -112,3 +112,4 @@ test('Corrected payroll remains official and can still be released, while Releas
   assert.match(correctionService, /RELEASED_PAYROLL_CORRECTION_BLOCKED/)
 })
 
+

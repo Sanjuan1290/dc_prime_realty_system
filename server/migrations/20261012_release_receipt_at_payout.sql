@@ -79,3 +79,4 @@ ALTER TABLE lot_project_network_profit_releases
 -- Verify existing seller receipt tables; do not drop or recreate them:
 SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()
   AND table_name IN ('lot_project_commission_receipts', 'lot_project_commission_receipt_items');
+

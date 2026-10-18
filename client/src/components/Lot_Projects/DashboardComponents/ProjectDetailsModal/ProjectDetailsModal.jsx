@@ -62,3 +62,4 @@ const ProjectDetailsModal = ({ project, onClose, onEdit, onGoListings }) => {
 export default ProjectDetailsModal
 
 
+

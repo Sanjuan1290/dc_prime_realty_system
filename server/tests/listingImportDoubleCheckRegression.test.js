@@ -26,3 +26,4 @@ test('client-side Final Double-Check errors are not mislabeled as server outages
   assert.match(source, /CLIENT_CONFIRMATION_ERROR/)
 })
 
+

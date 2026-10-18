@@ -214,7 +214,7 @@ export const getAccredited = async (req, res) => {
     }
 
     if (status !== 'all') {
-      where.push('a.accredited_seller_status = ?');
+      where.push("IF(u.status = 'active' AND a.accredited_seller_status = 'active', 'active', 'inactive') = ?");
       params.push(status);
     }
 
@@ -257,6 +257,7 @@ export const getAccredited = async (req, res) => {
           sg.seller_group_type,
           a.accredited_seller_accreditation_date,
           a.accredited_seller_status,
+          u.status AS user_status,
           a.accredited_seller_updated_at
         FROM accredited_sellers a
         INNER JOIN users u ON u.id = a.user_id
@@ -274,8 +275,8 @@ export const getAccredited = async (req, res) => {
     const [summaryRows] = await db.query(`
       SELECT
         COUNT(*) AS total,
-        SUM(a.accredited_seller_status = 'active') AS active,
-        SUM(a.accredited_seller_status = 'inactive') AS inactive,
+        SUM(a.accredited_seller_status = 'active' AND u.status = 'active') AS active,
+        SUM(a.accredited_seller_status <> 'active' OR u.status <> 'active') AS inactive,
         SUM(u.role = 'division_manager') AS division_manager,
         SUM(u.role = 'sales_director') AS sales_director,
         SUM(u.role = 'unit_manager') AS unit_manager,
@@ -1447,4 +1448,5 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     connection.release();
   }
 };
+
 

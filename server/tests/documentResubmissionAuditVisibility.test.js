@@ -52,3 +52,4 @@ test('audit UI labels document rejection as a resubmission action and exposes th
   assert.match(documentController, /newStatusLabel:\s*'Needs Resubmission'/);
 });
 
+

@@ -66,3 +66,4 @@ test('seller receipt lookup requires project-scope, exact commission, stage, act
   assert.match(receiptController, /receipt\.receipt_status = 'active' AND stage\.release_status = 'Released'/);
   assert.match(receiptController, /RELEASE_RECEIPT_NOT_FOUND/);
 });
+

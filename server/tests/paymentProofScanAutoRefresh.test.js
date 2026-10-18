@@ -34,3 +34,4 @@ test('the existing protected payment-proofs endpoint sends backend scan status',
   assert.match(controller, /malwareScanStatus:\s*clean\(row\.malware_scan_status/)
   assert.match(controller, /proofs:\s*rows\.map\(\(row\) => mapProof\(req, row\)\)/)
 })
+

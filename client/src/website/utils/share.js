@@ -15,3 +15,4 @@ export const copyText = async (text) => {
   textarea.remove()
 }
 
+

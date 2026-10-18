@@ -42,10 +42,10 @@ test('deactivation is owner-controlled, verified, and explicitly reversible by a
   assert.match(usersController, /export const reactivateUser/);
   assert.match(usersRouter, /post\('\/deactivate\/:id\/code'[\s\S]*requireExactRole\('super_admin', 'system_admin'\)[\s\S]*SYSTEM_USERS_DEACTIVATE[\s\S]*requireCurrentPassword/);
   assert.match(usersRouter, /patch\('\/deactivate\/:id'[\s\S]*requireExactRole\('super_admin', 'system_admin'\)[\s\S]*SYSTEM_USERS_DEACTIVATE/);
-  assert.match(usersRouter, /post\('\/reactivate\/:id'[\s\S]*requireExactRole\('super_admin', 'system_admin'\)[\s\S]*requireCurrentPassword/);
+  assert.match(usersRouter, /post\('\/reactivate\/:id\/code'[\s\S]*requireExactRole\('super_admin', 'system_admin'\)[\s\S]*requireCurrentPassword/);
   assert.doesNotMatch(usersRouter, /toggleUserStatus/);
   assert.match(usersPage, /Reactivate/);
-  assert.match(reactivateModal, /Reactivation Reason|reactivation reason/i);
+  assert.match(reactivateModal, /Reason for Activation|Reactivation Reason|reactivation reason/i);
   assert.match(deactivateModal, /Deactivation Reason/);
   assert.match(deactivateModal, /Administrator Password/);
   assert.match(deactivateModal, /Email Verification Code/);
@@ -92,4 +92,5 @@ test('email login and forgot-password resolve only the active login account', ()
   assert.match(usersController, /requestForgotPasswordCode[\s\S]*LOWER\(email\) = LOWER\(\?\)[\s\S]*status = 'active'/);
   assert.match(usersController, /verifyForgotPasswordCode[\s\S]*row\.status !== 'active'/);
 });
+
 

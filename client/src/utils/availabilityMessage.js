@@ -10,3 +10,4 @@ export const safeAvailabilityMessage = (value) => {
   }
   return message.slice(0, 240)
 }
+

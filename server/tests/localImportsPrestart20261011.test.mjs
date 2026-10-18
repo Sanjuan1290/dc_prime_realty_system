@@ -27,3 +27,4 @@ test('local-import preflight rejects an unresolved JS import', () => {
     assert.match(result.stderr, /buyerFormEmailTemplate.js/)
   } finally { fs.rmSync(folder, { recursive: true, force: true }) }
 })
+

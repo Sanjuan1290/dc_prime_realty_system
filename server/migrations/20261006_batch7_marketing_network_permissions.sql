@@ -19,3 +19,4 @@ ON DUPLICATE KEY UPDATE
   updated_by_user_id = VALUES(updated_by_user_id),
   updated_at = CURRENT_TIMESTAMP;
 
+

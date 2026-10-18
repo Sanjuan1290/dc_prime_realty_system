@@ -73,3 +73,4 @@ UNION ALL
 SELECT 'acknowledgement_signed_files', COUNT(*)
 FROM lot_project_payment_acknowledgement_files;
 
+

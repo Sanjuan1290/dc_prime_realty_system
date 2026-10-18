@@ -52,3 +52,4 @@ WHERE commission.commission_role = 'external_group'
 ORDER BY commission.lot_project_commission_id DESC,
          FIELD(release_row.release_stage, '1st Release', '2nd Release', '3rd Release', '4th Release', 'Retention');
 
+

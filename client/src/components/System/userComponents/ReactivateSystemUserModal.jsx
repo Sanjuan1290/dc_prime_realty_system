@@ -1,58 +1,58 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { FiRotateCcw, FiLock } from 'react-icons/fi'
+import { FiCheckCircle, FiKey, FiLock, FiMail, FiRotateCcw, FiAlertTriangle } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import { useFetchPost } from '../../../utils/useFetch'
 
 const ReactivateSystemUserModal = ({ user, onClose, onSaved }) => {
   const [reason, setReason] = useState('')
   const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
+  const [verification, setVerification] = useState(null)
   const [alert, setAlert] = useState(null)
-
-  const mutation = useMutation({
-    mutationFn: () => useFetchPost(`/user/reactivate/${user.id}`, { reason: reason.trim(), password }, { confirmationHandled: 'compact' }),
-    onMutate: () => setAlert({ type: 'loading', message: 'Reactivating account...' }),
-    onSuccess: (result) => { onSaved?.(result.message || 'Account reactivated.'); onClose?.() },
-    onError: (error) => setAlert({ type: 'error', message: error.message }),
+  const sendCode = useMutation({
+    mutationFn: () => useFetchPost(`/user/reactivate/${user.id}/code`, {reason:reason.trim(),password}, {confirmationHandled:'technical'}),
+    onMutate: () => setAlert({type:'loading',message:'Checking seller setup and sending code...'}),
+    onSuccess: (r) => {setVerification(r?.data || null);setPassword('');setAlert({type:'success',message:'Check your administrator email for the code.'})},
+    onError: (e) => setAlert({type:'error',message:e.message}),
   })
-
-  const submit = (event) => {
+  const activate = useMutation({
+    mutationFn: () => useFetchPost(`/user/reactivate/${user.id}`, {reason:reason.trim(),verificationId:verification?.verificationId,code}, {confirmationHandled:'technical'}),
+    onMutate: () => setAlert({type:'loading',message:'Activating account...'}),
+    onSuccess: (r) => {onSaved?.(r.message || 'Account activated.');onClose?.()},
+    onError: (e) => setAlert({type:'error',message:e.message}),
+  })
+  const busy=sendCode.isPending || activate.isPending
+  const submit=(event)=>{
     event.preventDefault()
-    if (reason.trim().length < 5) return setAlert({ type: 'error', message: 'Enter a clear reactivation reason.' })
-    if (!password) return setAlert({ type: 'error', message: 'Administrator password is required.' })
-    mutation.mutate()
+    if (!verification) {
+      if (reason.trim().length<5) return setAlert({type:'error',message:'Enter a reason (at least 5 characters).'});
+      if (!password) return setAlert({type:'error',message:'Enter your administrator password.'});
+      sendCode.mutate();return
+    }
+    if (!/^\d{6}$/.test(code)) return setAlert({type:'error',message:'Enter the six-digit email code.'});
+    activate.mutate()
   }
-
-  return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 p-4">
-      <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl">
-        <div className="border-b p-5">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-600">Owner Authorization</p>
-          <h2 className="mt-1 text-xl font-black">Reactivate Account</h2>
-          <p className="mt-1 text-sm text-slate-500">{user.account_code || user.email}</p>
+  return <div role="dialog" aria-modal="true" aria-label="Activate Account" className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 p-4">
+    <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
+      <div className="border-b p-5"><div className="flex items-center gap-2"><FiRotateCcw className="text-emerald-700"/><h2 className="text-xl font-bold">Activate Account</h2></div><p className="mt-1 text-sm text-slate-500">{user.account_code || user.email}</p></div>
+      <form onSubmit={submit} className="grid gap-4 p-5">
+        {alert && <StatusAlert type={alert.type} message={alert.message} onClose={alert.type==='loading'?undefined:()=>setAlert(null)}/>}
+        {['sales_agent','unit_manager','sales_director','division_manager'].includes(user.role) && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><FiAlertTriangle className="mt-0.5 shrink-0"/><span>Seller and manager assignments must be complete before activation.</span></div>}
+        <label className="grid gap-1 text-sm font-semibold">Reason for Activation
+          <textarea required rows={2} disabled={busy || Boolean(verification)} value={reason} onChange={(e)=>setReason(e.target.value)} placeholder="Why activate this account?" className="rounded-xl border border-slate-300 p-3 disabled:bg-slate-100" />
+        </label>
+        {!verification ? <label className="grid gap-1 text-sm font-semibold"><span className="flex items-center gap-2"><FiLock/> Administrator Password</span>
+          <input type="password" autoComplete="current-password" value={password} disabled={busy} onChange={(e)=>setPassword(e.target.value)} className="h-11 rounded-xl border border-slate-300 px-3" required/>
+        </label> : <label className="grid gap-1 text-sm font-semibold"><span className="flex items-center gap-2"><FiMail/> Email Code</span>
+          <input inputMode="numeric" value={code} onChange={(e)=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))} maxLength={6} disabled={busy} className="h-11 rounded-xl border border-slate-300 px-3 tracking-widest" placeholder="000000" required/>
+          <span className="text-xs font-normal text-slate-500">Sent to {verification.maskedEmail || 'your administrator email'}.</span>
+        </label>}
+        <div className="flex justify-end gap-2 border-t pt-4"><button type="button" onClick={onClose} disabled={busy} className="h-11 rounded-xl border px-4 font-semibold">Cancel</button>
+          <button type="submit" disabled={busy} className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 font-semibold text-white disabled:opacity-50">{verification?<FiCheckCircle/>:<FiKey/>}{busy?'Working...':verification?'Activate Account':'Send Email Code'}</button>
         </div>
-        <form onSubmit={submit} className="grid gap-5 p-5">
-          {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
-            Reactivation restores login access to this existing account. If the person changed position, keep this account deactivated and create a new account for the new role instead.
-          </div>
-          <label className="grid gap-1.5 text-sm font-bold">
-            Reactivation Reason *
-            <textarea required rows={4} value={reason} onChange={(event) => setReason(event.target.value)} className="rounded-xl border border-slate-300 p-3" placeholder="Why should this account be reactivated?" />
-          </label>
-          <label className="grid gap-2">
-            <span className="flex items-center gap-2 text-sm font-black text-slate-700"><FiLock /> Administrator Password *</span>
-            <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-50" />
-          </label>
-          <div className="flex justify-end gap-2 border-t pt-4">
-            <button type="button" onClick={onClose} disabled={mutation.isPending} className="h-11 rounded-xl border px-5 font-bold">Cancel</button>
-            <button type="submit" disabled={mutation.isPending} className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 font-black text-white disabled:opacity-50"><FiRotateCcw />{mutation.isPending ? 'Reactivating...' : 'Reactivate Account'}</button>
-          </div>
-        </form>
-      </div>
+      </form>
     </div>
-  )
+  </div>
 }
-
 export default ReactivateSystemUserModal
-

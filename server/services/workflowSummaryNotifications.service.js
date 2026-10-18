@@ -30,3 +30,4 @@ export const countWorkflowSummaryNotifications = async ({
     return { unreadNotifications: 0, unreadActionNotifications: 0, notificationCountsAvailable: false };
   }
 };
+

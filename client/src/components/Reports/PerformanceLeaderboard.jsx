@@ -69,3 +69,4 @@ const PerformanceLeaderboard = ({ sellers = [], networks = [], scope = 'project'
 }
 
 export default PerformanceLeaderboard
+

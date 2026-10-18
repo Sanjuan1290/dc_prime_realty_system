@@ -54,3 +54,4 @@ test('guard rejects accidental notification or History feature removals', () => 
     } finally { fs.rmSync(temp, { recursive: true, force: true }) }
   }
 })
+

@@ -97,3 +97,4 @@ export const statusFilterSQL = (status) => {
   if (status === 'fully_paid') return { sql: "AND l.lot_project_listing_status = 'sold' AND l.lot_project_listing_sold_substatus = 'fully_paid'", params: [] };
   return { sql: 'AND l.lot_project_listing_status = ?', params: [status] };
 };
+

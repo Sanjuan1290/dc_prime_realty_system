@@ -106,3 +106,4 @@ test('source timezone remains explicit, configurable, and does not mutate any sa
   assert.match(read('server/utils/businessDateTime.js'),/TIDB_DATETIME_SOURCE_TIME_ZONE/)
   assert.doesNotMatch(read('server/db/connect.js'),/SET time_zone/)
 })
+

@@ -5,3 +5,4 @@ export const getSettingsAuthorizationLabel = (role) => {
   if (role === 'system_admin') return 'System Admin'
   return 'Current Account'
 }
+

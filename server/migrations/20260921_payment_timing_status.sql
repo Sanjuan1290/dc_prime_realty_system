@@ -12,3 +12,4 @@ SET schedule_status = 'Paid',
     updated_at = CURRENT_TIMESTAMP
 WHERE schedule_status = 'Advance';
 
+

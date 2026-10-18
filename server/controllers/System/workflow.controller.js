@@ -8,6 +8,7 @@ import { resolveAuditCaseResponders, RESPONDER_MODE_LABELS } from '../../service
 import { getAuditCorrectionRole } from '../../services/auditCaseAuthorization.service.js';
 import { getReviewActionLabel, REVIEW_ACTIONS } from '../../config/reviewActions.js';
 import { resolveReviewRecordLocation } from '../../services/reviewRecordLocation.service.js';
+import { getReviewExtraRecord, isExtraRecordPreview } from '../../services/reviewExtraRecord.service.js';
 import { countWorkflowSummaryNotifications } from '../../services/workflowSummaryNotifications.service.js';
 import { markVisibleInternalNotificationsRead } from '../../services/internalNotificationRead.service.js';
 import { enrichLegacyListingReviewSnapshots } from '../../services/legacyListingReviewSnapshot.service.js';
@@ -394,6 +395,65 @@ const liveReviewProofs = async (connection, review) => {
 // Use the review's own visibility permissions (including History) and bind the
 // proof to the payment and proof IDs captured in that review. This prevents
 // guessing IDs to open unrelated Cloudinary assets.
+// Read-only, review-authorized previews for records without an existing
+// dedicated form. The service validates the exact project/record association.
+// Serve only the signed receipt version explicitly recorded in this Review.
+// Reuse authenticated Cloudinary streaming: no asset URL/ID is sent to the browser.
+export const getOperationalReviewSignedReceiptContent = async (req, res) => {
+  try {
+    const reviewId = Number(req.params.id || 0);
+    const fileId = Number(req.params.fileId || 0);
+    if (!Number.isSafeInteger(reviewId) || reviewId < 1 || !Number.isSafeInteger(fileId) || fileId < 1)
+      return res.status(400).json({ message: 'Invalid review or file.' });
+    const [reviews] = await db.query('SELECT * FROM operational_reviews WHERE operational_review_id=? LIMIT 1',[reviewId]);
+    const review = reviews[0];
+    if (!review || review.entity_type !== 'lot_project_signed_receipt') return res.status(404).json({message:'Signed receipt not found in this review.'});
+    if (!(await canActorOpenReview(db,req.authUser,review)) && !(await canActorViewReview(db,req.authUser,review)))
+      return res.status(403).json({message:'You do not have access to this review.'});
+    const after = parseSnapshot(review.after_snapshot_json) || {};
+    const before = parseSnapshot(review.before_snapshot_json) || {};
+    const allowedIds = [after?.signedCopy?.signedCopyId, before?.signedCopy?.signedCopyId].map(Number).filter((id)=>Number.isSafeInteger(id)&&id>0);
+    if (!allowedIds.includes(fileId)) return res.status(404).json({message:'This signed receipt is not part of the review.'});
+    const [files] = await db.query(`SELECT f.file_name, f.file_mime_type, f.file_status,
+        f.malware_scan_status, f.cloudinary_public_id, f.cloudinary_format, f.cloudinary_resource_type
+        FROM lot_project_payment_acknowledgement_files f
+        INNER JOIN lot_project_payments p ON p.lot_project_payment_id=f.lot_project_payment_id
+        WHERE f.lot_project_payment_acknowledgement_file_id=? AND f.lot_project_payment_id=?
+          AND p.lot_project_id=? LIMIT 1`,[fileId,Number(review.entity_id),Number(review.lot_project_id)]);
+    const file=files[0];
+    if (!file || file.file_status !== 'active') return res.status(404).json({message:'This signed receipt is no longer available.'});
+    if (String(file.malware_scan_status || '').toLowerCase() !== 'approved')
+      return res.status(423).json({message:'Preview is unavailable until the file passes its security scan.'});
+    return await sendAuthenticatedAssetContent(res,{
+      publicId:file.cloudinary_public_id, format:file.cloudinary_format,
+      resourceType:file.cloudinary_resource_type, fileName:file.file_name,
+      fileMimeType:file.file_mime_type,
+    });
+  } catch (error) {
+    console.error('[workflow/signed-receipt]',error?.message || error);
+    return res.status(500).json({message:'Unable to open the protected signed receipt.'});
+  }
+};
+
+export const getOperationalReviewRecordPreview = async (req, res) => {
+  try {
+    const reviewId = Number(req.params.id || 0);
+    if (!Number.isSafeInteger(reviewId) || reviewId < 1) return res.status(400).json({ message: 'Invalid review.' });
+    const [rows] = await db.query('SELECT * FROM operational_reviews WHERE operational_review_id=? LIMIT 1', [reviewId]);
+    const review = rows[0];
+    if (!review) return res.status(404).json({ message: 'Review not found.' });
+    if (!(await canActorOpenReview(db, req.authUser, review)) && !(await canActorViewReview(db, req.authUser, review))) {
+      return res.status(403).json({ message: 'You do not have access to this review.' });
+    }
+    if (!isExtraRecordPreview(review)) return res.status(404).json({ message: 'This review does not have a record preview.' });
+    const result = await getReviewExtraRecord(db, review, req.query.page);
+    return res.json({ data: result });
+  } catch (error) {
+    console.error('[workflow/record-preview]', error?.message || error);
+    return res.status(500).json({ message: 'Unable to load this record. Its saved review remains available.' });
+  }
+};
+
 export const getOperationalReviewProofContent = async (req, res) => {
   try {
     const reviewId = Number(req.params.id || 0);
@@ -870,6 +930,7 @@ export const reviewProtectedChangeRequest = async (req,res) => {
     await connection.commit(); return res.json({message:`Protected change ${decision}d.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
   }catch(error){try{await connection.rollback()}catch{}return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
+
 
 
 

@@ -64,3 +64,4 @@ test('a consolidated summary is visibly not a newly-issued or signed receipt',()
   assert.match(receipt, /<\/>\s*\)\s*:\s*null\}/)
   assert.doesNotMatch(receipt, /\{!receipt\.isConsolidatedSummary\s*\?\s*<div/)
 })
+

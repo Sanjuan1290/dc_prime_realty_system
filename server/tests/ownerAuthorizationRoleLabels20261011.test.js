@@ -66,3 +66,4 @@ test('privileged deletion UI is not loosened by role-only wording changes', () =
   const backend = src('server/controllers/Lot_Projects/Settings/Settings.controller.js')
   assert.match(backend, /roleHasPermission|canEditProjectSettings/)
 })
+

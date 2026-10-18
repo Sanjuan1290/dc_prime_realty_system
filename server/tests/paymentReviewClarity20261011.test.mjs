@@ -71,3 +71,4 @@ test('reservation payment types are shown in customer-facing language', async ()
   assert.equal(formatSnapshotValue('paymentType', 'reservation'), 'Reservation Payment')
   assert.equal(formatSnapshotValue('referenceId', 'CASH-20261011-LA1805-P0001'), 'CASH-20261011-LA1805-P0001')
 })
+

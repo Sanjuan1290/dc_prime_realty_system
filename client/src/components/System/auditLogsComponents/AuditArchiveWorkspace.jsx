@@ -83,3 +83,4 @@ const CleanupSettings=({isSuperAdmin})=>{
 }
 const AuditArchiveWorkspace=({section,isSuperAdmin})=>section==='archived'?<RecordList/>:section==='batches'?<ArchiveFiles isSuperAdmin={isSuperAdmin}/>:<CleanupSettings isSuperAdmin={isSuperAdmin}/>
 export default AuditArchiveWorkspace
+

@@ -40,3 +40,4 @@ test('Role & Access Control is a compact Settings card and expands only on deman
   assert.match(roleAccess, /Existing users keep their current direct permissions until Apply Latest Role Default/);
 });
 
+

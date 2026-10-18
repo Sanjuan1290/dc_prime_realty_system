@@ -26,3 +26,4 @@ export const validateReleaseReceiptDetails = (input, actualReleaseDate, today) =
   }
   return fields;
 };
+

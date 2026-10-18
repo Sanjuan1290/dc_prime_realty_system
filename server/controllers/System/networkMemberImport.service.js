@@ -226,6 +226,9 @@ export const analyzeNetworkMemberImport = ({
       const existingRole = String(existing.role || '');
       const existingGroupId = Number(existing.seller_group_id || 0);
       const sellerStatus = String(existing.accredited_seller_status || 'inactive');
+      if (String(existing.user_status || 'inactive') !== 'active' || sellerStatus !== 'active') {
+        errors.push('This seller is inactive. Use Activate Seller before importing changes.');
+      }
 
       if (Number(existing.is_system_dummy || 0) === 1) {
         errors.push('System-generated seller accounts cannot be changed through Excel import.');
@@ -458,4 +461,5 @@ export const sortNetworkMemberImportRows = (rows = []) => [...rows].sort((a, b) 
   if (roleDelta) return roleDelta;
   return Number(a.sourceRow || 0) - Number(b.sourceRow || 0);
 });
+
 

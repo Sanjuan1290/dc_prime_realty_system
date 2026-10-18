@@ -47,3 +47,4 @@ test('Head confirmation and return do not require a separate claim; history reta
     assert.match(section, /appendReviewEvent/);
   }
 });
+

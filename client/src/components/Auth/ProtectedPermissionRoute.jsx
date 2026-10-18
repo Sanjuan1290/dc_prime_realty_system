@@ -38,3 +38,4 @@ const ProtectedPermissionRoute = ({ permission, projectScoped = false, children 
 
 export default ProtectedPermissionRoute
 
+

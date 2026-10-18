@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiDollarSign, FiEye, FiRefreshCw, FiSearch, FiUsers } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
@@ -92,6 +92,12 @@ const matchesGroupFilters = (group, commissionTypeFilter, eligibilityFilter) => 
 
 const Commission = () => {
   const { projectSlug } = useParams()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const reviewView = searchParams.get('reviewView') === '1'
+  const reviewId = Number(searchParams.get('reviewId') || 0)
+  const reviewCommissionId = Number(searchParams.get('commissionId') || 0)
+  const reviewEntityType = searchParams.get('reviewEntityType') || ''
   const { data: currentUserData } = useCurrentUser()
   const user = currentUserData?.user
   const canRelease = hasPermission(user, PERMISSIONS.LOT_COMMISSIONS_RELEASE)
@@ -243,6 +249,13 @@ const Commission = () => {
   const records = useMemo(() => data?.data || [], [data?.data])
   const project = data?.project || {}
   const groupedRecords = useMemo(() => groupCommissionRecords(records), [records])
+  const reviewedGroup = reviewView && reviewEntityType === 'lot_project_commission' && reviewCommissionId
+    ? groupedRecords.find((group) => group.sellers.some((seller) => Number(seller.commissionId || seller.id) === reviewCommissionId)) : null
+  useEffect(() => {
+    if (reviewView && reviewedGroup) setSelected(reviewedGroup)
+  }, [reviewView, reviewedGroup])
+  const returnToReview = () => navigate(`/portal/${user?.role || 'super_admin'}/review-center/reviews/${reviewId}`)
+
   const filteredRecords = useMemo(
     () => groupedRecords.filter((group) => matchesGroupFilters(group, commissionTypeFilter, eligibilityFilter)),
     [groupedRecords, commissionTypeFilter, eligibilityFilter]
@@ -484,6 +497,7 @@ const Commission = () => {
         </div>
       </section>
 
+      {reviewView && !isLoading && !reviewedGroup ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">The exact commission was not found. <button type="button" className="ml-2 underline" onClick={returnToReview}>Back to Review</button></div> : null}
       {selected ? (
         <ReleaseDetailsModal
           commissionGroup={selected}
@@ -492,13 +506,14 @@ const Commission = () => {
           onClose={() => {
             setSelected(null)
             setModalNotice(null)
+            if (reviewView) returnToReview()
           }}
           onAction={handleCommissionAction}
-          canRelease={canRelease}
+          canRelease={!reviewView && canRelease}
           canViewSigned={hasPermission(user, PERMISSIONS.SYSTEM_ACCREDITED_VIEW)}
-          canUploadSigned={hasPermission(user, PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF)}
-          canHold={canHold}
-          canUnhold={canUnhold}
+          canUploadSigned={!reviewView && hasPermission(user, PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF)}
+          canHold={!reviewView && canHold}
+          canUnhold={!reviewView && canUnhold}
           serverNotice={modalNotice}
           onClearServerNotice={() => setModalNotice(null)}
         />
@@ -508,4 +523,5 @@ const Commission = () => {
 }
 
 export default Commission
+
 

@@ -3,3 +3,4 @@
 -- Non-destructive: no existing salaries, snapshots, or receipt amounts are modified.
 ALTER TABLE `employee_payrolls`
   ADD COLUMN IF NOT EXISTS `release_witness_name` VARCHAR(180) NULL AFTER `release_reference`;
+

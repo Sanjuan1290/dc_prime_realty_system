@@ -1062,6 +1062,15 @@ export const reserveLotProjectListing = async (req, res) => {
     await refreshListingPenaltyCache(connection, reservedListing, today);
     await recomputeListingScheduleBalances(connection, reservedListing, { asOfDate: today });
 
+    // Serialize the final seller-chain check with manager replacement.
+    // Manager replacement locks the Network and seller rows in the same order.
+    const [[selectedSellerNetwork]] = await connection.query(
+      'SELECT seller_group_id FROM accredited_sellers WHERE accredited_seller_id=? LIMIT 1',
+      [assignedSellerId]
+    );
+    if (!selectedSellerNetwork?.seller_group_id) throw new Error('Choose a valid seller before saving.');
+    await connection.query('SELECT seller_group_id FROM seller_groups WHERE seller_group_id=? FOR UPDATE', [selectedSellerNetwork.seller_group_id]);
+    await connection.query('SELECT accredited_seller_id FROM accredited_sellers WHERE seller_group_id=? ORDER BY user_id FOR UPDATE', [selectedSellerNetwork.seller_group_id]);
     await replaceReservationCommissions(
       connection,
       project.lot_project_id,
@@ -1269,4 +1278,5 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

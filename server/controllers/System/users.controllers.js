@@ -1,6 +1,7 @@
 import { isOwnerAdministrator } from '../../config/permissions.js';
 import { db } from '../../db/connect.js';
 import { assertSellerIdentityAvailable } from '../../services/sellerIdentity.service.js';
+import { checkSellerCanReactivate } from '../../services/sellerReactivation.service.js';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
@@ -79,6 +80,7 @@ const systemUserRoles = new Set(SYSTEM_USER_ROLES);
 const configurableSystemRoles = new Set(CONFIGURABLE_SYSTEM_ROLES);
 const USER_DEACTIVATION_ACTION = 'user_deactivation';
 const USER_DEACTIVATION_ENTITY = 'user';
+const USER_REACTIVATION_ACTION = 'user_reactivation';
 
 const sellerRoles = new Set([
   'division_manager',
@@ -241,6 +243,13 @@ const assertDeactivationTarget = (req, user, userId) => {
   }
   if (Number(userId) === Number(req.authUser?.id || 0)) {
     throw Object.assign(new Error('You cannot deactivate the account you are currently using.'), { statusCode: 409 });
+  }
+};
+
+// Managers must use the dedicated team-transfer workflow, introduced later.
+const assertNoManagerDeactivation = (user) => {
+  if (['division_manager','sales_director','unit_manager'].includes(user?.role)) {
+    throw Object.assign(new Error('Cannot deactivate this manager yet. Manager replacement is required.'), {statusCode:409, code:'MANAGER_REPLACEMENT_REQUIRED'});
   }
 };
 
@@ -1899,11 +1908,23 @@ export const editUser = async (req, res) => {
       );
     }
 
+    if (['division_manager','sales_director','unit_manager'].includes(targetUser.role) && role !== targetUser.role) {
+      return res.status(409).json({code:'MANAGER_REPLACEMENT_REQUIRED',message:'Choose a replacement manager before changing this position. This will be available with team reassignment.'});
+    }
+    if (sellerRoles.has(targetUser.role) && normalizeStatus(status) !== targetUser.status) {
+      return res.status(409).json({code:'USE_PROTECTED_ACCOUNT_ACTION',message:'Use Deactivate Seller or Activate Seller to change account status.'});
+    }
+    if (sellerRoles.has(targetUser.role) && targetUser.status !== 'active') {
+      return res.status(409).json({code:'ACCOUNT_INACTIVE',message:'Activate this seller before editing their details.'});
+    }
     const normalizedAdminProjectIds = [];
     const normalizedAdminAllProjects = false;
     const normalizedAdminType = normalizeAdminType(role, admin_type);
 
     const dependencyState = await validateSellerRemovalOrRoleChange(connection, userId, role);
+    if (sellerRoles.has(targetUser.role) && dependencyState.seller?.accredited_seller_status !== 'active') {
+      return res.status(409).json({code:'USE_PROTECTED_SELLER_ACTIVATION',message:'This seller is inactive. Use Activate Seller before editing.'});
+    }
     const normalizedReportsUnderUserId = sellerRoles.has(role)
       ? await validateSellerHierarchyAssignment(connection, {
           role,
@@ -2193,6 +2214,7 @@ export const requestUserDeactivationCode = async (req, res) => {
     );
     const user = rows[0];
     assertDeactivationTarget(req, user, userId);
+    assertNoManagerDeactivation(user);
 
     const payload = buildUserDeactivationVerificationPayload({ actor, target: user, reason });
     const { verificationId, code } = await createSensitiveActionVerification(connection, {
@@ -2246,6 +2268,7 @@ export const deactivateUserPermanently = async (req, res) => {
     );
     const user = rows[0];
     assertDeactivationTarget(req, user, userId);
+    assertNoManagerDeactivation(user);
 
     const verificationPayload = buildUserDeactivationVerificationPayload({ actor: req.authUser, target: user, reason });
     const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
@@ -2295,6 +2318,43 @@ export const deactivateUserPermanently = async (req, res) => {
   }
 };
 
+const buildReactivationPayload = ({actor, target, reason}) => ({
+  action:USER_REACTIVATION_ACTION, actorId:Number(actor?.id || 0), targetUserId:Number(target.id),
+  targetEmail:String(target.email||'').toLowerCase(), reason:String(reason||'').trim(),
+});
+
+export const requestUserReactivationCode = async (req,res) => {
+  const connection=await db.getConnection();
+  try {
+    const actor=req.authUser||{};
+    const userId=Number(req.params.id||0);
+    const reason=String(req.body?.reason||'').trim().slice(0,500);
+    if (!userId || reason.length<5) return res.status(400).json({message:'Enter a reason to reactivate this account.'});
+    if (!actor.email) return res.status(400).json({message:'Your administrator account needs an email address.'});
+    await connection.beginTransaction();
+    const [[target]]=await connection.query('SELECT id,role,status,email,account_code FROM users WHERE id=? LIMIT 1 FOR UPDATE',[userId]);
+    if (!target) throw Object.assign(new Error('Account not found.'),{statusCode:404});
+    if (target.role==='external_group') throw Object.assign(new Error('Use External Networks to manage this account.'),{statusCode:400});
+    if (actor.role==='system_admin' && ['super_admin','system_admin'].includes(target.role)) throw Object.assign(new Error('You cannot reactivate this administrator account.'),{statusCode:403});
+    if (target.status==='active') {
+      const [[state]]=await connection.query('SELECT accredited_seller_status FROM accredited_sellers WHERE user_id=? LIMIT 1',[userId]);
+      if (!sellerRoles.has(target.role) || state?.accredited_seller_status==='active') {
+        throw Object.assign(new Error('This account is already active.'),{statusCode:409});
+      }
+    }
+    if (sellerRoles.has(target.role)) await checkSellerCanReactivate(connection,userId);
+    const {verificationId,code}=await createSensitiveActionVerification(connection,{
+      userId:actor.id,actionType:USER_REACTIVATION_ACTION,entityType:'user',entityId:String(userId),
+      payload:buildReactivationPayload({actor,target,reason}),reason,requestIp:getSensitiveActionRequestIp(req),
+    });
+    await sendEmail({to:actor.email,subject:'Account activation verification code',text:
+      `Your code to activate ${target.account_code || target.email} is ${code}. It expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes. If you did not request this, ignore this email.`});
+    await connection.commit();
+    return res.json({success:true,message:'Email code sent.',data:{verificationId,maskedEmail:maskSensitiveActionEmail(actor.email),expiresInMinutes:SENSITIVE_ACTION_CODE_EXPIRY_MINUTES}});
+  } catch(error){try{await connection.rollback();}catch{} return res.status(error.statusCode||500).json({message:getErrorMessage(error)});}
+  finally{connection.release();}
+};
+
 export const reactivateUser = async (req, res) => {
   const connection = await db.getConnection();
   try {
@@ -2317,7 +2377,21 @@ export const reactivateUser = async (req, res) => {
     if (actor.role === 'system_admin' && ['super_admin', 'system_admin'].includes(user.role)) {
       throw Object.assign(new Error('System Admin cannot reactivate owner-level accounts.'), { statusCode: 403 });
     }
-    if (user.status === 'active') throw Object.assign(new Error('This account is already active.'), { statusCode: 409 });
+    if (user.status === 'active') {
+      const [[state]]=await connection.query('SELECT accredited_seller_status FROM accredited_sellers WHERE user_id=? LIMIT 1 FOR UPDATE',[userId]);
+      if (!sellerRoles.has(user.role) || state?.accredited_seller_status==='active') {
+        throw Object.assign(new Error('This account is already active.'), { statusCode: 409 });
+      }
+    }
+    const verificationId=Number(req.body?.verificationId||0);
+    const code=String(req.body?.code||'').trim();
+    if (!verificationId || !/^\d{6}$/.test(code)) throw Object.assign(new Error('Enter the 6-digit email code.'),{statusCode:400});
+    const verification=await verifyAndConsumeSensitiveAction(connection,{
+      verificationId,userId:actor.id,actionType:USER_REACTIVATION_ACTION,entityType:'user',entityId:String(userId),
+      code,payload:buildReactivationPayload({actor,target:user,reason}),
+    });
+    if (!verification.ok){await connection.commit();return res.status(verification.statusCode||400).json({message:verification.message});}
+    if (sellerRoles.has(user.role)) await checkSellerCanReactivate(connection,userId);
 
     await connection.query(
       `UPDATE users
@@ -2327,11 +2401,13 @@ export const reactivateUser = async (req, res) => {
       [userId]
     );
 
+    if (sellerRoles.has(user.role)) await connection.query(
+      `UPDATE accredited_sellers SET accredited_seller_status='active' WHERE user_id=?`,[userId]);
     await writeAuditLog(connection, req, {
       action: 'update', module: 'Users', entityType: 'user', entityId: String(userId),
       entityLabel: user.account_code || buildPersonName(user), title: 'Reactivated user account',
       description: `${user.account_code || user.email} was reactivated by ${actor.role}.`,
-      metadata: { previousStatus: user.status, nextStatus: 'active', reason },
+      metadata: { previousStatus: user.status, nextStatus: 'active', reason, verificationId, sellerStatusRestored:sellerRoles.has(user.role) },
     });
 
     await connection.commit();
@@ -2420,4 +2496,5 @@ export const resetUserPassword = async (req, res) => {
     connection.release();
   }
 };
+
 

@@ -2810,6 +2810,11 @@ export const commitNetworkMemberImport = async (req, res) => {
           );
         }
       } else {
+        // The preview can be stale. Recheck during commit to prevent bypassing
+        // the protected activation workflow through Excel import.
+        if (beforeUser?.status !== 'active' || (beforeSeller && beforeSeller.accredited_seller_status !== 'active')) {
+          throw createValidationError(`Row ${row.sourceRow}: Seller is inactive. Use Activate Seller before importing.`);
+        }
         if (row.existingGroupId && Number(row.existingGroupId) !== groupId) oldGroupIds.add(Number(row.existingGroupId));
         await connection.query(
           `UPDATE users
@@ -3274,5 +3279,6 @@ export const undoNetworkMemberImport = async (req, res) => {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally { connection.release(); }
 };
+
 
 

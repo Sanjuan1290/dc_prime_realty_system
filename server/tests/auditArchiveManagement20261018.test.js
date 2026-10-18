@@ -33,3 +33,4 @@ test('migration preserves trigger guards and turns automatic cleanup off by defa
  const job=read('server/scripts/run-audit-archive-cleanup.js');
  assert.ok(job.includes('runArchiveCleanup'));
 });
+

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FiActivity,
@@ -118,6 +119,15 @@ const resolveAuditDateRange = (range, customFrom = '', customTo = '') => {
 
 const AuditLogs = () => {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const [urlParams, setUrlParams] = useSearchParams()
+  const linkedReviewId = /^\d+$/.test(urlParams.get('reviewId') || '') ? Number(urlParams.get('reviewId')) : null
+  const clearReviewFilter = () => {
+    const next = new URLSearchParams(urlParams)
+    next.delete('reviewId')
+    setUrlParams(next)
+    setPage(1)
+  }
   const { data: currentUserData } = useCurrentUser()
   const [alert, setAlert] = useState(null)
   const [search, setSearch] = useState('')
@@ -148,13 +158,14 @@ const AuditLogs = () => {
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+    if (linkedReviewId) params.set('reviewId', String(linkedReviewId))
     if (search.trim()) params.set('search', search.trim())
     if (action !== 'all') params.set('action', action)
     if (module !== 'all') params.set('module', module)
     if (resolvedDateRange.from) params.set('from', resolvedDateRange.from)
     if (resolvedDateRange.to) params.set('to', resolvedDateRange.to)
     return params.toString()
-  }, [action, limit, module, page, resolvedDateRange, search])
+  }, [action, limit, module, page, resolvedDateRange, search, linkedReviewId])
 
   const { data, isLoading, isFetching, isPlaceholderData, isError, error, refetch } = useQuery({
     queryKey: ['audit-logs', queryString],
@@ -347,6 +358,13 @@ const AuditLogs = () => {
         isFetching={isFetching}
       />
 
+      {linkedReviewId ? <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-semibold text-blue-900">
+        <span>Showing activity for Review #{linkedReviewId}</span>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => navigate(`/portal/${currentUserData?.user?.role || 'system_admin'}/review-center/reviews/${linkedReviewId}`)} className="rounded-lg border border-blue-200 bg-white px-3 py-1.5">View Review</button>
+          <button type="button" onClick={clearReviewFilter} className="rounded-lg border border-blue-200 bg-white px-3 py-1.5">Show All Activity</button>
+        </div>
+      </div> : null}
       <AuditLogTable
         logs={logs}
         isLoading={isLoading}
@@ -360,7 +378,7 @@ const AuditLogs = () => {
       />
 
       {selectedLog ? (
-        <AuditLogDetailsModal log={selectedLog} onClose={() => setSelectedLog(null)} />
+        <AuditLogDetailsModal log={selectedLog} onClose={() => setSelectedLog(null)} onViewReview={(reviewId) => navigate(`/portal/${currentUserData?.user?.role || 'system_admin'}/review-center/reviews/${reviewId}`)} />
       ) : null}
 
       {showExportModal ? (
@@ -396,6 +414,7 @@ const AuditLogs = () => {
 }
 
 export default AuditLogs
+
 
 
 

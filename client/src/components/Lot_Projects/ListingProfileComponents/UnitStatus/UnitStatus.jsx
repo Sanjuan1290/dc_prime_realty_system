@@ -14,6 +14,7 @@ import {
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditUnitStatusModal from './EditUnitStatusModal'
 import RecalculateCommissionModal from './RecalculateCommissionModal'
+import ChangeAssignedSellerModal from './ChangeAssignedSellerModal'
 import CommissionDistribution from './CommissionDistribution'
 import CancellationSettlementModal from './CancellationSettlementModal'
 import ConfirmActionModal from '../../../Shared/ConfirmActionModal'
@@ -185,6 +186,12 @@ const UnitStatus = ({
   onSave,
   canEditListing = false,
   canAdjustCommission = false,
+  canChangeAssignedSeller = false,
+  buyerAccountId = null,
+  onLoadSellerChangeOptions,
+  onPreviewSellerChange,
+  onRequestSellerChange,
+  onConfirmSellerChange,
   canManageCancellation = false,
   canSettleCancellation = false,
   canReleaseCancelledUnit = false,
@@ -201,10 +208,13 @@ const UnitStatus = ({
   workflowAuditCaseId = null,
   autoOpenEdit = false,
   autoOpenCommissionAdjustment = false,
+  autoOpenSellerChange = false,
   readOnly = false,
 }) => {
   const [showEditModal, setShowEditModal] = useState(false)
   const [showRecalculateModal, setShowRecalculateModal] = useState(false)
+  const [showEditSellerChoice, setShowEditSellerChoice] = useState(false)
+  const [showChangeSellerModal, setShowChangeSellerModal] = useState(false)
   const [showSettlementModal, setShowSettlementModal] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null)
   const [pendingCancellationAuthorization, setPendingCancellationAuthorization] = useState(null)
@@ -217,6 +227,10 @@ const UnitStatus = ({
   useEffect(() => {
     if (autoOpenCommissionAdjustment && canAdjustCommission && !readOnly) setShowRecalculateModal(true)
   }, [autoOpenCommissionAdjustment, canAdjustCommission, readOnly])
+
+  useEffect(() => {
+    if (autoOpenSellerChange && canChangeAssignedSeller && !readOnly) setShowChangeSellerModal(true)
+  }, [autoOpenSellerChange, canChangeAssignedSeller, readOnly])
 
   const unitData = useMemo(() => ({ ...fallbackListing, ...listing }), [listing])
   const commissionRows = useMemo(
@@ -593,13 +607,13 @@ const UnitStatus = ({
         action={!readOnly && (unitData.hasClientProfile || unitData.rawStatus === 'sold') ? (
           <button
             type="button"
-            onClick={() => canAdjustCommission && setShowRecalculateModal(true)}
-            disabled={!canAdjustCommission || isAdjustingCommission}
-            title={!canAdjustCommission ? 'Only the Super Admin can adjust a saved unit commission because this action requires owner password and email verification.' : 'Adjust the saved unit commission'}
+            onClick={() => setShowEditSellerChoice(true)}
+            disabled={(!canAdjustCommission && !canChangeAssignedSeller) || isAdjustingCommission}
+            title={(!canAdjustCommission && !canChangeAssignedSeller) ? 'You do not have permission to edit seller or commission details.' : 'Edit seller or commission'}
             className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 sm:w-auto"
           >
-            <FiRefreshCw className={`h-4 w-4 ${isAdjustingCommission ? 'animate-spin' : ''}`} />
-            {isAdjustingCommission ? 'Applying...' : 'Adjust Commission'}
+            <FiEdit3 className="h-4 w-4" />
+            {isAdjustingCommission ? 'Applying...' : 'Edit Seller / Commission'}
           </button>
         ) : null}
       >
@@ -696,6 +710,34 @@ const UnitStatus = ({
         />
       ) : null}
 
+      {!readOnly && showEditSellerChoice ? (
+        <div role="dialog" aria-modal="true" aria-label="Edit Seller or Commission" className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+            <h3 className="text-lg font-black text-slate-950">Edit Seller / Commission</h3>
+            <p className="mt-1 text-xs text-slate-500">Choose what you need to change.</p>
+            <div className="mt-4 space-y-3">
+              <button type="button" disabled={!canChangeAssignedSeller} onClick={() => {setShowEditSellerChoice(false);setShowChangeSellerModal(true)}}
+                className="w-full rounded-xl border border-slate-200 p-4 text-left disabled:opacity-45 hover:border-blue-300">
+                <span className="block font-bold text-slate-900">Change Assigned Seller</span>
+                <span className="text-xs text-slate-500">Before any payment is recorded</span>
+              </button>
+              <button type="button" disabled={!canAdjustCommission} onClick={() => {setShowEditSellerChoice(false);setShowRecalculateModal(true)}}
+                className="w-full rounded-xl border border-slate-200 p-4 text-left disabled:opacity-45 hover:border-blue-300">
+                <span className="block font-bold text-slate-900">Adjust Commission</span>
+                <span className="text-xs text-slate-500">Keep the current seller and update commission rates</span>
+              </button>
+            </div>
+            <button type="button" onClick={() => setShowEditSellerChoice(false)} className="mt-4 rounded-lg px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
+          </div>
+        </div>
+      ) : null}
+
+      {!readOnly && canChangeAssignedSeller && showChangeSellerModal ? (
+        <ChangeAssignedSellerModal listing={unitData} accountId={buyerAccountId} actorRole={actorRole}
+          onClose={() => setShowChangeSellerModal(false)} onLoadOptions={onLoadSellerChangeOptions}
+          onPreview={onPreviewSellerChange} onRequest={onRequestSellerChange} onConfirm={onConfirmSellerChange}/>
+      ) : null}
+
       {!readOnly && canAdjustCommission && showRecalculateModal ? (
         <RecalculateCommissionModal
           listing={unitData}
@@ -714,4 +756,5 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
+
 

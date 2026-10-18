@@ -101,3 +101,4 @@ test('Excel remains editable while protected cells are clearly marked and server
   assert.match(ui, /Apply Approved Changes/);
   assert.match(ui, /No units were updated/);
 });
+

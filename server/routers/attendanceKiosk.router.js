@@ -80,3 +80,4 @@ router.post('/scan', requireAttendanceKiosk, scanAttendance);
 
 export default router;
 
+

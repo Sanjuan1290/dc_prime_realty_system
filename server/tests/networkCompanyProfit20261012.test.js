@@ -94,3 +94,4 @@ test('Company Profit controller imports only an actual exported money utility', 
   assert.match(source('server/services/networkCompanyProfitTerms.js'), /export const roundProfitMoney/);
 });
 
+

@@ -75,3 +75,4 @@ test('source enforces prehire Attendance exclusion, future-hire block, and relea
   assert.throws(() => validatePayrollReleaseInput({ payroll, releasedByUserId: 1, releaseDate: '2026-10-12' }), /before the payroll period ends/);
   assert.throws(() => validatePayrollReleaseInput({ payroll, releasedByUserId: 1, releaseDate: '2099-12-01' }), /cannot be in the future/);
 });
+

@@ -120,6 +120,9 @@ export const loadCurrentSellerChain = async (connection, accreditedSellerId) => 
     current = await loadSellerByUserId(connection, current.accredited_seller_reports_under_user_id);
   }
 
+  if (current && seen.has(Number(current.accredited_seller_id))) {
+    throw new Error('Seller assignments contain a reporting loop. Check Seller Setup.');
+  }
   const headSeller = await loadGroupHeadSeller(
     connection,
     terminalSeller?.seller_group_id || chain[0]?.seller_group_id
@@ -346,7 +349,8 @@ export const getReservationCommissionPreview = async (
   if (baseAmount <= 0) throw new Error('The listing does not have a valid commission base amount.');
 
   const assignedSeller = await loadSellerById(connection, assignedSellerId);
-  if (!assignedSeller) throw new Error('Assigned seller or group account could not be loaded.');
+  if (!assignedSeller) throw new Error('Seller not found. Choose another seller.');
+  if (Number(assignedSeller.is_system_dummy||0)===1) throw new Error('This system-created seller cannot be selected for a new reservation.');
   if (
     assignedSeller.accredited_seller_status !== 'active' ||
     assignedSeller.user_status !== 'active'
@@ -354,6 +358,8 @@ export const getReservationCommissionPreview = async (
     throw new Error('The assigned seller or group account is not active.');
   }
 
+  const [[selectedNetwork]] = await connection.query('SELECT seller_group_status FROM seller_groups WHERE seller_group_id=? LIMIT 1', [assignedSeller.seller_group_id]);
+  if (selectedNetwork?.seller_group_status!=='active') throw new Error('This Network is inactive. Activate it before reserving.');
   const fixedRates = await loadGroupFixedCommissionRates(
     connection,
     assignedSeller.seller_group_id,
@@ -706,3 +712,4 @@ export const hasReleasedCommissionActivity = ({
   Number(releasedCommissionCount || 0) > 0 ||
   Number(releasedStageCount || 0) > 0 ||
   Number(receiptCount || 0) > 0;
+

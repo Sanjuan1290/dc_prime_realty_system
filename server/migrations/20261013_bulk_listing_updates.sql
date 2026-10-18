@@ -25,3 +25,4 @@ CREATE TABLE IF NOT EXISTS lot_project_listing_bulk_rows (
   CONSTRAINT fk_listing_bulk_row_batch FOREIGN KEY (batch_id) REFERENCES lot_project_listing_bulk_batches(batch_id) ON DELETE RESTRICT,
   CONSTRAINT fk_listing_bulk_row_listing FOREIGN KEY (lot_project_listing_id) REFERENCES lot_project_listings(lot_project_listing_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

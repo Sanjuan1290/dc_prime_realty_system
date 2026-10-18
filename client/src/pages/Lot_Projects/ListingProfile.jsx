@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import ReviewLiveRecordPanel from '../../components/Shared/ReviewLiveRecordPanel'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FiArrowLeft,
@@ -129,6 +130,7 @@ const ListingProfile = () => {
   const canViewCommissions = hasPermission(user, PERMISSIONS.LOT_COMMISSIONS_VIEW)
   const canViewSystemDocuments = hasPermission(user, PERMISSIONS.SYSTEM_DOCUMENTS_VIEW)
   const canAdjustCommission = hasPermission(user, PERMISSIONS.LOT_COMMISSIONS_ADJUST)
+  const canChangeAssignedSeller = hasPermission(user, PERMISSIONS.LOT_ASSIGNED_SELLER_EDIT)
   const canManageCancellation = hasPermission(user, PERMISSIONS.LOT_CANCELLATIONS_MANAGE)
   const canSettleCancellation = hasPermission(user, PERMISSIONS.LOT_CANCELLATIONS_SETTLE)
   const canReleaseCancelledUnit = hasPermission(user, PERMISSIONS.LOT_CANCELLATIONS_RELEASE_UNIT)
@@ -136,6 +138,10 @@ const ListingProfile = () => {
   const workflowAuditCaseId = Number(searchParams.get('auditCaseId') || 0)
   const workflowReviewId = Number(searchParams.get('reviewId') || 0)
   const workflowAction = String(searchParams.get('workflowAction') || '').trim()
+  const reviewView = searchParams.get('reviewView') === '1'
+  const reviewEntityType = String(searchParams.get('reviewEntityType') || '')
+  const reviewTargetId = Number(searchParams.get('reviewTargetId') || 0)
+  const reviewPaymentId = Number(searchParams.get('paymentId') || 0)
   const isAccountRoute = Boolean(accountId)
   const profileKey = ['lot-listing-profile', projectSlug, listingId, accountId || 'current']
   const profileUrl = accountId
@@ -187,12 +193,22 @@ const ListingProfile = () => {
 
   const profile = profileQuery.data?.data || {}
   const account = profile.account || null
+  // A review record is strictly read-only. The normal page fetch is still
+  // protected by its existing project/account permissions.
+  const reviewedPayment = (profile.payments || []).find((payment) => Number(payment.paymentId || payment.id || payment.lot_project_payment_id) === reviewPaymentId)
+  const reviewRecord = reviewView ? (
+    reviewEntityType === 'lot_project_listing' ? profile.listing :
+    reviewEntityType === 'lot_project_client_profile' ? profile.client :
+    ['lot_project_payment','lot_project_payment_proof','lot_project_signed_receipt'].includes(reviewEntityType) ? reviewedPayment :
+    ['lot_project_account','lot_project_commission_account','lot_project_reservation','lot_project_cancellation'].includes(reviewEntityType) ? profile.account :
+    ['lot_project_lmf_schedule','lot_project_penalty_schedule'].includes(reviewEntityType) ? (profile.soaRows || []).find((row)=>Number(row.scheduleId||row.id||row.lot_project_payment_schedule_id)===reviewTargetId) : null
+  ) : null
   const readOnly = Boolean(profile.readOnly)
   useEffect(() => {
     if (['payment_correction','penalty_adjustment','lmf_correction','payment_proof_review'].includes(workflowAction)) setActiveTab('payments')
     if (workflowAction === 'signed_receipt_review') setActiveTab('printouts')
     if (workflowAction === 'buyer_profile_edit_review') setActiveTab('client')
-    if (workflowAction === 'commission_adjustment') setActiveTab('unit')
+    if (['commission_adjustment','seller_change_review'].includes(workflowAction)) setActiveTab('unit')
     if (workflowAction === 'reservation_correction' && canCorrectReservation && !readOnly) {
       setActiveTab('unit')
       setShowReservationCorrectionModal(true)
@@ -367,6 +383,20 @@ const ListingProfile = () => {
       })
     },
   })
+
+  // Phase 7: this is a separate protected action, not a rate adjustment.
+  const sellerChangePath = `/projects/lot-projects/${projectSlug}/listings/${listingId}/change-seller`
+  const loadSellerChangeOptions = (payload) => useFetch(`${sellerChangePath}/options?accountId=${Number(payload.accountId)}`)
+  const previewSellerChange = (payload) => useFetchPost(`${sellerChangePath}/preview`, payload, { confirmationHandled: 'compact' })
+  const requestSellerChange = (payload) => useFetchPost(`${sellerChangePath}/request`, payload, { confirmationHandled: 'compact' })
+  const confirmSellerChange = async (payload) => {
+    const result = await useFetchPost(`${sellerChangePath}/confirm`, payload, { confirmationHandled: 'compact' })
+    setAlert({ type: 'success', message: result?.message || 'Assigned seller updated.' })
+    queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+    queryClient.invalidateQueries({ queryKey: ['lot-commissions', projectSlug] })
+    queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+    return result
+  }
 
   const reserveListingMutation = useMutation({
     mutationFn: (payload) => {
@@ -898,6 +928,12 @@ const ListingProfile = () => {
           onSave={(payload) => updateListingMutation.mutateAsync(payload)}
           canEditListing={canEditListing}
           canAdjustCommission={canAdjustCommission}
+          canChangeAssignedSeller={canChangeAssignedSeller}
+          buyerAccountId={account?.id || null}
+          onLoadSellerChangeOptions={loadSellerChangeOptions}
+          onPreviewSellerChange={previewSellerChange}
+          onRequestSellerChange={requestSellerChange}
+          onConfirmSellerChange={confirmSellerChange}
           canManageCancellation={canManageCancellation}
           canSettleCancellation={canSettleCancellation}
           canReleaseCancelledUnit={canReleaseCancelledUnit}
@@ -914,6 +950,7 @@ const ListingProfile = () => {
           workflowAuditCaseId={workflowAuditCaseId || null}
           autoOpenEdit={['listing_edit_review', 'listing_documents_update_review'].includes(workflowAction)}
           autoOpenCommissionAdjustment={workflowAction === 'commission_adjustment'}
+          autoOpenSellerChange={workflowAction === 'seller_change_review' && !reviewView}
           readOnly={readOnly}
         />
       ) : null}
@@ -1050,6 +1087,14 @@ const ListingProfile = () => {
       ) : null}
 
 
+      {reviewView ? <ReviewLiveRecordPanel
+        entityType={reviewEntityType}
+        reviewId={workflowReviewId}
+        record={reviewRecord}
+        loading={profileQuery.isLoading}
+        error={profileQuery.isError ? 'You cannot access this record, or it is no longer available.' : !profileQuery.isLoading && !reviewRecord ? 'The exact record was not found. Return to Review Center to see its saved history.' : ''}
+        onClose={() => navigate(`/portal/${user?.role || 'super_admin'}/review-center/reviews/${workflowReviewId}`)}
+      /> : null}
       {!readOnly && canUpdateBuyerDocuments && showBuyerFormLinkModal ? (
         <BuyerFormLinkModal
           listing={listing}
@@ -1076,4 +1121,5 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+
 

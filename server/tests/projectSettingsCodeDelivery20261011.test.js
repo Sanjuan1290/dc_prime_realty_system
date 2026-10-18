@@ -68,3 +68,4 @@ test('authorization, payload binding, and password checks remain mandatory', () 
   assert.match(controller, /verifyAndConsumeSensitiveAction/);
   assert.match(controller, /PROJECT_COMPANY_EMAIL_REQUIRED_FOR_PAYMENT_NOTIFICATIONS/);
 });
+

@@ -206,3 +206,4 @@ const SettingsDoubleCheck = ({ request, onConfirm, onCancel }) => {
 
 export default SettingsDoubleCheck
 
+

@@ -93,3 +93,4 @@ test('edit modal includes usable Hire Date and condensed employee sections', () 
   assert.match(controller, /payrollDraftRecalculationRequired/);
   assert.match(controller, /effectiveFrom: hireDate/);
 });
+

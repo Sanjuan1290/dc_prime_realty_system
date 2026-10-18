@@ -9,6 +9,7 @@ const TECHNICAL_MUTATION_PATTERNS = [
   /\/user\/(?:login|logout|change-password)$/i,
   /\/user\/forgot-password(?:\/|$)/i,
   /\/user\/deactivate\/\d+\/code$/i,
+  /\/user\/reactivate\/\d+(?:\/code)?$/i,
   /\/upload-signature(?:\/|$)/i,
   /\/payments\/preview$/i,
   /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/payments\/preflight$/i,
@@ -314,6 +315,7 @@ export const requestApiBlob = async (
     }
   }
 }
+
 
 
 

@@ -39,3 +39,4 @@ WHERE proof.proof_status = 'active'
     '/LST-', proof.lot_project_listing_id, '/%'
   );
 
+

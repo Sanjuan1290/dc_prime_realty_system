@@ -95,6 +95,7 @@ export const PERMISSIONS = Object.freeze({
   LOT_PAYMENT_LOGS_VIEW: 'lot_project.payment_logs.view',
   LOT_COMMISSIONS_VIEW: 'lot_project.commissions.view',
   LOT_COMMISSIONS_ADJUST: 'lot_project.commissions.adjust',
+  LOT_ASSIGNED_SELLER_EDIT: 'lot_project.commissions.change_seller',
   LOT_COMMISSIONS_RELEASE: 'lot_project.commissions.release',
   LOT_COMMISSIONS_HOLD: 'lot_project.commissions.hold',
   LOT_COMMISSIONS_UNHOLD: 'lot_project.commissions.unhold',
@@ -355,5 +356,6 @@ export const ROLE_PERMISSIONS = Object.freeze({
   super_admin: allPermissions,
   auditor: AUDITOR_ALLOWED_PERMISSIONS,
 });
+
 
 

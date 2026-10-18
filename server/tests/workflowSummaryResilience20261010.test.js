@@ -64,3 +64,4 @@ test('review queue remains authoritative and SQL errors are not sent to the brow
   assert.match(reviewCenter, /counts\.notificationCountsAvailable === false \? '—'/);
   assert.match(reviewCenter, /counts\.protectedCountsAvailable === false \? '—'/);
 });
+

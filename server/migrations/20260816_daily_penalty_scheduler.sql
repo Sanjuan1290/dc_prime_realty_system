@@ -43,3 +43,4 @@ SELECT
 FROM system_scheduled_job_state
 WHERE job_name = 'daily_penalty_refresh';
 
+

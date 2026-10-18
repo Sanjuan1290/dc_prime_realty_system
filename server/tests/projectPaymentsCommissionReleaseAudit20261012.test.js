@@ -235,3 +235,4 @@ test('runtime: cancelled sale historical payout remains one outgoing entry with 
   assert.equal(response.body.data[1].encodedBy, 'Not retained in archive');
   assert.equal(response.body.data[1].referenceId, 'ARCH-88');
 });
+

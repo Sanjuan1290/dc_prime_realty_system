@@ -50,3 +50,4 @@ test('Company Profit is never added to seller totals and has separate release ap
   assert.match(profitPanel, /Print Acknowledgment/);
   assert.match(backend, /WHERE id = \? AND profit_account_id = \? AND release_status = 'Pending'/);
 });
+

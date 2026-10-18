@@ -31,3 +31,4 @@ const DocumentUploadDoubleCheck = ({ request, onConfirm, onCancel }) => {
 
 export default DocumentUploadDoubleCheck
 
+

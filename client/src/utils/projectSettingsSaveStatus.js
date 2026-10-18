@@ -12,3 +12,4 @@ export const projectSettingsMatchPayload = (saved, submitted) => {
     && ['releaseDayOne', 'releaseDayTwo'].every((key) => Number(saved[key]) === Number(submitted[key]))
     && bool(saved.paymentEntryEmailNotificationEnabled) === bool(submitted.paymentEntryEmailNotificationEnabled)
 }
+

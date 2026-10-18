@@ -42,3 +42,4 @@ test('Auditor holds exactly its saved permissions: export only when assigned, wr
   assert.equal(roleHasPermission(auditorWithExport, PERMISSIONS.SYSTEM_REPORTS_EXPORT), true);
 });
 
+

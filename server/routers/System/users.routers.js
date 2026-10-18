@@ -11,6 +11,7 @@ import {
   editUser,
   requestUserDeactivationCode,
   deactivateUserPermanently,
+  requestUserReactivationCode,
   reactivateUser,
   resetUserPassword,
   requestForgotPasswordCode,
@@ -52,8 +53,10 @@ router.post('/createUser', authenticateUser, requireExactRole('super_admin', 'sy
 router.put('/editUser/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_EDIT), editUser);
 router.post('/deactivate/:id/code', authenticateUser, requireExactRole('super_admin', 'system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), requireCurrentPassword({ field: 'password', label: 'Administrator password' }), requestUserDeactivationCode);
 router.patch('/deactivate/:id', authenticateUser, requireExactRole('super_admin', 'system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), deactivateUserPermanently);
-router.post('/reactivate/:id', authenticateUser, requireExactRole('super_admin', 'system_admin'), requireCurrentPassword({ field: 'password', label: 'Administrator password' }), reactivateUser);
+router.post('/reactivate/:id/code', authenticateUser, requireExactRole('super_admin', 'system_admin'), requireCurrentPassword({ field: 'password', label: 'Administrator password' }), requestUserReactivationCode);
+router.post('/reactivate/:id', authenticateUser, requireExactRole('super_admin', 'system_admin'), reactivateUser);
 router.patch('/resetPassword/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD), resetUserPassword);
 
 export default router;
+
 

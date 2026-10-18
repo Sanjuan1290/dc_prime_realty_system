@@ -1394,33 +1394,6 @@ export const adjustLotProjectListingCommission = async (req, res) => {
       );
     }
 
-    await writeAuditLog(connection, req, {
-      action: 'update',
-      module: 'Commissions',
-      entityType: 'lot_project_account',
-      entityId: String(context.listing.lot_project_account_id),
-      entityLabel: `Unit ${context.listing.lot_project_listing_unit_id} — ${context.project.lot_project_name}`,
-      title: 'Adjusted unit commission rates',
-      description: `Adjusted the saved commission rates for ${context.listing.lot_project_listing_unit_id}. Network Settings were not changed.`,
-      metadata: {
-        accountId: Number(context.listing.lot_project_account_id),
-        accountReference: context.listing.account_reference || null,
-        assignedAccreditedSellerId: Number(context.listing.assigned_accredited_seller_id || 0),
-        assignedSellerName: context.listing.assigned_seller_name || null,
-        commissionBase: context.commissionBase,
-        unitGroupRate: adjustment.groupRate,
-        allocatedRate: adjustment.allocatedRate,
-        unallocatedRate: 0,
-        adjustmentReason: reason,
-        verificationId: authorization.verificationId || null,
-        authorizationType: authorization.type,
-        emailVerification: authorization.type === 'emergency_super_admin' ? 'verified' : null,
-        groupSettingsModified: false,
-        before: context.currentRows,
-        after: updatedRows,
-      },
-    });
-
     let workflow = null;
     if (authorization.type === 'audit_case') {
       workflow = await advanceAuditCaseToRecheck(connection, {
@@ -1445,6 +1418,35 @@ export const adjustLotProjectListingCommission = async (req, res) => {
         headPreApprovedByUserId: authorization.headPreApprovedByUserId || null,
       });
     }
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Commissions',
+      entityType: 'lot_project_account',
+      entityId: String(context.listing.lot_project_account_id),
+      entityLabel: `Unit ${context.listing.lot_project_listing_unit_id} — ${context.project.lot_project_name}`,
+      title: 'Adjusted unit commission rates',
+      description: `Adjusted the saved commission rates for ${context.listing.lot_project_listing_unit_id}. Network Settings were not changed.`,
+      metadata: {
+        accountId: Number(context.listing.lot_project_account_id),
+        accountReference: context.listing.account_reference || null,
+        assignedAccreditedSellerId: Number(context.listing.assigned_accredited_seller_id || 0),
+        assignedSellerName: context.listing.assigned_seller_name || null,
+        commissionBase: context.commissionBase,
+        unitGroupRate: adjustment.groupRate,
+        allocatedRate: adjustment.allocatedRate,
+        unallocatedRate: 0,
+        adjustmentReason: reason,
+        verificationId: authorization.verificationId || null,
+        authorizationType: authorization.type,
+        emailVerification: authorization.type === 'emergency_super_admin' ? 'verified' : null,
+        groupSettingsModified: false,
+        reviewId: workflow?.reviewId || null,
+        reviewNumber: workflow?.reviewNumber || null,
+        before: context.currentRows,
+        after: updatedRows,
+      },
+    });
 
     await connection.commit();
     return res.json({
@@ -1718,4 +1720,5 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

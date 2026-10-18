@@ -173,3 +173,4 @@ test('payment timing passes every contractual SOA row to allocation classifier',
   assert.match(modal, /\.filter\(\(row\) => \['Downpayment', 'Monthly'\]\.includes/);
   assert.match(modal, /selectedRowDueDate === nextContractInstallmentDate/);
 });
+

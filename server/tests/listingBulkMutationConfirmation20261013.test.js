@@ -89,3 +89,4 @@ test('server permissions still protect each endpoint', () => {
   assert.match(router, /listing-bulk\/validate', requirePermission\(PERMISSIONS\.LOT_LISTINGS_EDIT\)/)
   assert.match(router, /listing-bulk\/apply', requirePermission\(PERMISSIONS\.LOT_LISTINGS_EDIT\)/)
 })
+

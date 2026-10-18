@@ -78,3 +78,4 @@ export const getAuditReferences = (metadata = {}) => {
     caseId: number(metadata?.auditCaseId ?? metadata?.audit_case_id),
   }
 }
+

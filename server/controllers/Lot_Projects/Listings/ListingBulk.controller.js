@@ -375,3 +375,4 @@ export const getBulkListingHistory = async (req, res) => {
   } catch (error) { return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) }); }
   finally { connection.release(); }
 };
+

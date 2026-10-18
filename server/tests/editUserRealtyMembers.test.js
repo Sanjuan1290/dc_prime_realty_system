@@ -29,7 +29,7 @@ test('In-House Members can open the shared Edit User modal', () => {
     /onClick=\{\(\)\s*=>\s*setSelectedMember\(/
   )
 
-  assert.match(sellerGroupDetails, /Edit User/)
+  assert.match(sellerGroupDetails, /Edit Seller/)
 
   assert.match(
     sellerGroupDetails,
@@ -49,4 +49,5 @@ test('In-House member payload includes editable user fields', () => {
     assert.match(sellerGroupController, new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
 })
+
 

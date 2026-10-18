@@ -5,3 +5,4 @@ ALTER TABLE employee_payroll_settings ADD COLUMN IF NOT EXISTS second_half_payda
 ALTER TABLE employee_payroll_settings ADD COLUMN IF NOT EXISTS new_hire_proration_rule VARCHAR(40) NOT NULL DEFAULT 'disabled';
 ALTER TABLE employee_payroll_periods ADD COLUMN IF NOT EXISTS scheduled_release_date DATE NULL;
 -- Existing final payroll and release dates are never recalculated/backfilled.
+

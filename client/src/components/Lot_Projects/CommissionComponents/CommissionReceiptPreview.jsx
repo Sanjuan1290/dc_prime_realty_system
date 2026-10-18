@@ -38,3 +38,4 @@ export default function CommissionReceiptPreview({ seller, receipt, onClose }) {
     </div>
   )
 }
+

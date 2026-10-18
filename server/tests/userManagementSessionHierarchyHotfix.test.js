@@ -28,3 +28,4 @@ test('self-edit refreshes the acting session after auth_version invalidation', (
   assert.match(controller, /session_refreshed: sessionRefreshed/);
 });
 
+

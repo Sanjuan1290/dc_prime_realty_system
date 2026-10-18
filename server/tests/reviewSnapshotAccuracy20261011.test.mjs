@@ -124,12 +124,13 @@ test('legacy recovery refuses ambiguous, mismatched, and revised events rather t
   assert.equal(c.calls.length,0);
 });
 
-test('all registered review features still share a generic before/after display with truthful no-differences messaging', () => {
+test('all registered review features keep a read-only before-after view with truthful missing data messaging', () => {
   assert.ok(Object.keys(REVIEW_ACTIONS).length >= 30);
   for(const [key,def] of Object.entries(REVIEW_ACTIONS)) {
     assert.ok(def.entityType && def.department && def.label,`registered action ${key}`);
   }
-  assert.match(center, /<ReviewSnapshotDiff beforeValue=\{review.before_snapshot_json\} afterValue=\{review.after_snapshot_json\}/);
+  assert.match(center, /<ReviewFormComparison/);
+  assert.match(src('client/src/components/Shared/ReviewFormComparison.jsx'),/Not Recorded/);
   assert.match(center, /snapshotRecoveredFromAuditLog/);
   assert.match(workflow, /enrichLegacyListingReviewSnapshots\(db, review\)/);
   assert.match(diff, /This does not prove the record was unchanged/);
@@ -158,3 +159,4 @@ test('old baseline can be recovered when a later revision already contains trust
   assert.equal(restored.after_snapshot_json.installmentPricePerSqm,2700);
   assert.equal(restored.after_snapshot_json.netSellingPrice,810000);
 });
+

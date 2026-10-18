@@ -172,3 +172,4 @@ export const hydrateUserPermissions = async (user, connection = db) => {
   return { ...user, permissions: await getUserPermissionKeys(user.id, connection) };
 };
 
+

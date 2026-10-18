@@ -67,6 +67,8 @@ const normalizeAgent = (agent = {}) => ({
   reportsUnderName: agent.reportsUnderName || agent.reports_under_name || '-',
   isSystemDummy: Boolean(agent.isSystemDummy ?? agent.is_system_dummy),
   ownerName: agent.ownerName || agent.owner_name || null,
+  ready: agent.ready !== false,
+  unavailableReason: agent.unavailableReason || '',
 })
 
 const ReserveListingModal = ({
@@ -101,6 +103,7 @@ const ReserveListingModal = ({
   const [searchDocument, setSearchDocument] = useState('')
   const [templateAdditionHistory, setTemplateAdditionHistory] = useState({})
   const [agentSearch, setAgentSearch] = useState('')
+  const [showUnavailableSellers, setShowUnavailableSellers] = useState(false)
   const [debouncedAgentSearch, setDebouncedAgentSearch] = useState('')
   const [selectedAgentSnapshot, setSelectedAgentSnapshot] = useState(null)
   const [alert, setAlert] = useState(null)
@@ -215,10 +218,11 @@ const ReserveListingModal = ({
   }, [agentSearch])
 
   const agentsQuery = useQuery({
-    queryKey: ['reservation-agents', projectSlug, debouncedAgentSearch],
+    queryKey: ['reservation-agents', projectSlug, debouncedAgentSearch, showUnavailableSellers],
     queryFn: () => {
       const params = new URLSearchParams({ limit: '50' })
       if (debouncedAgentSearch) params.set('search', debouncedAgentSearch)
+      if (showUnavailableSellers) params.set('showUnavailable','1')
       return fetchApi(`/projects/lot-projects/${projectSlug}/reservation-agents?${params.toString()}`)
     },
     enabled: Boolean(projectSlug && activeStep === 3),
@@ -724,7 +728,7 @@ const ReserveListingModal = ({
 
           {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} addTemplateDocuments={addTemplateDocuments} undoTemplateDocuments={undoTemplateDocuments} templateAdditionHistory={templateAdditionHistory} removeDocument={removeDocument} updateDocumentRequirement={updateDocumentRequirement} updateDocumentResponsibleParty={updateDocumentResponsibleParty} loadProjectDefaults={loadProjectDefaults} documentTemplates={reservationDocumentTemplates} /> : null}
 
-          {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} contractPricing={contractPricing} paymentForm={effectivePaymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load Seller / Network options.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission structure.' : null} /> : null}
+          {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} contractPricing={contractPricing} paymentForm={effectivePaymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} showUnavailableSellers={showUnavailableSellers} setShowUnavailableSellers={setShowUnavailableSellers} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load Seller / Network options.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission structure.' : null} /> : null}
         </div>
 
         <div className="flex shrink-0 flex-col gap-3 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -741,4 +745,5 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+
 

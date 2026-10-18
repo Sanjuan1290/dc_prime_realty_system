@@ -104,3 +104,4 @@ test('Client names History correctly and never temporarily displays queue rows a
   assert.doesNotMatch(client, /placeholderData:\s*\(previous\) => previous/)
   assert.doesNotMatch(client, /Waiting on you/)
 })
+
