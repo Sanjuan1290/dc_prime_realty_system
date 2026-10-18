@@ -226,7 +226,12 @@ export const analyzeNetworkMemberImport = ({
       const existingRole = String(existing.role || '');
       const existingGroupId = Number(existing.seller_group_id || 0);
       const sellerStatus = String(existing.accredited_seller_status || 'inactive');
-      if (String(existing.user_status || 'inactive') !== 'active' || sellerStatus !== 'active') {
+      // A valid seller-role user may exist before their accreditation row is
+      // created. Missing accreditation is not an inactive accreditation.
+      // Existing inactive accreditations must still use the protected
+      // Activate Seller workflow; importing must not reactivate an account.
+      if (String(existing.user_status || 'inactive') !== 'active'
+        || (existing.accredited_seller_id && sellerStatus !== 'active')) {
         errors.push('This seller is inactive. Use Activate Seller before importing changes.');
       }
 
@@ -255,10 +260,10 @@ export const analyzeNetworkMemberImport = ({
             'EXISTING SELLER WILL BE UPDATED. This email already belongs to an accredited seller in this Network. Confirming the import will overwrite the seller name and reporting relationship with the Excel values, overwrite Contact Number/TIN/PRC when those cells are not blank, and keep the seller Active. Blank optional Contact Number/TIN/PRC cells preserve their current values. Review this row carefully before continuing.'
           );
         } else if (sellerStatus !== 'active') {
-          action = existingGroupId ? 'TRANSFER' : 'UPDATE';
-          warnings.push(existingGroupId
-            ? `Inactive seller will be transferred from ${existing.seller_group_name || 'the previous Network'} and reactivated.`
-            : 'Inactive seller account will be activated and assigned to this Network.');
+          // Never advertise an implicit activation/transfer: inactive sellers
+          // must first use the protected activation workflow, and the error
+          // recorded above prevents this import from being committed.
+          action = 'BLOCKED';
         }
       }
     } else if (sourcePersonAccount) {

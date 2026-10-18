@@ -20,7 +20,10 @@ test('commission rate UI displays four decimal places in reservation previews an
   assert.doesNotMatch(preview, /row\.rate \|\| 0\)\.toFixed\(2\)/)
 
   assert.match(picker, /directRate \|\| selectedAgent\.rateValue \|\| 0\)\.toFixed\(4\)/)
-  assert.match(picker, /directRate \|\| agent\.rateValue \|\| 0\)\.toFixed\(4\)/)
+  // Unavailable sellers have no selectable rate. The selected rate is still
+  // displayed with four-decimal precision, including Network-pool sellers.
+  assert.match(picker, /Number\(selectedAgent\.directRate \|\| selectedAgent\.rateValue \|\| 0\)\.toFixed\(4\)/)
+  assert.match(picker, /agent\.ready \? 'bg-emerald-50 text-emerald-700'/)
 
   assert.match(distribution, /summary\.allocatedRate\.toFixed\(4\)/)
   assert.match(distribution, /row\.rate \|\| 0\)\.toFixed\(4\)/)

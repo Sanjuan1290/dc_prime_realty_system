@@ -70,9 +70,12 @@ test('Accredited Sellers owns In-House and External Network navigation', async (
   ]);
   assert.match(users, /System Users/);
   assert.match(users, /System Admin, Auditor, Department Staff and Department Head accounts/);
-  assert.doesNotMatch(users, /division_manager|sales_director|unit_manager|sales_agent|external_group/);
-  assert.match(accredited, />\s*In-House Networks\s*<\/NavLink>/);
-  assert.match(accredited, />\s*External Networks\s*<\/NavLink>/);
+  // System Users must not offer direct seller creation; a role-specific
+  // deactivation guard may legitimately reference seller role identifiers.
+  assert.doesNotMatch(users, /<option value="(?:division_manager|sales_director|unit_manager|sales_agent|external_group)"/);
+  assert.match(users, /!\['division_manager','sales_director','unit_manager'\]\.includes\(user\.role\)/);
+  assert.match(accredited, /to=\{`\$\{roleBasePath\}\/accredited\/groups\/in-house`\}[\s\S]*?In-House Networks[\s\S]*?<\/NavLink>/);
+  assert.match(accredited, /to=\{`\$\{roleBasePath\}\/accredited\/groups\/external`\}[\s\S]*?External Networks[\s\S]*?<\/NavLink>/);
   assert.match(app, /accredited\/groups\/in-house/);
   assert.match(app, /accredited\/groups\/external/);
   assert.match(permissions, /SELLER_USER_ROLES/);

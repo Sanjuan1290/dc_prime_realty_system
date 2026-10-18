@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FiAlertTriangle, FiArrowLeftRight, FiCheckCircle, FiKey, FiLock, FiMail, FiShield, FiUsers, FiX } from 'react-icons/fi'
+import { FiAlertTriangle, FiRepeat, FiCheckCircle, FiKey, FiLock, FiMail, FiShield, FiUsers, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import { useFetch as fetchApi, useFetchPost as postApi } from '../../../utils/useFetch'
 
@@ -57,7 +57,7 @@ const ReplaceManagerModal = ({ groupId, manager, onClose, onSaved, onCreateManag
   return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-label="Replace Manager">
     <div className="flex w-full max-w-2xl max-h-[92vh] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-        <div className="flex items-center gap-3"><span className="rounded-xl bg-blue-50 p-2 text-blue-700"><FiArrowLeftRight/></span><div><h2 className="text-lg font-bold text-slate-950">Replace &amp; Deactivate Manager</h2><p className="text-sm text-slate-500">{manager.display_name||manager.full_name} · {roles[manager.role]||manager.role}</p></div></div>
+        <div className="flex items-center gap-3"><span className="rounded-xl bg-blue-50 p-2 text-blue-700"><FiRepeat/></span><div><h2 className="text-lg font-bold text-slate-950">Replace &amp; Deactivate Manager</h2><p className="text-sm text-slate-500">{manager.display_name||manager.full_name} · {roles[manager.role]||manager.role}</p></div></div>
         <button type="button" onClick={onClose} disabled={busy} aria-label="Close" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"><FiX/></button>
       </div>
       <div className="overflow-y-auto space-y-4 p-5">

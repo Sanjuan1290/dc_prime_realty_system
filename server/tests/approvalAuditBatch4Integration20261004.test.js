@@ -93,7 +93,7 @@ test('Review Center deep-links every Batch 4 correction class to the exact recor
   assert.match(reviewCenter, /lmf_correction/);
   assert.match(reviewCenter, /project_settings_correction/);
   // Record destinations were extracted to a shared helper used by Review Center.
-  assert.match(client('utils/reviewRecordLinks.js'), /scheduleId=/);
+  assert.match(client('utils/reviewRecordLinks.js'), /params\.set\('scheduleId', String\(location\.scheduleId\)\)/);
   assert.match(reviewCenter, /Open Project Settings Correction/);
   assert.match(reviewCenter, /Open LMF Correction/);
 });

@@ -88,7 +88,9 @@ test('System Admin can perform permission-backed administration while owner-only
   assert.match(payments, /You do not have permission to edit recorded payments/);
   assert.match(payments, /You do not have permission to void recorded payments/);
   assert.match(accountHistory, /canPermanentlyDelete = false/);
-  assert.match(unitStatus, /disabled=\{!canAdjustCommission \|\| isAdjustingCommission\}/);
+  assert.match(unitStatus, /disabled=\{\(!canAdjustCommission && !canChangeAssignedSeller\) \|\| isAdjustingCommission\}/);
+  assert.match(unitStatus, /disabled=\{!canAdjustCommission\}/);
+  assert.match(unitStatus, /disabled=\{!canChangeAssignedSeller\}/);
   assert.match(correction, /sales_staff|sales_head/);
   assert.match(users, /canCreate && \['super_admin','system_admin'\]\.includes\(actor\.role\)/);
   assert.match(users, /canViewAccess && user\.status === 'active'/);

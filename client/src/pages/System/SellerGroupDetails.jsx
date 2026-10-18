@@ -16,7 +16,7 @@ import {
   FiMapPin,
   FiPhone,
   FiRotateCcw,
-  FiArrowLeftRight,
+  FiRepeat,
   FiSearch,
   FiShoppingBag,
   FiTrendingUp,
@@ -1084,7 +1084,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                             Edit Seller
                           </button>
                           {canChangeSellerStatus && ['division_manager','sales_director','unit_manager'].includes(member.role) && member.user_status === 'active' && member.accredited_seller_status === 'active' && (
-                            <button type="button" onClick={() => setReplaceManager(member)} className="ml-2 inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50"><FiArrowLeftRight/> Replace Manager</button>
+                            <button type="button" onClick={() => setReplaceManager(member)} className="ml-2 inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50"><FiRepeat/> Replace Manager</button>
                           )}
                           {canChangeSellerStatus && !(['division_manager','sales_director','unit_manager'].includes(member.role) && member.user_status === 'active' && member.accredited_seller_status === 'active') && (
                             <button type="button" onClick={() => {setSellerStatusTarget({...member,id:Number(member.user_id),account_code:member.account_code || member.display_name});setSellerStatusModal(member.user_status === 'active' && member.accredited_seller_status === 'active' ? 'deactivate' : 'reactivate')}}

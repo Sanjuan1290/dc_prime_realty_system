@@ -83,10 +83,15 @@ test('acknowledgment library enforces the authenticated account project scope', 
   assert.match(controller, /access\.allProjects \? \[\] : access\.projectIds/);
 });
 
-test('Network profit review can open the commission workspace rather than a broken record link', () => {
+test('Network profit review opens verified read-only preview, not an unverified commission link', () => {
+  const extraRecord = source('server/services/reviewExtraRecord.service.js');
   const links = source('client/src/utils/reviewRecordLinks.js');
-  assert.match(links, /type === 'lot_project_network_profit_release'/);
-  assert.match(links, /networkProfitReleaseId=/);
+  const center = source('client/src/pages/System/ReviewCenter.jsx');
+  assert.match(extraRecord, /type === 'lot_project_network_profit_release'/);
+  assert.match(extraRecord, /JOIN lot_project_network_profit_accounts p ON p\.id=r\.profit_account_id/);
+  assert.match(extraRecord, /p\.lot_project_id=\?/);
+  assert.match(center, /<ReviewExtraRecordModal/);
+  assert.doesNotMatch(links, /networkProfitReleaseId=/);
 });
 
 test('Company Profit controller imports only an actual exported money utility', () => {

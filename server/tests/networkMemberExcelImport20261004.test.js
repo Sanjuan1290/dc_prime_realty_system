@@ -140,6 +140,18 @@ test('existing seller-role user without accreditation is accredited instead of r
   assert.match(result.rows[0].warnings.join(' '), /Seller accreditation will be added/i);
 });
 
+test('inactive seller-role login without accreditation cannot be activated via Excel import', () => {
+  const result = analyze([
+    row({ email: 'inactive@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
+  ], { existingAccounts: [{
+    user_id: 704, accredited_seller_id: null, seller_group_id: null,
+    accredited_seller_status: null, user_status: 'inactive', role: 'sales_director',
+    account_category: 'seller', email: 'inactive@example.com',
+  }] });
+  assert.equal(result.canCommit, false);
+  assert.match(result.rows[0].errors.join(' '), /inactive.*Activate Seller/i);
+});
+
 test('a system account and its seller identity may share one email without duplicate-account import errors', () => {
   const systemAccount = {
     user_id: 702, user_status: 'active', role: 'sales', account_category: 'system',
@@ -171,7 +183,7 @@ test('active seller in another Network cannot be transferred through Excel', () 
   assert.match(result.rows[0].errors.join(' '), /Active in Other Network/i);
 });
 
-test('inactive seller can transfer when role is unchanged and no dependencies remain', () => {
+test('inactive seller cannot reactivate or transfer using Excel import; protected activation is required', () => {
   const existing = {
     user_id: 22, accredited_seller_id: 222, seller_group_id: 99,
     accredited_seller_status: 'inactive', user_status: 'inactive', role: 'sales_agent',
@@ -182,9 +194,11 @@ test('inactive seller can transfer when role is unchanged and no dependencies re
     row({ first_name: 'Maria', last_name: 'Santos', email: 'maria@example.com', role: 'UM', reports_under_email: 'john@example.com' }),
     row({ first_name: 'John', last_name: 'Cruz', email: 'john@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
   ], { existingAccounts: [existing] });
-  assert.equal(result.canCommit, true);
-  assert.equal(result.rows.find((item) => item.email === 'pedro@example.com').action, 'TRANSFER');
-  assert.equal(result.summary.transfer, 1);
+  assert.equal(result.canCommit, false);
+  const attemptedTransfer = result.rows.find((item) => item.email === 'pedro@example.com');
+  assert.match(attemptedTransfer.errors.join(' '), /inactive.*Activate Seller/i);
+  assert.notEqual(attemptedTransfer.action, 'TRANSFER');
+  assert.equal(result.summary.transfer, 0);
 });
 
 test('inactive seller transfer is blocked while seller still has direct reports', () => {
