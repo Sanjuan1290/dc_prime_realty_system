@@ -17,6 +17,7 @@ import AuditLogDetailsModal from '../../components/System/auditLogsComponents/Au
 import AuditLogFilters from '../../components/System/auditLogsComponents/AuditLogFilters'
 import AuditLogTable from '../../components/System/auditLogsComponents/AuditLogTable'
 import ExportAuditReportModal from '../../components/System/auditLogsComponents/ExportAuditReportModal'
+import AuditArchiveWorkspace from '../../components/System/auditLogsComponents/AuditArchiveWorkspace'
 import { PERMISSIONS, hasPermission } from '../../config/permissions'
 import { useFetch, useFetchPost } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
@@ -130,12 +131,14 @@ const AuditLogs = () => {
   const [selectedLog, setSelectedLog] = useState(null)
   const [showArchiveModal, setShowArchiveModal] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
+  const [auditTab, setAuditTab] = useState('active')
   const [archiveRequest, setArchiveRequest] = useState(null)
   const [archiveError, setArchiveError] = useState('')
 
   const canArchive = ['super_admin', 'system_admin'].includes(currentUserData?.user?.role)
   const canExport = hasPermission(currentUserData?.user, PERMISSIONS.AUDIT_LOGS_EXPORT)
   const canIncludeArchived = hasPermission(currentUserData?.user, PERMISSIONS.AUDIT_LOGS_ARCHIVE)
+  const canBrowseArchive = canArchive && canIncludeArchived
   const canIncludeCaseHistory = hasPermission(currentUserData?.user, PERMISSIONS.WORKFLOW_AUDIT_REVIEW)
 
   const resolvedDateRange = useMemo(
@@ -269,7 +272,7 @@ const AuditLogs = () => {
           icon={FiActivity}
         />
 
-        <div className="flex flex-col gap-2 sm:flex-row">
+        {(auditTab === 'active' || !canBrowseArchive) ? <div className="flex flex-col gap-2 sm:flex-row">
           <button
             type="button"
             onClick={() => refetch()}
@@ -286,13 +289,13 @@ const AuditLogs = () => {
             type="button"
             onClick={() => canArchive && openArchiveModal()}
             disabled={!canArchive}
-            title={!canArchive ? 'Super Admin or System Admin authority is required to archive old audit logs.' : 'Archive old audit logs'}
+            title={!canArchive ? 'Super Admin or System Admin authority is required to archive old audit logs.' : 'Move old records into the archive'}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none disabled:hover:bg-slate-100"
           >
             <FiArchive className="h-4 w-4" />
-            Archive Old Logs
+            Move Old Records
           </button>
-        </div>
+        </div> : null}
       </div>
 
       {alert ? (
@@ -308,8 +311,8 @@ const AuditLogs = () => {
       ) : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-        <StatCard label="Active Logs" value={summary.total} helper="Current searchable entries" icon={FiDatabase} />
-        <StatCard label="Archived" value={archivePolicy.archivedTotal} helper={`${archivePolicy.eligibleTotal} ready to archive`} icon={FiArchive} tone="violet" />
+        <StatCard label="Recent Records" value={summary.total} helper="Records still in daily activity" icon={FiDatabase} />
+        <StatCard label="Old Records" value={archivePolicy.archivedTotal} helper={`${archivePolicy.eligibleTotal} ready to move into archive`} icon={FiArchive} tone="violet" />
         <StatCard label="Created" value={summary.created} helper="Create actions" icon={FiPlus} tone="emerald" />
         <StatCard label="Updated" value={summary.updated} helper="Save/edit actions" icon={FiActivity} tone="blue" />
         <StatCard label="Delete Actions" value={summary.deleted} helper="Recorded delete events" icon={FiTrash2} tone="red" />
@@ -317,10 +320,14 @@ const AuditLogs = () => {
       </section>
 
       <section className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm font-semibold text-blue-900">
-        <p className="font-black">Audit retention: {archivePolicy.retentionDays} days</p>
-        <p className="mt-1">Permanent delete-all is disabled. Only Super Admin or System Admin can export and archive records older than the retention period after password and email verification.</p>
+        <p className="font-black">Recent records are kept for at least {archivePolicy.retentionDays} days</p>
+        <p className="mt-1">Moving records into the archive keeps a protected copy. Only authorized administrators can move older records after password and email verification. Expired archive files can be deleted only through the separate, protected cleanup process.</p>
       </section>
 
+      {canBrowseArchive ? <nav aria-label="Audit log sections" className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2">
+        {[["active","Recent Activity"],["archived","Old Records"],["batches","Saved Archive Files"],["settings","Cleanup Settings"]].map(([value,label])=><button key={value} type="button" onClick={()=>setAuditTab(value)} className={`rounded-xl px-4 py-2.5 text-sm font-bold ${auditTab===value?'bg-blue-600 text-white':'text-slate-600 hover:bg-slate-100'}`}>{label}</button>)}
+      </nav> : null}
+      {auditTab==='active' || !canBrowseArchive ? <>
       <AuditLogFilters
         search={search}
         setSearch={(value) => { setSearch(value); setPage(1) }}
@@ -358,7 +365,7 @@ const AuditLogs = () => {
 
       {showExportModal ? (
         <ExportAuditReportModal
-          initial={{ dateRange, from, to, action, module, search }}
+          initial={{ dateRange, from, to, action, module }}
           modules={modules}
           actorName={[currentUserData?.user?.first_name,currentUserData?.user?.last_name].filter(Boolean).join(' ') || currentUserData?.user?.email || 'Authorized user'}
           canIncludeArchived={canIncludeArchived}
@@ -383,11 +390,13 @@ const AuditLogs = () => {
           eligibleCount={archivePolicy.eligibleTotal}
         />
       ) : null}
+      </> : <AuditArchiveWorkspace key={auditTab} section={auditTab} isSuperAdmin={currentUserData?.user?.role==='super_admin'} />}
     </main>
   )
 }
 
 export default AuditLogs
+
 
 
 

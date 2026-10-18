@@ -70,7 +70,7 @@ const ArchiveAuditLogsModal = ({
               <FiArchive className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-xl font-black text-blue-950">Archive Old Audit Logs</h2>
+              <h2 className="text-xl font-black text-blue-950">Move Old Records to Archive</h2>
               <p className="mt-1 text-sm font-semibold text-blue-700">
                 Old records move to protected archive tables. The system stores a CSV export first.
               </p>
@@ -94,14 +94,14 @@ const ArchiveAuditLogsModal = ({
               <div className="flex items-start gap-3">
                 <FiShield className="mt-0.5 h-5 w-5 shrink-0" />
                 <div>
-                  <p className="font-black">No permanent delete-all action</p>
-                  <p className="mt-1">Only records older than the retention period can move. Archived rows and archive events have no edit or delete API.</p>
+                  <p className="font-black">This does not permanently delete records</p>
+                  <p className="mt-1">Only older records can be moved. They stay safely stored in the archive and can be viewed in Old Records.</p>
                 </div>
               </div>
             </div>
 
             <label className="mt-5 grid gap-2">
-              <span className="text-sm font-black text-slate-700">Retention period in days</span>
+              <span className="text-sm font-black text-slate-700">Keep records in Recent Activity for (days)</span>
               <input
                 type="number"
                 min={minRetentionDays}
@@ -114,7 +114,7 @@ const ArchiveAuditLogsModal = ({
                 required
               />
               <span className="text-xs font-semibold text-slate-500">
-                Allowed range: {minRetentionDays}–{maxRetentionDays} days. Current eligible count: {eligibleCount}.
+                Available range: {minRetentionDays}–{maxRetentionDays} days. Records ready to move: {eligibleCount}.
               </span>
             </label>
 
@@ -230,5 +230,6 @@ const ArchiveAuditLogsModal = ({
 }
 
 export default ArchiveAuditLogsModal
+
 
 

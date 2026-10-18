@@ -13,7 +13,8 @@
     "migrate:cloudinary-storage-ids": "node scripts/migrate-cloudinary-storage-ids-v3.js",
     "migrate:cloudinary-account-storage": "node scripts/migrate-cloudinary-account-storage-v4.js",
     "check:imports": "node scripts/check-local-imports.mjs",
-    "prestart": "npm run check:imports"
+    "prestart": "npm run check:imports",
+    "audit:cleanup": "node scripts/run-audit-archive-cleanup.js"
   },
   "keywords": [],
   "author": "",

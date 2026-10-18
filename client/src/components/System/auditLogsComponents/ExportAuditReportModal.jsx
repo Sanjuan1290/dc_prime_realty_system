@@ -31,7 +31,6 @@ const ExportAuditReportModal = ({ initial, modules, onClose, actorName, canInclu
   const [to,setTo] = useState(initial.to || dateInManila())
   const [action,setAction] = useState(initial.action)
   const [module,setModule] = useState(initial.module)
-  const [search,setSearch] = useState(initial.search)
   const [includeArchived,setIncludeArchived] = useState(false)
   const [includeCaseHistory,setIncludeCaseHistory] = useState(Boolean(canIncludeCaseHistory))
   const [progress,setProgress] = useState('')
@@ -44,7 +43,7 @@ const ExportAuditReportModal = ({ initial, modules, onClose, actorName, canInclu
       const dates=resolvedRange(range,from,to)
       if (dates.from && dates.to && dates.from > dates.to) throw new Error('From date must be on or before To date.')
       if (range === 'custom' && (!dates.from || !dates.to)) throw new Error('Select both From and To dates.')
-      const filters={...dates,action,module,search:search.trim(),includeArchived,includeCaseHistory}
+      const filters={...dates,action,module,includeArchived,includeCaseHistory}
       const params=new URLSearchParams()
       for (const [key,value] of Object.entries(filters)) if (key !== 'includeCaseHistory' && (value !== '' || key === 'includeArchived')) params.set(key,String(value))
       let cursor=null, snapshot=null, logs=[], pages=0
@@ -116,12 +115,8 @@ const ExportAuditReportModal = ({ initial, modules, onClose, actorName, canInclu
             <select className={inputClass} value={module} onChange={(e)=>setModule(e.target.value)}><option value="all">All Modules</option>{modules.map((item)=><option key={item.module} value={item.module}>{item.module}</option>)}</select>
           </label>
         </div>
-        <label className="grid gap-1 text-xs font-black text-slate-600">Search in Audit Logs
-          <input className={inputClass} value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="All activity"/>
-        </label>
-        {canIncludeArchived && <label className="flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={includeArchived} onChange={(e)=>setIncludeArchived(e.target.checked)} /> Include archived audit logs</label>}
-        {canIncludeCaseHistory ? <label className="flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={includeCaseHistory} onChange={(e)=>setIncludeCaseHistory(e.target.checked)} /> Include full history of explicitly linked reviews and Audit Cases</label> : null}
-        <div className="rounded-xl bg-blue-50 p-3 text-xs font-semibold leading-5 text-slate-600">Includes Audit Log Details, Before & After Changes, Reviews & Audit Cases, and Technical Details. Exports all matching events, not just the visible table page. No records are deleted or archived.</div>
+        {canIncludeArchived && <label className="flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={includeArchived} onChange={(e)=>setIncludeArchived(e.target.checked)} /> Include old archived records</label>}
+        {canIncludeCaseHistory ? <label className="flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={includeCaseHistory} onChange={(e)=>setIncludeCaseHistory(e.target.checked)} /> Include related reviews and investigation cases</label> : null}
         {progress && <p aria-live="polite" className="text-sm font-bold text-blue-700">{progress}</p>}
         {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
       </div>
@@ -133,3 +128,4 @@ const ExportAuditReportModal = ({ initial, modules, onClose, actorName, canInclu
   </div>
 }
 export default ExportAuditReportModal
+
