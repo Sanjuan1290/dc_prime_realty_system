@@ -30,18 +30,34 @@ const afterBatch10 = (role) => {
 
 const batch12 = readFileSync(new URL('../migrations/20261006_batch12_role_specific_review_queues.sql', import.meta.url), 'utf8');
 const batch13 = readFileSync(new URL('../migrations/20261006_batch13_staff_correction_review_center.sql', import.meta.url), 'utf8');
+// Phase 7 (Oct 18) added assigned-seller correction permission to Accounting
+// staff and head templates. Include later additive migrations when comparing the
+// *current* recommended defaults; do not rewrite the historical Batch 9 seed.
+const phase7 = readFileSync(new URL('../migrations/20261018_phase7_assigned_seller_change_tidb.sql', import.meta.url), 'utf8');
+const phase7DefaultsStart = phase7.indexOf('INSERT IGNORE INTO role_permission_defaults');
+assert.ok(phase7DefaultsStart >= 0, 'Phase 7 default-permission seed is missing');
+const phase7Defaults = phase7.slice(phase7DefaultsStart, phase7.indexOf(';', phase7DefaultsStart));
+const addedDefaultGrants = new Map();
+for (const [, role, key] of phase7Defaults.matchAll(/\('([a-z_]+)','([a-z_.]+)',1,NULL\)/g)) {
+  if (!addedDefaultGrants.has(role)) addedDefaultGrants.set(role, []);
+  addedDefaultGrants.get(role).push(key);
+}
+
 const STAFF_ROLES = new Set(['marketing_staff', 'sales_staff', 'accounting_staff', 'operations_staff']);
 const afterCurrentMigrations = (role) => {
   const after12 = afterBatch10(role).filter((key) => !(STAFF_ROLES.has(role) && key === 'workflow.review_center.view'));
   return STAFF_ROLES.has(role) ? [...new Set([...after12, 'workflow.review_center.view'])].sort() : after12.sort();
 };
 
-test('Batch 9 through Batch 13 give every non-owner role exactly its current recommended template', () => {
+test('role defaults through Phase 7 match every non-owner current recommended template', () => {
   assert.match(batch12, /DELETE FROM `role_permission_defaults`[\s\S]*workflow\.review_center\.view/);
   assert.match(batch13, /INSERT INTO `role_permission_defaults`[\s\S]*workflow\.review_center\.view/);
   assert.match(batch13, /INSERT INTO `user_permissions`[\s\S]*marketing_staff/);
+  assert.deepEqual(addedDefaultGrants.get('accounting_staff'), ['lot_project.commissions.change_seller']);
+  assert.deepEqual(addedDefaultGrants.get('accounting_head'), ['lot_project.commissions.change_seller']);
   for (const role of CONFIGURABLE_SYSTEM_ROLES.filter((r) => r !== 'system_admin')) {
-    assert.deepEqual(afterCurrentMigrations(role), [...getStaticRolePolicy(role).recommended].sort(), role);
+    const actual = [...new Set([...afterCurrentMigrations(role), ...(addedDefaultGrants.get(role) || [])])].sort();
+    assert.deepEqual(actual, [...getStaticRolePolicy(role).recommended].sort(), `${role}: migration defaults must match the current recommended permissions`);
   }
 });
 
@@ -58,5 +74,6 @@ test('seed skips roles saved from Role & Access Control and never overwrites or 
   assert.doesNotMatch(sql, /ON DUPLICATE KEY UPDATE/);
   assert.doesNotMatch(sql, /user_permissions/);
 });
+
 
 

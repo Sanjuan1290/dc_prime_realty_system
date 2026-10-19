@@ -69,7 +69,7 @@ export async function getManagerReplacementPlan(connection, { groupId, outgoingU
   const normalized={groupId:groupKey,groupName:group.seller_group_name,role:outgoing.role,
     outgoing:{userId:outgoingKey,sellerId:Number(outgoing.accredited_seller_id),name:nameOf(outgoing),role:outgoing.role,reportingParentUserId:positive(outgoing.accredited_seller_reports_under_user_id)},
     replacement:replacement?{userId:replacementKey,sellerId:Number(replacement.accredited_seller_id),name:nameOf(replacement),role:replacement.role}:null,
-    candidates:candidates.map(row=>({userId:Number(row.user_id),name:nameOf(row),role:row.role})),
+    candidates:candidates.map(row=>({userId:Number(row.user_id),name:nameOf(row),accountCode:row.account_code || '',role:row.role})),
     directReports:impacted, totalAffected:descendantIds.size-1,
     downstreamHierarchy:members.filter(row=>descendantIds.has(Number(row.user_id))&&Number(row.user_id)!==outgoingKey).map(row=>({userId:Number(row.user_id),role:row.role,managerId:positive(row.accredited_seller_reports_under_user_id)})),
     replacesNetworkHead,

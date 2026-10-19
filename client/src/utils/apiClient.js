@@ -16,6 +16,11 @@ const TECHNICAL_MUTATION_PATTERNS = [
   /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/payments\/\d+\/correction-code$/i,
   /\/projects\/lot-projects\/[^/]+\/listing-imports\/validate$/i,
   /\/seller-groups\/\d+\/members\/import\/preview$/i,
+  // Read-only manager-assignment checks and verification-code request. The
+  // final bulk edit / restoration is NEVER eligible for technical bypass.
+  /\/seller-groups\/\d+\/managers\/\d+\/replace\/code$/i,
+  /\/seller-groups\/\d+\/members\/bulk-edit\/preview$/i,
+  /\/seller-groups\/\d+\/managers\/replacements\/\d+\/restore\/code$/i,
   /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/reservation-correction\/preview$/i,
   /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/reservation-correction\/code$/i,
   /\/projects\/lot-projects\/[^/]+\/settings\/code$/i,
@@ -315,6 +320,7 @@ export const requestApiBlob = async (
     }
   }
 }
+
 
 
 

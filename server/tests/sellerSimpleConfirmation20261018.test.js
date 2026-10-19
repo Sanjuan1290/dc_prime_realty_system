@@ -64,7 +64,7 @@ test('UI has warnings, reasons and role-specific confirmations',()=>{
   const act=read('client/src/components/System/userComponents/ReactivateSystemUserModal.jsx');
   assert.match(manager,/requiresEmail = manager\.role === 'division_manager'/);
   assert.match(manager,/expectedStateHash: plan\.stateHash/);
-  assert.match(manager,/previous sales and commissions remain unchanged/i);
+  assert.match(manager,/Previous sales, payments, and commissions will not be changed/i);
   assert.doesNotMatch(manager,/Administrator Password/);
   assert.match(manager,/Confirm Replacement/);
   assert.match(deact,/confirmDeactivation: true/);
@@ -79,4 +79,5 @@ test('Migration permits nullable verification for direct UM and SD confirmation'
   assert.match(sql,/`verification_id` BIGINT UNSIGNED NULL/);
   assert.doesNotMatch(sql,/DROP TABLE|TRUNCATE|DELETE FROM/i);
 });
+
 
