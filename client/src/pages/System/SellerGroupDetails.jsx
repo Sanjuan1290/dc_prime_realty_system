@@ -506,7 +506,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             </button>
           ) : null}
 
-          {!isExternal && canCheckSellerSetup ? <button type="button" onClick={()=>setShowReplacementHistory(value=>!value)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FiRotateCcw/> Replacement History</button>:null}
+          {!isExternal && canCheckSellerSetup ? <button type="button" onClick={()=>setShowReplacementHistory(true)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FiRotateCcw/> Replacement History</button>:null}
           {!isExternal && canAddMember ? (
             <button
               type="button"
@@ -586,7 +586,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
       ) : null}
 
 
-      {showReplacementHistory && !isExternal && canCheckSellerSetup ? <ManagerReplacementHistory groupId={Number(groupId)} onClose={()=>setShowReplacementHistory(false)}/> : null}
+      
       {showSellerSetupCheck && !isExternal && canCheckSellerSetup ? (
         <SellerSetupCheck groupId={groupId} onClose={()=>setShowSellerSetupCheck(false)} onViewSeller={(userId)=>{const m=members.find(item=>Number(item.user_id)===Number(userId));if(m)setSelectedMember({...m,id:Number(m.user_id),status:m.user_status,seller_group_id:Number(group.id||groupId),reports_under_user_id:m.accredited_seller_reports_under_user_id||''})}}/>
       ) : null}
@@ -1198,6 +1198,10 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             refresh()
           }}
         />
+      ) : null}
+
+      {showReplacementHistory && !isExternal && canCheckSellerSetup ? (
+        <ManagerReplacementHistory groupId={Number(group.id || groupId)} networkName={group.name} onClose={() => setShowReplacementHistory(false)} />
       ) : null}
 
       {replaceManager ? <ReplaceManagerModal groupId={Number(group.id||groupId)} manager={replaceManager} onClose={()=>setReplaceManager(null)} onSaved={(message)=>{setReplaceManager(null);setAlert({type:'success',message});refresh()}} onCreateManager={()=>{setResumeReplacement(replaceManager);setNewReplacementRole(replaceManager.role);setReplaceManager(null);setShowCreateUser(true)}}/> : null}

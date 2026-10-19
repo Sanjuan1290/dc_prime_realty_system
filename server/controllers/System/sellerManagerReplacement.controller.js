@@ -92,12 +92,18 @@ export const getManagerReplacementHistory = (req,res)=>transaction(req,res,async
   if(!Number.isSafeInteger(groupId) || groupId<1) return res.status(400).json({message:'Select a valid Network.'});
   const page=Math.max(1,Math.min(10000,Number(req.query.page)||1));
   const limit=15;
-  const [rows]=await connection.query(`SELECT replacement_id,outgoing_role,reason,created_at,direct_reports_moved,operational_review_id,
-    old.account_code AS old_account_code, new_manager.account_code AS new_account_code,
-    CONCAT_WS(' ',old.first_name,old.last_name) AS outgoing_name, CONCAT_WS(' ',new_manager.first_name,new_manager.last_name) AS replacement_name
-    FROM seller_manager_replacements history
-    INNER JOIN users old ON old.id=history.outgoing_user_id
-    INNER JOIN users new_manager ON new_manager.id=history.replacement_user_id
-    WHERE seller_group_id=? ORDER BY replacement_id DESC LIMIT ? OFFSET ?`,[groupId,limit,(page-1)*limit]);
+  const [rows]=await connection.query(`SELECT
+    history.replacement_id, history.outgoing_role, history.reason,
+    history.created_at AS created_at, history.direct_reports_moved,
+    history.operational_review_id,
+    old.account_code AS old_account_code,
+    new_manager.account_code AS new_account_code,
+    CONCAT_WS(' ',old.first_name,old.last_name) AS outgoing_name,
+    CONCAT_WS(' ',new_manager.first_name,new_manager.last_name) AS replacement_name
+    FROM seller_manager_replacements AS history
+    INNER JOIN users AS old ON old.id = history.outgoing_user_id
+    INNER JOIN users AS new_manager ON new_manager.id = history.replacement_user_id
+    WHERE history.seller_group_id = ?
+    ORDER BY history.replacement_id DESC LIMIT ? OFFSET ?`,[groupId,limit,(page-1)*limit]);
   return res.json({success:true,data:rows,page});
 });
