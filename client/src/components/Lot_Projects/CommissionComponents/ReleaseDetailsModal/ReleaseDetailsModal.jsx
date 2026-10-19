@@ -596,7 +596,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
               <InfoCard label="Released" value={money(released)} />
               <InfoCard label="Net Remaining" value={money(netRemaining)} />
               <InfoCard label="Group" value={commission.sellerGroup || '-'} />
-              <InfoCard label="Reports Under" value={commission.reportsUnder || '-'} />
+              <InfoCard label="Current Reports Under" value={commission.reportsUnder || '-'} />
             </div>
           </section>
 
@@ -847,5 +847,6 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
 }
 
 export default ReleaseDetailsModal
+
 
 

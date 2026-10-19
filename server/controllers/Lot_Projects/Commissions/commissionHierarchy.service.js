@@ -1,6 +1,7 @@
 import { provisionNetworkCompanyProfit } from '../../../services/networkCompanyProfit.service.js';
 import { columnExists, tableExists } from '../_shared/lotProject.shared.js';
 import { isExternalGroupRole, validateSellerReportingChain } from '../../System/sellerHierarchyRules.js';
+import { traceSellerReportingChain } from '../../../services/sellerReportingChain.service.js';
 import {
   getGroupFixedRateForRole,
   loadGroupFixedCommissionRates,
@@ -107,23 +108,11 @@ const loadGroupHeadSeller = async (connection, sellerGroupId) => {
  * branch must not append a second DM and collect a second DM commission.
  */
 export const loadCurrentSellerChain = async (connection, accreditedSellerId) => {
-  const chain = [];
-  const seen = new Set();
-  let current = await loadSellerById(connection, accreditedSellerId);
-  let terminalSeller = null;
-
-  while (current && !seen.has(Number(current.accredited_seller_id))) {
-    seen.add(Number(current.accredited_seller_id));
-    chain.push(current);
-    terminalSeller = current;
-
-    if (!current.accredited_seller_reports_under_user_id) break;
-    current = await loadSellerByUserId(connection, current.accredited_seller_reports_under_user_id);
-  }
-
-  if (current && seen.has(Number(current.accredited_seller_id))) {
-    throw new Error('Seller assignments contain a reporting loop. Check Seller Setup.');
-  }
+  const chain = await traceSellerReportingChain(
+    await loadSellerById(connection, accreditedSellerId),
+    (parentUserId) => loadSellerByUserId(connection, parentUserId),
+  );
+  const terminalSeller = chain.at(-1) || null;
   const headSeller = await loadGroupHeadSeller(
     connection,
     terminalSeller?.seller_group_id || chain[0]?.seller_group_id
@@ -714,5 +703,6 @@ export const hasReleasedCommissionActivity = ({
   Number(releasedCommissionCount || 0) > 0 ||
   Number(releasedStageCount || 0) > 0 ||
   Number(receiptCount || 0) > 0;
+
 
 
