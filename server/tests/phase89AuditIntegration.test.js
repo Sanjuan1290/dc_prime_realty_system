@@ -37,7 +37,9 @@ test('rate-only commission adjustments also link the exact review or audit corre
 });
 test('Audit Logs filter linked reviews by exact stored ID, not a substring',()=>{
  const controller=read('server/controllers/System/auditLogs.controller.js');
- assert.match(controller,/JSON_UNQUOTE\(JSON_EXTRACT\(al.metadata_json, '\$\.reviewId'\)\) = \?/);
+ const helper=read('server/services/reviewAuditLinks.service.js');
+ assert.match(helper,/JSON_UNQUOTE\(JSON_EXTRACT\(al.metadata_json, '\$\.reviewId'\)\) = \?/);
+ assert.match(controller,/buildReviewAuditFilter\(reviewRows\[0\], reviewEvents\)/);
  assert.match(controller,/if \(!Number.isSafeInteger\(id\) \|\| id < 1\)/);
  assert.match(controller,/await requireAdmin\(req\)/);
 });
@@ -70,3 +72,4 @@ test('Phase 9 QA plan uses only read-only SQL and no unsupported triggers',()=>{
  assert.match(sql,/seller_manager_replacements/);
  assert.match(sql,/lot_project_assigned_seller_changes/);
 });
+

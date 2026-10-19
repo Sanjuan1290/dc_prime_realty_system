@@ -359,12 +359,26 @@ const AuditLogs = () => {
       />
 
       {linkedReviewId ? <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-semibold text-blue-900">
-        <span>Showing activity for Review #{linkedReviewId}</span>
+        <span>{isLoading ? 'Finding records linked to' : `Found ${pagination.total} Audit Log ${pagination.total === 1 ? 'entry' : 'entries'} linked to`} Review #{linkedReviewId}<span className="mt-1 block text-xs font-normal text-blue-800">Summary cards above show all recent activity; the table below shows only entries linked to this review.</span></span>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => navigate(`/portal/${currentUserData?.user?.role || 'system_admin'}/review-center/reviews/${linkedReviewId}`)} className="rounded-lg border border-blue-200 bg-white px-3 py-1.5">View Review</button>
           <button type="button" onClick={clearReviewFilter} className="rounded-lg border border-blue-200 bg-white px-3 py-1.5">Show All Activity</button>
         </div>
       </div> : null}
+      {linkedReviewId && !isError && !isLoading && data?.reviewHistory?.length ? (
+        <section aria-label="Review history" className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-bold text-slate-900">Review History</h3>
+          <p className="mt-1 text-xs text-slate-600">These are the recorded Review Center events. The Audit Log entries below show linked system actions.</p>
+          <ol className="mt-3 space-y-3 border-l-2 border-slate-200 pl-4">
+            {data.reviewHistory.map((event, index) => (
+              <li key={`${event.eventType}-${index}`} className="text-sm">
+                <p className="font-semibold text-slate-800">{event.message || String(event.eventType || 'Review updated').replace(/_/g, ' ')}</p>
+                <p className="mt-1 text-xs text-slate-500">{event.actorName || 'System'} · {event.createdAt ? new Date(event.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : 'Date unavailable'}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
       <AuditLogTable
         logs={logs}
         isLoading={isLoading}
@@ -375,6 +389,7 @@ const AuditLogs = () => {
         setPage={setPage}
         limit={limit}
         setLimit={setLimit}
+        emptyMessage={linkedReviewId ? 'No Audit Log entries are linked to this review under the current filters. Review History still shows the saved review events.' : 'No audit logs found for the selected filters.'}
       />
 
       {selectedLog ? (
@@ -414,6 +429,7 @@ const AuditLogs = () => {
 }
 
 export default AuditLogs
+
 
 
 

@@ -1,4 +1,5 @@
 import { isOwnerAdministrator } from '../../config/permissions.js';
+import { buildReviewAuditFilter } from '../../services/reviewAuditLinks.service.js';
 import crypto from 'node:crypto';
 import {
   bcrypt,
@@ -563,6 +564,7 @@ export const getAuditLogs = async (req, res) => {
 
     const conditions = [];
     const values = [];
+    let reviewHistory = [];
 
     if (cleanText(req.query.search)) {
       conditions.push(`(
@@ -585,8 +587,28 @@ export const getAuditLogs = async (req, res) => {
       if (!Number.isSafeInteger(id) || id < 1) {
         return res.status(400).json({ message: 'Invalid Review ID.' });
       }
-      conditions.push(`JSON_UNQUOTE(JSON_EXTRACT(al.metadata_json, '$.reviewId')) = ?`);
-      values.push(String(id));
+      const [reviewRows] = await connection.query(
+        'SELECT operational_review_id, action_key, entity_type, entity_id, before_snapshot_json, after_snapshot_json FROM operational_reviews WHERE operational_review_id = ? LIMIT 1',
+        [id]
+      );
+      if (!reviewRows.length) return res.status(404).json({ message: 'This review could not be found.' });
+      const [reviewEvents] = await connection.query(
+        `SELECT e.event_type, e.message, e.created_at,
+           TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS actor_name
+         FROM operational_review_events e
+         LEFT JOIN users u ON u.id = e.actor_user_id
+         WHERE e.operational_review_id = ? ORDER BY e.operational_review_event_id ASC`,
+        [id]
+      );
+      reviewHistory = reviewEvents.map(event => ({
+        eventType: event.event_type,
+        message: event.message,
+        createdAt: event.created_at,
+        actorName: event.actor_name || 'System',
+      }));
+      const reviewFilter = buildReviewAuditFilter(reviewRows[0], reviewEvents);
+      conditions.push(reviewFilter.sql);
+      values.push(...reviewFilter.values);
     }
 
     if (cleanText(req.query.action) && req.query.action !== 'all') {
@@ -653,6 +675,7 @@ export const getAuditLogs = async (req, res) => {
     return res.json({
       success: true,
       data: rows.map(mapAuditLog),
+      reviewHistory,
       summary,
       modules,
       archivePolicy,
@@ -1161,5 +1184,6 @@ export const downloadAuditLogArchiveExport = async (req, res) => {
     connection.release();
   }
 };
+
 
 

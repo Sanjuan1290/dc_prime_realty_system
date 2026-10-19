@@ -18,7 +18,7 @@ const ActionBadge = ({ value, label = '' }) => (
   </span>
 )
 
-const AuditLogTable = ({ logs = [], isLoading, isPageChanging = false, pagination, onView, page, setPage, limit, setLimit }) => {
+const AuditLogTable = ({ logs = [], isLoading, isPageChanging = false, pagination, onView, page, setPage, limit, setLimit, emptyMessage = 'No audit logs found for the selected filters.' }) => {
   const totalPages = pagination?.totalPages || 1
 
   return (
@@ -56,7 +56,7 @@ const AuditLogTable = ({ logs = [], isLoading, isPageChanging = false, paginatio
             {!isLoading && logs.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-5 py-10 text-center font-semibold text-slate-500">
-                  No audit logs found for the selected filters.
+                  {emptyMessage}
                 </td>
               </tr>
             ) : null}
@@ -131,5 +131,6 @@ const AuditLogTable = ({ logs = [], isLoading, isPageChanging = false, paginatio
 }
 
 export default AuditLogTable
+
 
 

@@ -84,7 +84,7 @@ export async function getReviewExtraRecord(connection, review, requestedPage = 1
       WHERE lot_project_listing_import_batch_id=? AND lot_project_id=? LIMIT 1`, [batchId, projectId]);
     if (!batches.length) return unreachable('This import batch is no longer available. Its saved review is still here.');
     const entries = await limitedList(connection, `
-      SELECT excel_row_number AS row, unit_id_snapshot AS unit,
+      SELECT excel_row_number AS \`row\`, unit_id_snapshot AS unit,
         validation_status AS status, lot_project_listing_id AS listingId
       FROM lot_project_listing_import_rows WHERE lot_project_listing_import_batch_id=?
       ORDER BY excel_row_number ASC LIMIT ? OFFSET ?`, [batchId], page);
@@ -115,10 +115,11 @@ export async function getReviewExtraRecord(connection, review, requestedPage = 1
       FROM network_member_import_batches WHERE batch_id=? AND seller_group_id=? LIMIT 1`,[batchId, groupId]);
     if (!batches.length) return unreachable('This member import is no longer available. Its saved review is still here.');
     const entries = await limitedList(connection, `
-      SELECT source_row AS row, member_email AS member, import_action AS action
+      SELECT source_row AS \`row\`, member_email AS member, import_action AS action
       FROM network_member_import_items WHERE batch_id=?
       ORDER BY source_row ASC LIMIT ? OFFSET ?`,[batchId],page);
     return {supported:true,available:true,type:'network_member_import',title:'Seller Import',fields:batches[0],entries};
   }
   return {supported:false};
 }
+
