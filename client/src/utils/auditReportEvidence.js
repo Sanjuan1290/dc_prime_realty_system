@@ -42,6 +42,18 @@ export const getAuditChanges = (log = {}) => {
   }
   return results
 }
+/** Describes what the source event actually saved, not whether a business operation happened. */
+export const getAuditEvidenceCoverage = (log = {}) => {
+  const meta = log.metadata && typeof log.metadata === 'object' ? log.metadata : {}
+  const before = Object.prototype.hasOwnProperty.call(meta,'before')
+  const after = Object.prototype.hasOwnProperty.call(meta,'after')
+  if (before && after) return 'Before and After recorded'
+  if (before) return 'Before only recorded'
+  if (after) return 'After only recorded'
+  if (meta.changes && (Array.isArray(meta.changes) ? meta.changes.length : typeof meta.changes === 'object')) return 'Changed fields recorded'
+  return 'No Before/After recorded'
+}
+
 export const getAuditExtraFields = (log = {}) => {
   const meta = redactEvidence(log.metadata || {})
   const fields = {}
@@ -78,4 +90,5 @@ export const getAuditReferences = (metadata = {}) => {
     caseId: number(metadata?.auditCaseId ?? metadata?.audit_case_id),
   }
 }
+
 

@@ -1,3 +1,4 @@
+import { resolveAuditRecordDestination } from '../../services/auditRecordDestination.service.js';
 import { isOwnerAdministrator } from '../../config/permissions.js';
 import { buildReviewAuditFilter } from '../../services/reviewAuditLinks.service.js';
 import crypto from 'node:crypto';
@@ -693,6 +694,32 @@ export const getAuditLogs = async (req, res) => {
   }
 };
 
+// Audit Logs-only read route: resolve a specific source row, never its label.
+export const getAuditLogRecordDestination = async (req, res) => {
+  let connection;
+  try {
+    const actor = await requireAdmin(req);
+    const idText = String(req.params.auditLogId || '');
+    const id = Number(idText);
+    if (!/^[1-9]\d*$/.test(idText) || !Number.isSafeInteger(id)) {
+      return res.status(400).json({ message: 'Invalid Audit Log ID.' });
+    }
+    connection = await db.getConnection();
+    const [rows] = await connection.query(
+      'SELECT audit_log_id, entity_type, entity_id, action, module FROM audit_logs WHERE audit_log_id=? LIMIT 1', [id]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'This Audit Log is no longer in Recent Activity. Its saved archival evidence may still be available.' });
+    const result = await resolveAuditRecordDestination(
+      connection, rows[0], actor.role,
+      (permission) => roleHasPermission(actor, permission)
+    );
+    return res.json({success:true, data:result});
+  } catch (error) {
+    // A missing historical table/record must not cause an unverified redirect.
+    return res.status(error.statusCode || 503).json({ message: error.statusCode ? error.message : 'The live record could not be verified. Use the saved Audit Log evidence.' });
+  } finally { connection?.release(); }
+};
+
 export const requestAuditLogArchive = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -1184,6 +1211,7 @@ export const downloadAuditLogArchiveExport = async (req, res) => {
     connection.release();
   }
 };
+
 
 
 

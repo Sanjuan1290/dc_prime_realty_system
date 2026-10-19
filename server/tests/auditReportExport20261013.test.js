@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { getAuditChanges, getAuditExtraFields, getAuditReferences, redactEvidence, safeAuditText } from '../../client/src/utils/auditReportEvidence.js'
+import { getAuditChanges, getAuditEvidenceCoverage, getAuditExtraFields, getAuditReferences, redactEvidence, safeAuditText } from '../../client/src/utils/auditReportEvidence.js'
 import { PERMISSIONS, roleHasPermission } from '../config/permissions.js'
 import { getExactAuditReferences, parseAuditReportFilters, redactReportMetadata } from '../utils/auditReportValidation.js'
 
@@ -93,8 +93,8 @@ test('Workbook generator retains full modal details and maps documented changes 
     encode_cell: encodeCell, encode_range:()=> 'A1:Z90',
     book_append_sheet:(book,ws,name)=>{book.SheetNames.push(name);book.Sheets[name]=ws},
   }}
-  const build = new Function('XLSX','getAuditChanges','getAuditExtraFields','getAuditReferences','redactEvidence','safeAuditText','formatPhilippineDateTime','sellerAuditRows',
-    `${src}\nreturn buildAuditReportWorkbook;`)(XLSX,getAuditChanges,getAuditExtraFields,getAuditReferences,redactEvidence,safeAuditText,(v)=>v,sellerAuditRows)
+  const build = new Function('XLSX','getAuditChanges','getAuditEvidenceCoverage','getAuditExtraFields','getAuditReferences','redactEvidence','safeAuditText','formatPhilippineDateTime','sellerAuditRows',
+    `${src}\nreturn buildAuditReportWorkbook;`)(XLSX,getAuditChanges,getAuditEvidenceCoverage,getAuditExtraFields,getAuditReferences,redactEvidence,safeAuditText,(v)=>v,sellerAuditRows)
   const wb=build({logs:[{
     id:12,createdAt:'2026-10-13T03:41:00Z',actorName:'Office Staff',actorEmail:'staff@example.com',actorRole:'operations_staff',
     action:'update',module:'Attendance',entityLabel:'LA-0208',entityType:'listing',entityId:'77',title:'Corrected attendance time',
@@ -113,4 +113,5 @@ test('Workbook generator retains full modal details and maps documented changes 
   assert.match(wb.Sheets['Technical Details']['L2'].v,/\[REDACTED\]/)
   assert.doesNotMatch(wb.Sheets['Technical Details']['L2'].v,/hidden/)
 })
+
 

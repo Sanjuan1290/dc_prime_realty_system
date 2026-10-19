@@ -139,6 +139,9 @@ const AuditLogs = () => {
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [selectedLog, setSelectedLog] = useState(null)
+  const [recordDestination, setRecordDestination] = useState(null)
+  const [recordDestinationBusy, setRecordDestinationBusy] = useState(false)
+  const [recordDestinationError, setRecordDestinationError] = useState('')
   const [showArchiveModal, setShowArchiveModal] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
   const [auditTab, setAuditTab] = useState('active')
@@ -255,6 +258,30 @@ const AuditLogs = () => {
     setFrom('')
     setTo('')
     setPage(1)
+  }
+
+  const openLogDetails = (log) => {
+    setSelectedLog(log)
+    setRecordDestination(null)
+    setRecordDestinationError('')
+    setRecordDestinationBusy(false)
+  }
+
+  const findOriginalAuditRecord = async (log) => {
+    const id = Number(log?.id)
+    if (!Number.isSafeInteger(id) || id <= 0) return
+    setRecordDestinationBusy(true)
+    setRecordDestination(null)
+    setRecordDestinationError('')
+    try {
+      const result = await useFetch(`/audit-logs/records/${id}/location`)
+      // Ignore stale results after opening another Audit Log.
+      if (Number(selectedLog?.id) === id) setRecordDestination(result.data)
+    } catch (error) {
+      if (Number(selectedLog?.id) === id) setRecordDestinationError(error?.message || 'Could not verify the live record. Saved Audit Log details are still available.')
+    } finally {
+      if (Number(selectedLog?.id) === id) setRecordDestinationBusy(false)
+    }
   }
 
   const openArchiveModal = () => {
@@ -384,7 +411,7 @@ const AuditLogs = () => {
         isLoading={isLoading}
         isPageChanging={isFetching && isPlaceholderData}
         pagination={pagination}
-        onView={setSelectedLog}
+        onView={openLogDetails}
         page={page}
         setPage={setPage}
         limit={limit}
@@ -393,12 +420,12 @@ const AuditLogs = () => {
       />
 
       {selectedLog ? (
-        <AuditLogDetailsModal log={selectedLog} onClose={() => setSelectedLog(null)} onViewReview={(reviewId) => navigate(`/portal/${currentUserData?.user?.role || 'system_admin'}/review-center/reviews/${reviewId}`)} />
+        <AuditLogDetailsModal log={selectedLog} onClose={() => setSelectedLog(null)} onResolveRecord={findOriginalAuditRecord} destination={recordDestination} destinationBusy={recordDestinationBusy} destinationError={recordDestinationError} onViewReview={(reviewId) => navigate(`/portal/${currentUserData?.user?.role || 'system_admin'}/review-center/reviews/${reviewId}`)} />
       ) : null}
 
       {showExportModal ? (
         <ExportAuditReportModal
-          initial={{ dateRange, from, to, action, module }}
+          initial={{ dateRange, from, to, action, module, search, reviewId: linkedReviewId }}
           modules={modules}
           actorName={[currentUserData?.user?.first_name,currentUserData?.user?.last_name].filter(Boolean).join(' ') || currentUserData?.user?.email || 'Authorized user'}
           canIncludeArchived={canIncludeArchived}
@@ -429,6 +456,7 @@ const AuditLogs = () => {
 }
 
 export default AuditLogs
+
 
 
 

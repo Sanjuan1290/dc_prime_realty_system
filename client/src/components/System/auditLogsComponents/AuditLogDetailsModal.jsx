@@ -1,6 +1,6 @@
-import { FiInfo, FiX } from 'react-icons/fi'
+import { FiArrowUpRight, FiInfo, FiSearch, FiX } from 'react-icons/fi'
 import { formatDateTime } from '../../../utils/formatDateTime'
-import { getAuditChanges, getAuditReferences } from '../../../utils/auditReportEvidence'
+import { getAuditChanges, getAuditReferences, getAuditExtraFields, getAuditEvidenceCoverage } from '../../../utils/auditReportEvidence'
 
 
 const formatAttendanceDate = (value) => {
@@ -112,7 +112,7 @@ const DetailRow = ({ label, value }) => (
   </div>
 )
 
-const AuditLogDetailsModal = ({ log, onClose, onViewReview }) => {
+const AuditLogDetailsModal = ({ log, onClose, onViewReview, onResolveRecord, destination, destinationBusy = false, destinationError = '' }) => {
   if (!log) return null
 
   const isDocumentResubmission = log.title === 'Requested client document resubmission'
@@ -130,6 +130,8 @@ const AuditLogDetailsModal = ({ log, onClose, onViewReview }) => {
   const { reviewId: linkedReviewId } = getAuditReferences(log.metadata)
   const settingsChanges = getSettingsChanges(log)
   const evidenceChanges = getAuditChanges(log)
+  const contextFields = getAuditExtraFields(log)
+  const hasRecordedSnapshot = Boolean(log.metadata && (Object.prototype.hasOwnProperty.call(log.metadata, 'before') || Object.prototype.hasOwnProperty.call(log.metadata, 'after') || Object.prototype.hasOwnProperty.call(log.metadata, 'changes')))
   const isSettingsAudit = Boolean(settingsChangeDefinitions[log.module])
   const settingsAuthorization = getAuthorizationLabel(log.metadata?.verificationMethod)
 
@@ -201,6 +203,44 @@ const AuditLogDetailsModal = ({ log, onClose, onViewReview }) => {
             </p>
           </div>
 
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4" aria-label="Record navigation">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Original Record</p>
+                <p className="mt-1 text-sm text-slate-600">Audit Log #{log.id} · {log.entityType || 'Unspecified type'} {log.entityId ? `#${log.entityId}` : ''}</p>
+              </div>
+              {destination?.status === 'available' && destination.destination?.path ? (
+                <a href={destination.destination.path} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700">
+                  <FiArrowUpRight /> Open {destination.destination.label || 'Record'}
+                </a>
+              ) : (
+                <button type="button" onClick={() => onResolveRecord?.(log)} disabled={destinationBusy} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 disabled:opacity-60">
+                  <FiSearch /> {destinationBusy ? 'Checking Record…' : destination ? 'Recheck Record' : 'Find Original Record'}
+                </button>
+              )}
+            </div>
+            {destination?.status === 'available' ? <p className="mt-3 text-xs text-slate-600">{destination.destination?.precision === 'parent-record' ? 'The verified link opens the related buyer account, not the exact sub-record. Use this Audit Log for the recorded event details. ' : 'The record was verified in the current database. '}The page opens in a new tab under its existing permissions. Current details may differ from the historical evidence.</p> : null}
+            {destination?.status === 'historical' ? <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{destination.reason}</p> : null}
+            {destinationError ? <p role="alert" className="mt-3 text-sm text-red-700">{destinationError}</p> : null}
+          </section>
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4" aria-label="Recorded evidence coverage">
+            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Saved Evidence</p>
+            <p className="mt-2 text-sm font-semibold text-slate-700">{getAuditEvidenceCoverage(log)} · {evidenceChanges.length ? `${evidenceChanges.length} recorded field change${evidenceChanges.length === 1 ? '' : 's'}` : hasRecordedSnapshot ? 'no reconstructable field differences' : 'no field-by-field comparison available'}.</p>
+            <p className="mt-1 text-xs text-slate-500">A missing field is not proof that its value was unchanged. Audit Logs never reconstructs past values from current business records.</p>
+            {Object.keys(contextFields).length ? <dl className="mt-3 grid gap-2 sm:grid-cols-2">{Object.entries(contextFields).filter(([key]) => !['verificationMethod'].includes(key)).map(([key,value]) => <div key={key} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2"><dt className="text-xs font-semibold text-slate-500">{titleCase(key)}</dt><dd className="mt-1 break-words text-sm font-semibold text-slate-900">{String(value)}</dd></div>)}</dl> : null}
+          </section>
+
+          <details className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+            <summary className="cursor-pointer text-sm font-bold text-slate-800">Technical Reference (recorded identifiers)</summary>
+            <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+              <DetailRow label="Audit Log ID" value={String(log.id)} />
+              <DetailRow label="Actor User ID" value={String(log.actorUserId ?? '-')} />
+              <DetailRow label="Actor Role" value={log.actorRole || '-'} />
+              <DetailRow label="Request ID" value={log.metadata?.requestId || 'Not recorded'} />
+              <DetailRow label="IP Address" value={log.ipAddress || 'Not recorded'} />
+              <DetailRow label="Browser / Client" value={log.userAgent || 'Not recorded'} />
+            </dl>
+          </details>
           {linkedReviewId ? <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
             <span className="text-sm font-semibold text-blue-950">Related Review #{linkedReviewId}</span>
             <button type="button" onClick={() => onViewReview?.(linkedReviewId)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white">View Review</button>
@@ -273,6 +313,7 @@ const AuditLogDetailsModal = ({ log, onClose, onViewReview }) => {
 }
 
 export default AuditLogDetailsModal
+
 
 
 

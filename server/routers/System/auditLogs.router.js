@@ -4,6 +4,7 @@ import {
   confirmAuditLogArchive,
   downloadAuditLogArchiveExport,
   getAuditLogs,
+  getAuditLogRecordDestination,
   requestAuditLogArchive,
 } from '../../controllers/System/auditLogs.controller.js';
 import { authenticateUser, requireExactRole, requirePermission } from '../../middleware/auth.middleware.js';
@@ -25,12 +26,14 @@ router.post('/archive/remove-request', requirePermission(PERMISSIONS.AUDIT_LOGS_
 router.post('/archive/remove-confirm', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), requireExactRole('super_admin'), confirmArchiveRemoval);
 router.post('/archive/protect', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), requireExactRole('super_admin'), setArchiveProtection);
 router.get('/archive/deletion-history', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), requireExactRole('super_admin','system_admin'), listArchiveDeletionHistory);
+router.get('/records/:auditLogId/location', requirePermission(PERMISSIONS.AUDIT_LOGS_VIEW), getAuditLogRecordDestination);
 router.get('/', requirePermission(PERMISSIONS.AUDIT_LOGS_VIEW), getAuditLogs);
 router.post('/archive/request', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), requireExactRole('super_admin', 'system_admin'), requestAuditLogArchive);
 router.post('/archive/confirm', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), requireExactRole('super_admin', 'system_admin'), confirmAuditLogArchive);
 router.get('/archive/exports/:batchId', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), requireExactRole('super_admin', 'system_admin'), downloadAuditLogArchiveExport);
 
 export default router;
+
 
 
 
