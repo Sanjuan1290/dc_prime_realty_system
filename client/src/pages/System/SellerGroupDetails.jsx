@@ -42,6 +42,7 @@ import EditUserModal from '../../components/System/userComponents/EditUserModal'
 import DeactivateSystemUserModal from '../../components/System/userComponents/DeactivateSystemUserModal'
 import ReactivateSystemUserModal from '../../components/System/userComponents/ReactivateSystemUserModal'
 import { getSellerRoleLabel } from '../../config/sellerRoles'
+import { getTeamCompletenessLabel, getTeamCompletenessHint } from '../../utils/sellerTeamStatus'
 import { useFetch as fetchJson } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { PERMISSIONS, hasPermission } from '../../config/permissions'
@@ -1000,10 +1001,10 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
               <SectionHeading
                 title="In-House Members"
-                description="View members and their reporting managers."
+                description="Check reporting managers and the completeness of their teams. Division Managers report directly to the Developer."
                 actions={
                   <div className="flex flex-wrap items-center gap-2">
-                  <label className="text-xs font-semibold text-slate-600">Team status <select aria-label="Filter by team status" value={teamFilter} onChange={(event) => { setTeamFilter(event.target.value); setMemberPage(1) }} className="ml-2 rounded-lg border border-slate-200 bg-white p-2 text-sm"><option value="all">All</option><option value="needs_assignment">Needs Assignment</option><option value="partial">Partial</option><option value="complete">Complete</option><option value="inactive">Inactive</option></select></label>
+                  <label className="text-xs font-semibold text-slate-600">Team completeness <select aria-label="Filter by team completeness" value={teamFilter} onChange={(event) => { setTeamFilter(event.target.value); setMemberPage(1) }} className="ml-2 rounded-lg border border-slate-200 bg-white p-2 text-sm"><option value="all">All</option><option value="needs_assignment">Needs Attention</option><option value="partial">Some Teams Incomplete</option><option value="complete">Team Complete</option><option value="inactive">Inactive</option></select></label>
                   <label className="relative block w-full lg:w-80">
                     <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
@@ -1020,13 +1021,13 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                 }
               />
 
-              {teamQuery.data?.data?.summary ? <div className="flex flex-wrap gap-3 border-b border-slate-100 px-5 py-3 text-xs font-semibold text-slate-600"><span>Complete: {teamQuery.data.data.summary.complete}</span><span>Needs assignment: {teamQuery.data.data.summary.needsAssignment}</span><span>Partial: {teamQuery.data.data.summary.partial}</span><span>Inactive managers: {teamQuery.data.data.summary.inactive}</span><span>Agents needing manager: {teamQuery.data.data.summary.agentsNeedingManager}</span></div> : null}
+              {teamQuery.data?.data?.summary ? <div className="flex flex-wrap gap-3 border-b border-slate-100 px-5 py-3 text-xs font-semibold text-slate-600"><span>Complete manager teams: {teamQuery.data.data.summary.complete}</span><span>Managers needing attention: {teamQuery.data.data.summary.needsAssignment}</span><span>Some teams incomplete: {teamQuery.data.data.summary.partial}</span><span>Inactive managers: {teamQuery.data.data.summary.inactive}</span><span>Agents with assignment issues: {teamQuery.data.data.summary.agentsNeedingManager}</span></div> : null}
               {teamQuery.isError ? <p className="p-3 text-xs text-amber-700">Team completeness unavailable. Refresh to try again.</p> : null}
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[850px] divide-y divide-slate-100 text-sm">
                   <thead className="bg-slate-50/80">
                     <tr>
-                      {['Seller', 'Position', 'Reports Under', 'Status', 'Team Status', 'Actions'].map(
+                      {['Seller', 'Position', 'Reports Under', 'Status', 'Team Completeness', 'Actions'].map(
                         (head) => (
                           <th
                             key={head}
@@ -1070,8 +1071,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                           {(() => {
                             const team = teamByUserId.get(Number(member.user_id))
                             if (!team) return <span className="text-xs text-slate-400">Checking…</span>
-                            const label = { complete: 'Complete', partial: 'Partial', needs_assignment: 'Needs Assignment', inactive: 'Inactive', not_applicable: 'Not applicable' }[team.status] || team.status
-                            return <button type="button" onClick={() => canCheckSellerSetup && setShowSellerSetupCheck(true)} disabled={!canCheckSellerSetup} title={team.messages.join('; ') || 'Team staffing is complete'} className={`rounded-full px-2.5 py-1 text-xs font-bold ${team.status === 'complete' ? 'bg-emerald-50 text-emerald-700' : team.status === 'inactive' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-800'}`}>{label}</button>
+                            const label = getTeamCompletenessLabel(team, member.role)
+                            return <button type="button" onClick={() => canCheckSellerSetup && setShowSellerSetupCheck(true)} disabled={!canCheckSellerSetup} title={getTeamCompletenessHint(team, member.role)} className={`rounded-full px-2.5 py-1 text-xs font-bold ${team.status === 'complete' ? 'bg-emerald-50 text-emerald-700' : team.status === 'inactive' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-800'}`}>{label}</button>
                           })()}
                         </td>
                         <td className="whitespace-nowrap px-5 py-4">
