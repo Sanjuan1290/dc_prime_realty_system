@@ -557,7 +557,13 @@ const completePaymentCorrectionWorkflow = async (connection, {
       fromStatus: 'returned_for_correction',
       toStatus: 'pending_head_review',
       message: authorization.reason,
-      metadata: { action, paymentId },
+      metadata: {
+        action, paymentId, previousActionKey: review.action_key, latestActionKey: review.action_key,
+        previousRevision: Number(review.revision || 1), reviewRevision: Number(review.revision || 1) + 1,
+        previousBeforeSnapshot: review.before_snapshot_json ?? null,
+        previousAfterSnapshot: review.after_snapshot_json ?? null,
+        nextBeforeSnapshot: beforeSnapshot, nextAfterSnapshot: afterSnapshot,
+      },
     });
     await notifyDepartmentHeads(connection, {
       department: 'accounting',
@@ -581,9 +587,16 @@ const completePaymentCorrectionWorkflow = async (connection, {
        WHERE audit_case_id=? AND status='pending_system_admin_correction'`,
       [actor.id, summary, auditCase.audit_case_id]
     );
+    const [[previousReview]] = await connection.query(
+      `SELECT revision, action_key, before_snapshot_json, after_snapshot_json
+       FROM operational_reviews WHERE operational_review_id=? FOR UPDATE`,
+      [auditCase.operational_review_id]
+    );
+    if (!previousReview) throw createHttpError(409, 'The linked payment review no longer exists.');
+    const priorRevision = Math.max(1, Number(previousReview.revision || 1));
     await connection.query(
       `UPDATE operational_reviews
-       SET status='pending_auditor_recheck', after_snapshot_json=?
+       SET status='pending_auditor_recheck', revision=revision+1, after_snapshot_json=?
        WHERE operational_review_id=?`,
       [JSON.stringify(afterSnapshot), auditCase.operational_review_id]
     );
@@ -594,7 +607,15 @@ const completePaymentCorrectionWorkflow = async (connection, {
       fromStatus: 'correction_required',
       toStatus: 'pending_auditor_recheck',
       message: summary,
-      metadata: { auditCaseId: auditCase.audit_case_id, action, paymentId },
+      metadata: {
+        auditCaseId: auditCase.audit_case_id, action, paymentId,
+        previousActionKey: previousReview.action_key, latestActionKey: 'audit_case.correction',
+        previousRevision: priorRevision, reviewRevision: priorRevision + 1,
+        previousBeforeSnapshot: previousReview.before_snapshot_json ?? null,
+        previousAfterSnapshot: previousReview.after_snapshot_json ?? null,
+        originalBaselinePreserved: true,
+        nextBeforeSnapshot: beforeSnapshot, nextAfterSnapshot: afterSnapshot,
+      },
     });
     await notifyAuditors(connection, {
       reviewId: auditCase.operational_review_id,
@@ -3743,6 +3764,7 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+
 
 
 

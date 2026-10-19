@@ -44,7 +44,7 @@ const flattenRows = (ctx, before, after, prefix = []) => {
     const b = isPlainObject(before) ? before[key] : undefined
     const a = isPlainObject(after) ? after[key] : undefined
     if (isRecordList(b) || isRecordList(a)) {
-      rows.push({ type: 'list', key, path: [...prefix, key], before: Array.isArray(b) ? b : [], after: Array.isArray(a) ? a : [] })
+      rows.push({ type: 'list', key, path: [...prefix, key], before: Array.isArray(b) ? b : [], after: Array.isArray(a) ? a : [], beforeRecorded: Array.isArray(b), afterRecorded: Array.isArray(a) })
     } else if (isPlainObject(b) || isPlainObject(a)) {
       rows.push(...flattenRows(ctx, isPlainObject(b) ? b : {}, isPlainObject(a) ? a : {}, [...prefix, key]))
     } else {
@@ -66,11 +66,12 @@ const pathLabel = (ctx, path) => {
 const ValueCell = ({ ctx, field, value, tone }) => {
   const empty = isEmptyValue(value)
   const tones = { before: 'text-red-800 line-through decoration-red-300', after: 'text-emerald-900', plain: 'text-slate-800' }
-  return <span className={`break-words text-sm font-bold ${empty ? 'font-semibold italic text-slate-400 no-underline' : tones[tone] || tones.plain}`}>{ctx.format(field, value)}</span>
+  return <span className={`break-words text-sm font-bold ${empty ? 'font-semibold italic text-slate-400 no-underline' : tones[tone] || tones.plain}`}>{value === undefined ? 'Not Recorded' : ctx.format(field, value)}</span>
 }
 
-const FieldTable = ({ ctx, rows, showUnchanged }) => {
-  const visible = showUnchanged ? rows : rows.filter((row) => !sameValue(row.before, row.after))
+const FieldTable = ({ ctx, rows, showUnchanged, strictSavedComparison = false }) => {
+  const comparable = row => !strictSavedComparison || (row.before !== undefined && row.after !== undefined)
+  const visible = showUnchanged ? rows : rows.filter((row) => comparable(row) && !sameValue(row.before, row.after))
   if (!visible.length) return null
   return <div className="overflow-x-auto">
     <table className="w-full min-w-[520px] text-left text-sm">
@@ -141,15 +142,15 @@ const RecordListDiff = ({ ctx, row, showUnchanged }) => {
  * listRenderers: { [fieldKey]: Component } for record lists that need their own
  * card (receives before, after, lookups, showUnchanged).
  */
-const ReviewSnapshotDiff = ({ beforeValue, afterValue, lookups = {}, mode = 'changes', labels = {}, isHiddenField, fieldOrder = [], listRenderers = {} }) => {
+const ReviewSnapshotDiff = ({ beforeValue, afterValue, lookups = {}, mode = 'changes', labels = {}, isHiddenField, fieldOrder = [], listRenderers = {}, strictSavedComparison = false }) => {
   const ctx = makeContext({ lookups, labels, isHiddenField, fieldOrder })
   const before = parseSnapshotValue(beforeValue) || {}
   const after = parseSnapshotValue(afterValue) || {}
   const showUnchanged = mode === 'full'
   const rows = flattenRows(ctx, before, after)
   const fieldRows = rows.filter((row) => row.type === 'field')
-  const listRows = rows.filter((row) => row.type === 'list' && (showUnchanged || !sameValue(row.before, row.after)))
-  const changedFieldCount = fieldRows.filter((row) => !sameValue(row.before, row.after)).length
+  const listRows = rows.filter((row) => row.type === 'list' && (showUnchanged || ((!strictSavedComparison || (row.beforeRecorded && row.afterRecorded)) && !sameValue(row.before, row.after))))
+  const changedFieldCount = fieldRows.filter((row) => (!strictSavedComparison || (row.before !== undefined && row.after !== undefined)) && !sameValue(row.before, row.after)).length
   const isNewRecord = !parseSnapshotValue(beforeValue)
 
   if (!showUnchanged && !changedFieldCount && !listRows.length) {
@@ -158,7 +159,7 @@ const ReviewSnapshotDiff = ({ beforeValue, afterValue, lookups = {}, mode = 'cha
 
   return <div className="grid gap-5">
     {isNewRecord && !showUnchanged ? <p className="text-sm font-semibold text-slate-500">No earlier values were saved with this review. This might be a new record or an incomplete historical snapshot.</p> : null}
-    {(showUnchanged ? fieldRows.length : changedFieldCount) ? <FieldTable ctx={ctx} rows={fieldRows} showUnchanged={showUnchanged} /> : null}
+    {(showUnchanged ? fieldRows.length : changedFieldCount) ? <FieldTable ctx={ctx} rows={fieldRows} showUnchanged={showUnchanged} strictSavedComparison={strictSavedComparison} /> : null}
     {listRows.map((row) => {
       const Custom = listRenderers[row.key]
       return <div key={row.path.join('.')} className="grid gap-2">
@@ -172,6 +173,7 @@ const ReviewSnapshotDiff = ({ beforeValue, afterValue, lookups = {}, mode = 'cha
 }
 
 export default ReviewSnapshotDiff
+
 
 
 

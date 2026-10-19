@@ -20,6 +20,7 @@ import {
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ReviewFormComparison from '../../components/Shared/ReviewFormComparison'
+import ReviewVersionedSpecial from '../../components/Shared/ReviewVersionedSpecial'
 import ReviewSensitiveActionSummary from '../../components/Shared/ReviewSensitiveActionSummary'
 import PaymentProofReviewFiles from '../../components/Shared/PaymentProofReviewFiles'
 import ReviewSignedReceiptFile from '../../components/Shared/ReviewSignedReceiptFile'
@@ -511,12 +512,22 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
         {review.status === 'returned_for_correction' ? <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div className="min-w-0 flex-1"><p className="font-black">Correction required — action needed</p><p className="mt-1 text-sm font-semibold leading-6 text-amber-900">Your Department Head returned this record for correction. The record remains editable by authorized users. The original Staff member should correct the issue, then resubmit this Review to the Head. If the original operation cannot be edited in place, use a permitted follow-up action and record what you changed. Changes are tracked in Audit Logs.</p>{latestCorrectionRequest?.message ? <div className="mt-3 rounded-xl border border-amber-200 bg-white/80 p-3"><p className="text-xs font-black uppercase tracking-wide text-amber-700">What needs to be corrected</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-amber-950">{latestCorrectionRequest.message}</p><p className="mt-2 text-xs font-semibold text-amber-700">Returned by {latestCorrectionRequest.actor_name || ROLE_LABELS[latestCorrectionRequest.actor_role] || 'Department Head'} · {fmtDate(latestCorrectionRequest.created_at)}</p></div> : null}</div></div></section> : null}
         {review.status === 'correction_required' ? <section className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-950"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-700" /><div><p className="font-black">Auditor-confirmed correction required</p><p className="mt-1 text-sm font-semibold leading-6 text-red-900">The Auditor confirmed a real issue. {correctionRoleLabel} is assigned to apply the formal correction. The record remains editable by authorized users; all other edits are traceable in Audit Logs. After the formal correction, the Auditor must recheck it before the case closes.</p></div></div></section> : null}
         <section className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-3"><div><p className="text-xs font-bold uppercase text-slate-500">Entered by</p><p className="mt-1 font-black">{review.initiated_by_name || `User #${review.initiated_by_user_id}`}</p><p className="text-xs font-semibold text-slate-500">{ROLE_LABELS[review.initiated_by_role] || titleCase(review.initiated_by_role)}</p></div><div><p className="text-xs font-bold uppercase text-slate-500">Department Head review</p><p className="mt-1 font-black">{headReviewLabel}</p><p className="text-xs font-semibold text-slate-500">{review.head_reviewed_at ? fmtDate(review.head_reviewed_at) : 'Does not block operations'}</p></div><div><p className="text-xs font-bold uppercase text-slate-500">Auditor review</p><p className="mt-1 font-black">{auditorReviewLabel}</p><p className="text-xs font-semibold text-slate-500">{review.auditor_reviewed_at ? fmtDate(review.auditor_reviewed_at) : 'Runs after the operation'}</p></div></section>
-        <div id="review-changes" className="scroll-mt-24">{['seller.manager_replace','commission.assigned_seller_change'].includes(reviewActionKey) ? <ReviewSensitiveActionSummary actionKey={reviewActionKey} beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json}/> : isNetworkImportReview ? <section className="rounded-2xl border border-slate-200 bg-white p-4"><h3 className="mb-3 font-black">Before &amp; After</h3><NetworkImportReviewSummary before={before} after={after}/></section> : <ReviewFormComparison
+        <div id="review-changes" className="scroll-mt-24">{isNetworkImportReview && Number(review.revision || 1) <= 1 ? <ReviewVersionedSpecial beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} events={review.events || []} revision={review.revision} actionKey={reviewActionKey}>
+          {() => <section className="rounded-2xl border border-slate-200 bg-white p-4"><h3 className="mb-3 font-black">Before &amp; After</h3><NetworkImportReviewSummary before={before} after={after}/></section>}
+        </ReviewVersionedSpecial> : ['seller.manager_replace','commission.assigned_seller_change'].includes(reviewActionKey) || isNetworkImportReview ? <ReviewVersionedSpecial
+          beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json}
+          events={review.events || []} revision={review.revision} actionKey={reviewActionKey}
+        >{({ before: selectedBefore, after: selectedAfter }) =>
+          isNetworkImportReview
+            ? <section className="rounded-2xl border border-slate-200 bg-white p-4"><h3 className="mb-3 font-black">Before &amp; After</h3><NetworkImportReviewSummary before={parseJson(selectedBefore) || {}} after={parseJson(selectedAfter) || {}}/></section>
+            : <ReviewSensitiveActionSummary actionKey={reviewActionKey} beforeValue={selectedBefore} afterValue={selectedAfter}/>
+        }</ReviewVersionedSpecial> : <ReviewFormComparison
           beforeValue={review.before_snapshot_json}
           afterValue={review.after_snapshot_json}
           entityType={review.entity_type}
           events={review.events || []}
           revision={review.revision}
+          actionKey={reviewActionKey}
           lookups={review.lookups}
           labels={snapshotLabels}
           fieldOrder={SNAPSHOT_FIELD_ORDER}
@@ -695,6 +706,7 @@ const ReviewCenter = () => {
 }
 
 export default ReviewCenter
+
 
 
 

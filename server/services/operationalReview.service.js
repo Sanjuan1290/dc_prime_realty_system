@@ -121,7 +121,7 @@ const refreshOwnRoutineReview = async (connection, {
   entityType,
   entityId,
   entityLabel = null,
-  afterSnapshot = null,
+  beforeSnapshot = null, afterSnapshot = null,
   link = '/portal/review-center',
 }) => {
   const [rows] = await connection.query(
@@ -203,7 +203,13 @@ const refreshOwnRoutineReview = async (connection, {
     metadata: {
       previousActionKey,
       latestActionKey: actionKey,
+      previousBeforeSnapshot: open.before_snapshot_json ?? null,
       previousAfterSnapshot,
+      originalBaselinePreserved: true,
+      // Saved per-operation evidence. Do not replace the original review's baseline.
+      nextBeforeSnapshot: beforeSnapshot,
+      nextAfterSnapshot: afterSnapshot,
+      previousRevision: Number(open.revision || 1),
       reviewRevision: Number(open.revision || 1) + 1,
     },
   });
@@ -289,9 +295,17 @@ const absorbOpenStaffReviewIntoHeadCorrection = async (connection, {
     toStatus: 'pending_auditor_review',
     message: `${getReviewActionLabel(actionKey)} corrected by the Department Head and confirmed for audit.`,
     metadata: {
+      previousActionKey: open.action_key,
+      latestActionKey: actionKey,
       headActionKey: actionKey,
+      previousBeforeSnapshot: open.before_snapshot_json ?? null,
+      previousAfterSnapshot: open.after_snapshot_json ?? null,
       staffAfterSnapshot: open.after_snapshot_json ?? null,
       headBeforeSnapshot: beforeSnapshot ?? null,
+      nextBeforeSnapshot: beforeSnapshot,
+      nextAfterSnapshot: afterSnapshot,
+      previousRevision: Number(open.revision || 1),
+      reviewRevision: Number(open.revision || 1) + 1,
     },
   });
   await createInternalNotifications(connection, {
@@ -334,7 +348,7 @@ export const createOperationalReview = async (connection, {
   }
 
   const refreshed = requiresDistinctReview(actionKey) ? null : await refreshOwnRoutineReview(connection, {
-    actor, actionKey, department, projectId, entityType, entityId, entityLabel, afterSnapshot, link,
+    actor, actionKey, department, projectId, entityType, entityId, entityLabel, beforeSnapshot, afterSnapshot, link,
   });
   if (refreshed) {
     await recordChangeDuringOpenAuditCase(connection, { actor, actionKey, entityType, entityId, beforeSnapshot, afterSnapshot });
@@ -473,6 +487,10 @@ export const resubmitReturnedOperationalReview = async (connection, {
       previousAfterSnapshot: review.after_snapshot_json ?? null,
       correctedBeforeSnapshot: beforeSnapshot ?? null,
       correctedAfterSnapshot: afterSnapshot ?? null,
+      previousActionKey: review.action_key,
+      latestActionKey: review.action_key,
+      nextBeforeSnapshot: beforeSnapshot,
+      nextAfterSnapshot: afterSnapshot,
       previousRevision: Number(review.revision || 1),
       reviewRevision: Number(review.revision || 1) + 1,
     },
@@ -506,6 +524,7 @@ export const canActorSeeReview = async (connection, actor, review) => {
 };
 
 export const buildReviewPayloadHash = (payload) => crypto.createHash('sha256').update(JSON.stringify(payload ?? null)).digest('hex');
+
 
 
 

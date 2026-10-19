@@ -72,9 +72,19 @@ export const advanceAuditCaseToRecheck = async (connection, {
   if (!Number(result.affectedRows || 0)) {
     throw Object.assign(new Error('This Audit Case is no longer awaiting controlled correction.'), { statusCode: 409 });
   }
+  // Protect the prior evidence before changing the review's AFTER snapshot.
+  // A correction is a separate saved version of the SAME review, not a rewrite
+  // of its first business operation or a new operational review.
+  const [[previous]] = await connection.query(
+    `SELECT revision, action_key, before_snapshot_json, after_snapshot_json
+     FROM operational_reviews WHERE operational_review_id=? FOR UPDATE`,
+    [auditCase.operational_review_id]
+  );
+  if (!previous) throw Object.assign(new Error('The linked review no longer exists.'), { statusCode: 409 });
+  const priorRevision = Math.max(1, Number(previous.revision || 1));
   await connection.query(
     `UPDATE operational_reviews
-     SET status='pending_auditor_recheck', after_snapshot_json=COALESCE(?, after_snapshot_json)
+     SET status='pending_auditor_recheck', revision=revision+1, after_snapshot_json=COALESCE(?, after_snapshot_json)
      WHERE operational_review_id=?`,
     [afterSnapshot == null ? null : JSON.stringify(afterSnapshot), auditCase.operational_review_id]
   );
@@ -85,7 +95,18 @@ export const advanceAuditCaseToRecheck = async (connection, {
     fromStatus: 'correction_required',
     toStatus: 'pending_auditor_recheck',
     message: summary,
-    metadata: { auditCaseId: auditCase.audit_case_id, correctionRole: expectedRole, ...(metadata || {}) },
+    metadata: {
+      auditCaseId: auditCase.audit_case_id, correctionRole: expectedRole,
+      previousRevision: priorRevision, reviewRevision: priorRevision + 1,
+      previousActionKey: previous.action_key, latestActionKey: 'audit_case.correction',
+      previousBeforeSnapshot: previous.before_snapshot_json ?? null,
+      previousAfterSnapshot: previous.after_snapshot_json ?? null,
+      originalBaselinePreserved: true,
+      // No explicit per-action BEFORE was supplied. The version renderer labels
+      // the preceding saved AFTER as evidence, not a verified immediate BEFORE.
+      nextAfterSnapshot: afterSnapshot,
+      ...(metadata || {}),
+    },
   });
   await notifyAuditors(connection, {
     reviewId: auditCase.operational_review_id,
@@ -96,5 +117,6 @@ export const advanceAuditCaseToRecheck = async (connection, {
   });
   return { reviewId: auditCase.operational_review_id, auditCaseId: auditCase.audit_case_id, status: 'pending_auditor_recheck' };
 };
+
 
 

@@ -682,7 +682,16 @@ export const resubmitManualReviewCorrection = async (req, res) => {
       reviewId: review.operational_review_id, eventType: 'staff_correction_submitted', actor: req.authUser,
       fromStatus: 'returned_for_correction', toStatus: 'pending_head_review',
       message: `Staff-reported follow-up correction (original action preserved): ${correctionSummary}`,
-      metadata: { correctionMode: 'manual_follow_up', actionKey: review.action_key },
+      metadata: {
+        correctionMode: 'manual_follow_up', actionKey: review.action_key,
+        previousActionKey: review.action_key, latestActionKey: review.action_key,
+        previousRevision: Number(review.revision || 1), reviewRevision: Number(review.revision || 1) + 1,
+        previousBeforeSnapshot: review.before_snapshot_json ?? null,
+        previousAfterSnapshot: review.after_snapshot_json ?? null,
+        // The review is being resubmitted, not changed: carry forward the same evidence.
+        nextBeforeSnapshot: review.before_snapshot_json ?? null,
+        nextAfterSnapshot: review.after_snapshot_json ?? null,
+      },
     });
     await notifyDepartmentHeads(connection, {
       department: review.department, projectId: review.lot_project_id,
@@ -930,6 +939,7 @@ export const reviewProtectedChangeRequest = async (req,res) => {
     await connection.commit(); return res.json({message:`Protected change ${decision}d.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
   }catch(error){try{await connection.rollback()}catch{}return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
+
 
 
 

@@ -36,7 +36,7 @@ const ReactivateSystemUserModal = ({ user, onClose, onSaved }) => {
     event.preventDefault()
     if (reason.trim().length < 5) return setAlert({ type: 'error', message: 'Enter a reason (at least 5 characters).' })
     if (sellerConfirmation) {
-      if (teamCheck.isPending || teamCheck.isError) return setAlert({ type: 'error', message: 'Check the seller team status before activating. Retry the check if it failed.' })
+      if (teamCheck.isPending || teamCheck.isError) return setAlert({ type: 'error', message: 'Seller and manager assignments must be complete. Check the seller team status before activating. Retry the check if it failed.' })
       return activate.mutate()
     }
     if (!verification) {
