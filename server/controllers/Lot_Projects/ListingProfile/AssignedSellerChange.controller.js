@@ -148,24 +148,43 @@ export const getAssignedSellerChangeOptions=async(req,res)=>{
     getActor(req);
     const {project,listing}=await getContext(connection,req);
     const evidence=await getEvidence(connection,listing);
-    const [rows]=await connection.query(`SELECT s.accredited_seller_id AS id, u.role,CONCAT_WS(' ',u.first_name,u.middle_name,u.last_name) AS name,
-      g.seller_group_name AS network, g.seller_group_type AS networkType
+    // Search is server-side: sellers beyond the first page must still be discoverable.
+    // Preserve the existing eligibility constraints and validate the chosen seller
+    // again in buildProposal before issuing any authorization.
+    const query=String(req.query?.q || '').trim().slice(0,100).toLowerCase();
+    const pattern=`%${query.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
+    const filters=query ? ` AND (
+      LOWER(CONCAT_WS(' ',u.first_name,u.middle_name,u.last_name)) LIKE ?
+      OR LOWER(g.seller_group_name) LIKE ?
+      OR LOWER(u.role) LIKE ?
+      OR LOWER(REPLACE(u.role,'_',' ')) LIKE ?
+      OR CAST(s.accredited_seller_id AS CHAR) LIKE ?
+      OR LOWER(COALESCE(u.account_code,'')) LIKE ?
+    )` : '';
+    const params=[project.lot_project_id,listing.assigned_accredited_seller_id,...(query?Array(6).fill(pattern):[])];
+    const [matches]=await connection.query(`SELECT s.accredited_seller_id AS id, u.role,CONCAT_WS(' ',u.first_name,u.middle_name,u.last_name) AS name,
+      g.seller_group_name AS network, g.seller_group_type AS networkType, u.account_code AS accountCode
       FROM accredited_sellers s JOIN users u ON u.id=s.user_id
       JOIN seller_groups g ON g.seller_group_id=s.seller_group_id
       JOIN seller_group_lot_project_rates gr ON gr.seller_group_id=g.seller_group_id AND gr.lot_project_id=?
         AND gr.seller_group_lot_project_rate_status='active'
       WHERE s.accredited_seller_status='active' AND u.status='active' AND g.seller_group_status='active'
         AND COALESCE(s.is_system_dummy,0)=0 AND (u.role='sales_agent' OR u.role='external_group')
-        AND s.accredited_seller_id<>? ORDER BY name LIMIT 1000`,[project.lot_project_id,listing.assigned_accredited_seller_id]);
+        AND s.accredited_seller_id<>? ${filters} ORDER BY name, s.accredited_seller_id LIMIT 101`,params);
     return res.json({success:true,data:{accountId:listing.lot_project_account_id,unitId:listing.lot_project_listing_unit_id,
-      oldSellerName:listing.current_seller_name,candidates:rows,currentCommissions:sellerChangeSnapshot(evidence.commissions)}});
+      oldSellerName:listing.current_seller_name,candidates:matches.slice(0,100),hasMore:matches.length>100,
+      currentCommissions:sellerChangeSnapshot(evidence.commissions)}});
   } catch(error){return fail(res,error)} finally{connection.release()}
 };
 export const previewAssignedSellerChange=async(req,res)=>{
   const connection=await db.getConnection();
   try {getActor(req);const result=await buildProposal(connection,req);
     return res.json({success:true,data:{accountId:result.listing.lot_project_account_id,oldSellerName:result.listing.current_seller_name,
-      previous:result.previous,next:result.next,fingerprint:result.fingerprint,newSellerId:result.newSellerId,
+      previous:result.previous,next:result.next.map((row,index)=>({...row,
+        commissionType:result.preview.hierarchy[index]?.commissionType || null,
+        sellerGroup:result.preview.hierarchy[index]?.groupName || null,
+        reportsUnder:result.preview.hierarchy[index+1]?.sellerName || 'Developer',
+      })),fingerprint:result.fingerprint,newSellerId:result.newSellerId,
       oldCompanyProfitRate:Number(result.evidence.commissions[0]?.company_profit_rate_snapshot||0),
       companyProfitRate:result.preview.companyProfitRate,networkType:result.preview.groupType}});
   } catch(error){return fail(res,error)}finally{connection.release()}
@@ -272,3 +291,4 @@ export const confirmAssignedSellerChange=async(req,res)=>{
     await connection.commit();return res.json({success:true,message:'Assigned Seller Updated',data:{changeId:Number(saved.insertId),newSellerId:proposal.newSellerId,commissions:inserted,workflow}});
   }catch(error){try{await connection.rollback()}catch{}return fail(res,error)}finally{connection.release()}
 };
+

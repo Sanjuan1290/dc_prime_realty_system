@@ -389,7 +389,7 @@ const ListingProfile = () => {
 
   // Phase 7: this is a separate protected action, not a rate adjustment.
   const sellerChangePath = `/projects/lot-projects/${projectSlug}/listings/${listingId}/change-seller`
-  const loadSellerChangeOptions = (payload) => useFetch(`${sellerChangePath}/options?accountId=${Number(payload.accountId)}`)
+  const loadSellerChangeOptions = (payload) => useFetch(`${sellerChangePath}/options?accountId=${Number(payload.accountId)}&q=${encodeURIComponent(String(payload.query || ''))}`)
   const previewSellerChange = (payload) => useFetchPost(`${sellerChangePath}/preview`, payload, { confirmationHandled: 'compact' })
   const requestSellerChange = (payload) => useFetchPost(`${sellerChangePath}/request`, payload, { confirmationHandled: 'compact' })
   const confirmSellerChange = async (payload) => {

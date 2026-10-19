@@ -197,6 +197,7 @@ const RecalculateCommissionModal = ({
             rows={currentHierarchy}
             title="Current Saved Commission Distribution"
             description="This is the reservation snapshot currently saved for this buyer account."
+            compact
           />
 
           {!requestData ? (
@@ -216,15 +217,16 @@ const RecalculateCommissionModal = ({
                   </label>
                 </div>
 
-                <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                <div className="mt-4 max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white" role="region" aria-label="Proposed unit commission rates" tabIndex={0}>
                   <table className="min-w-[760px] w-full text-sm">
-                    <thead className="border-b border-slate-200 bg-slate-50 text-left text-[11px] font-black uppercase tracking-wide text-slate-500">
+                    <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-left text-[11px] font-black uppercase tracking-wide text-slate-500">
                       <tr><th className="px-4 py-3">Recipient</th><th className="px-4 py-3">Role</th><th className="px-4 py-3 text-right">Current Rate</th><th className="px-4 py-3 text-right">New Rate</th><th className="px-4 py-3 text-right">New Amount</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {proposalRows.map((row) => (
-                        <tr key={row.commissionId}>
-                          <td className="px-4 py-3 font-bold text-slate-900">{row.sellerName || '-'}</td>
+                        <tr key={row.commissionId} className={Math.abs(Number(currentHierarchy.find((item) => item.commissionId === row.commissionId)?.rate || 0) - Number(row.rate || 0)) > 0.00005 ? 'bg-blue-50/50' : 'bg-white'}>
+                          <td className="px-4 py-3 font-bold text-slate-900">{row.sellerName || '-'}
+                            {Math.abs(Number(currentHierarchy.find((item) => item.commissionId === row.commissionId)?.rate || 0) - Number(row.rate || 0)) > 0.00005 ? <span className="ml-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">Changed</span> : null}</td>
                           <td className="px-4 py-3 font-semibold text-slate-600">{row.roleLabel || row.role}</td>
                           <td className="px-4 py-3 text-right font-bold text-slate-600">{Number(currentHierarchy.find((item) => item.commissionId === row.commissionId)?.rate || 0).toFixed(4)}%</td>
                           <td className="px-4 py-3">
@@ -289,6 +291,7 @@ const RecalculateCommissionModal = ({
                 rows={requestData?.after || proposalRows}
                 title="Final Commission Distribution"
                 description={`Unit Network Distribution Rate ${Number(requestData?.groupRate || numericGroupRate || 0).toFixed(4)}% · Allocated ${Number(requestData?.allocatedRate || allocatedRate || 0).toFixed(4)}% · Unallocated 0.0000%`}
+                compact
               />
 
               {isSuperAdmin && requestData?.verificationId ? <label className="block rounded-2xl border border-slate-200 p-4"><span className="mb-1.5 flex items-center gap-2 text-sm font-black text-slate-700"><FiKey /> Emergency Email Verification Code *</span><input inputMode="numeric" maxLength={6} value={code} onChange={(event) => { setCode(event.target.value.replace(/\D/g, '').slice(0, 6)); setNotice(null) }} disabled={busy} placeholder="000000" className="h-14 w-full rounded-xl border border-slate-300 px-4 text-center font-mono text-2xl font-black tracking-[0.4em] outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100" /></label> : null}
@@ -298,7 +301,7 @@ const RecalculateCommissionModal = ({
           )}
         </div>
 
-        <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+        <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button type="button" onClick={requestData ? () => { setRequestData(null); setCode(''); setConfirmed(false); setNotice(null) } : onClose} disabled={busy} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 disabled:opacity-50">{requestData ? 'Start Over' : 'Close'}</button>
           {!authorizationReady ? (
             <button type="submit" disabled={busy || Boolean(validationMessage) || (isSuperAdmin && !password) || false} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
@@ -316,6 +319,7 @@ const RecalculateCommissionModal = ({
 }
 
 export default RecalculateCommissionModal
+
 
 
 

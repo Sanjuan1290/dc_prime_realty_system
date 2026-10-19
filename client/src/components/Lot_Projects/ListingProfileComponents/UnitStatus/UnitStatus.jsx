@@ -10,6 +10,10 @@ import {
   FiRotateCcw,
   FiSettings,
   FiUser,
+  FiUserCheck,
+  FiChevronRight,
+  FiX,
+  FiPercent,
 } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditUnitStatusModal from './EditUnitStatusModal'
@@ -711,23 +715,32 @@ const UnitStatus = ({
       ) : null}
 
       {!readOnly && showEditSellerChoice ? (
-        <div role="dialog" aria-modal="true" aria-label="Edit Seller or Commission" className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/60 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
-            <h3 className="text-lg font-black text-slate-950">Edit Seller / Commission</h3>
-            <p className="mt-1 text-xs text-slate-500">Choose what you need to change.</p>
-            <div className="mt-4 space-y-3">
+        <div role="dialog" aria-modal="true" aria-label="Edit Seller or Commission" className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-[2px] sm:p-5">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <header className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
+              <div><h3 className="text-lg font-black text-slate-950">Edit Seller / Commission</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-500">Select what you need to update for this buyer account.</p></div>
+              <button type="button" aria-label="Close options" onClick={() => setShowEditSellerChoice(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><FiX/></button>
+            </header>
+            <div className="space-y-3 p-5">
               <button type="button" disabled={!canChangeAssignedSeller} onClick={() => {setShowEditSellerChoice(false);setShowChangeSellerModal(true)}}
-                className="w-full rounded-xl border border-slate-200 p-4 text-left disabled:opacity-45 hover:border-blue-300">
-                <span className="block font-bold text-slate-900">Change Assigned Seller</span>
-                <span className="text-xs text-slate-500">Before any payment is recorded</span>
+                className="group flex w-full items-center gap-3 rounded-xl border border-slate-200 px-4 py-4 text-left transition hover:border-blue-300 hover:bg-blue-50/40 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-45">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><FiUserCheck size={19}/></span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-black text-slate-900">Change Assigned Seller</span>
+                  <span className="mt-1 block text-xs leading-relaxed text-slate-500">Replace the seller and review the proposed commission distribution. Available only before financial activity.</span></span>
+                <FiChevronRight className="shrink-0 text-slate-400 group-hover:text-blue-600"/>
               </button>
               <button type="button" disabled={!canAdjustCommission} onClick={() => {setShowEditSellerChoice(false);setShowRecalculateModal(true)}}
-                className="w-full rounded-xl border border-slate-200 p-4 text-left disabled:opacity-45 hover:border-blue-300">
-                <span className="block font-bold text-slate-900">Adjust Commission</span>
-                <span className="text-xs text-slate-500">Keep the current seller and update commission rates</span>
+                className="group flex w-full items-center gap-3 rounded-xl border border-slate-200 px-4 py-4 text-left transition hover:border-blue-300 hover:bg-blue-50/40 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-45">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700"><FiPercent size={19}/></span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-black text-slate-900">Adjust Commission</span>
+                  <span className="mt-1 block text-xs leading-relaxed text-slate-500">Keep the assigned seller and adjust this buyer account's saved commission rates.</span></span>
+                <FiChevronRight className="shrink-0 text-slate-400 group-hover:text-blue-600"/>
               </button>
             </div>
-            <button type="button" onClick={() => setShowEditSellerChoice(false)} className="mt-4 rounded-lg px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
+            <footer className="flex justify-end border-t border-slate-100 bg-slate-50 px-5 py-3">
+              <button type="button" onClick={() => setShowEditSellerChoice(false)} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
+            </footer>
           </div>
         </div>
       ) : null}
@@ -756,5 +769,6 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
+
 
 

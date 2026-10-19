@@ -75,6 +75,7 @@ const CommissionDistribution = ({
   description = 'Commission recipients and amounts saved when this unit was reserved.',
   emptyMessage = 'No saved commission hierarchy exists for this unit yet.',
   showSummary = true,
+  compact = false,
 }) => {
   const hierarchy = useMemo(() => (Array.isArray(rows) ? rows : []), [rows])
   const summary = useMemo(() => summarizeCommissionDistribution(hierarchy), [hierarchy])
@@ -88,7 +89,7 @@ const CommissionDistribution = ({
 
       <div className="space-y-4 p-4 sm:p-5">
         {showSummary ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <div className={`grid gap-2 sm:grid-cols-2 ${compact ? 'lg:grid-cols-3 2xl:grid-cols-6' : 'xl:grid-cols-6'}`}>
             <SummaryCard label="Commission Base (Before Discount)" value={money(summary.commissionBase)} />
             <SummaryCard label="Saved Pool Rate" value={`${summary.allocatedRate.toFixed(4)}%`} tone="blue" />
             <SummaryCard label="Gross Commission" value={money(summary.grossCommission)} tone="emerald" />
@@ -100,9 +101,9 @@ const CommissionDistribution = ({
 
         {hierarchy.length ? (
           <>
-            <div className="hidden overflow-x-auto md:block">
-              <table className="min-w-[1180px] w-full text-sm">
-                <thead className="border-b border-slate-200 bg-slate-50">
+            <div className="hidden max-w-full overflow-x-auto md:block" role="region" aria-label="Commission recipients table" tabIndex={0}>
+              <table className={`${compact ? 'min-w-[980px]' : 'min-w-[1180px]'} w-full text-sm`}>
+                <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
                   <tr>
                     {[
                       'Order',
@@ -200,5 +201,6 @@ const CommissionDistribution = ({
 }
 
 export default CommissionDistribution
+
 
 
