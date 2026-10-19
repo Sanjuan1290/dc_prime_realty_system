@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiEdit2, FiRefreshCw, FiSettings } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import ReviewLiveRecordPanel from '../../components/Shared/ReviewLiveRecordPanel'
+import ReviewReturnLink from '../../components/Shared/ReviewReturnLink'
+import { dismissReviewRecordQuery } from '../../utils/reviewRecordNavigation'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ProjectSettingsAuthorizationModal from '../../components/Lot_Projects/SettingsComponents/ProjectSettingsAuthorizationModal'
 import EditSettingsModal from '../../components/Lot_Projects/SettingsComponents/EditSettingsModal/EditSettingsModal'
@@ -48,9 +50,10 @@ const SettingCard = ({ title, description, children }) => (
 const Settings = () => {
   const { projectSlug } = useParams()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const reviewView = searchParams.get('reviewView') === '1'
   const reviewId = Number(searchParams.get('reviewId') || 0)
+  const dismissedReviewId = Number(searchParams.get('reviewReturnId') || 0)
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
   const [showEdit, setShowEdit] = useState(false)
@@ -126,6 +129,7 @@ const Settings = () => {
 
   return (
     <main className="flex flex-col gap-6">
+      <ReviewReturnLink role={actorRole} reviewId={dismissedReviewId} />
       {alert ? (
         <StatusAlert
           type={alert.type}
@@ -237,7 +241,8 @@ const Settings = () => {
         loading={isLoading}
         record={isError ? null : isLoading ? null : settings}
         error={isError ? 'Settings are unavailable or you do not have access.' : ''}
-        onClose={() => navigate(`/portal/${actorRole || 'super_admin'}/review-center/reviews/${reviewId}`)}
+        onDismiss={() => setSearchParams(dismissReviewRecordQuery(searchParams), { replace: true })}
+        onBackToReview={() => navigate(`/portal/${actorRole || 'super_admin'}/review-center/reviews/${reviewId}`)}
       /> : null}
       {showEdit ? (
         <EditSettingsModal
@@ -269,6 +274,7 @@ const Settings = () => {
 }
 
 export default Settings
+
 
 
 

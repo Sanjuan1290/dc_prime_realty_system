@@ -1,7 +1,8 @@
 import { Fragment, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { FiCheckCircle, FiClock, FiFileText, FiUpload, FiArrowLeft, FiChevronDown, FiChevronRight, FiSearch } from 'react-icons/fi'
+import { FiCheckCircle, FiClock, FiFileText, FiDownload, FiUpload, FiArrowLeft, FiChevronDown, FiChevronRight, FiSearch } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
+import ExportListingsModal from './ExportListingsModal'
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
 import { parseBulkWorkbook } from '../../../utils/listingBulkExcel'
 import { BULK_PREVIEW_PAGE_SIZES, bulkPreviewFields, filterBulkPreview, paginateBulkPreview } from '../../../utils/listingBulkPreview'
@@ -15,6 +16,7 @@ const BulkEditListingsModal = ({ project, projectSlug, onClose, onSaved }) => {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [showHistory, setShowHistory] = useState(false)
+  const [showDownloadTemplate, setShowDownloadTemplate] = useState(false)
   const [previewPage, setPreviewPage] = useState(1)
   const [previewPageSize, setPreviewPageSize] = useState(10)
   const [previewSearch, setPreviewSearch] = useState('')
@@ -79,10 +81,12 @@ const BulkEditListingsModal = ({ project, projectSlug, onClose, onSaved }) => {
   }
   return (
     <section className="w-full space-y-4">
+      {showDownloadTemplate ? <ExportListingsModal projectSlug={projectSlug} projectName={project.name || project.lot_project_name} canPrint={false} editableOnly onClose={() => setShowDownloadTemplate(false)} /> : null}
       <div className="flex w-full flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5"><div><h2 className="text-2xl font-black">Bulk Edit Listings</h2><p className="mt-1 text-sm text-slate-500">Upload an Editable Listings Template to review changes before saving.</p></div><button type="button" disabled={busy} onClick={onClose} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700"><FiArrowLeft />Back to Listings</button></header>
         <div className="space-y-5 p-5">
           <div className="flex flex-wrap items-center gap-2">
+            <button type="button" disabled={busy} onClick={() => setShowDownloadTemplate(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50"><FiDownload /> Download Editable Template</button>
             <input ref={inputRef} type="file" accept=".xlsx" onChange={selectFile} className="hidden" />
             <button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className="inline-flex h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700"><FiUpload />Choose Edited Excel</button>
             <span className="text-sm font-semibold text-slate-600">{filename || 'No file selected'}</span>
@@ -196,4 +200,5 @@ const BulkEditListingsModal = ({ project, projectSlug, onClose, onSaved }) => {
   )
 }
 export default BulkEditListingsModal
+
 

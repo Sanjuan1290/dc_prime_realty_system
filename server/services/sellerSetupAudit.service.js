@@ -1,4 +1,5 @@
 import { getRequiredParentRole, SELLER_ROLE_LABELS } from '../controllers/System/sellerHierarchyRules.js';
+import { buildSellerTeamCompleteness } from './sellerTeamCompleteness.service.js';
 
 // Pure and read-only. Never attempt to repair seller data while collecting findings.
 const numberId = (value) => Number(value || 0);
@@ -10,6 +11,8 @@ const issue = (code, message, severity = 'blocking') => ({ code, message, severi
 export const buildSellerSetupAudit = ({ group, members = [], managerLinks = [], projects = [], assignedCounts = [] }) => {
   const sellers = members.filter((row) => Number(row.is_system_dummy || 0) !== 1);
   const lookup = new Map(sellers.map((row) => [numberId(row.user_id), row]));
+  const teamAudit = buildSellerTeamCompleteness(sellers);
+  const teams = new Map(teamAudit.records.map((row) => [row.userId, row]));
   const linksByChild = new Map();
   for (const link of managerLinks) {
     const key = numberId(link.managed_user_id);
@@ -70,6 +73,7 @@ export const buildSellerSetupAudit = ({ group, members = [], managerLinks = [], 
       name: sellerName(seller), role: seller.role,
       accountStatus: seller.user_status, sellerStatus: seller.accredited_seller_status,
       readiness: severity, issueCount: issues.length,
+      team: teams.get(numberId(seller.user_id)) || null,
       assignedBuyerCount: countBySeller.get(numberId(seller.accredited_seller_id)) || 0,
       issues,
     };
@@ -77,6 +81,7 @@ export const buildSellerSetupAudit = ({ group, members = [], managerLinks = [], 
   return {
     group: { id: numberId(group.seller_group_id), name: group.seller_group_name, status: group.seller_group_status },
     networkWarnings,
+    teamSummary: teamAudit.summary,
     summary: { total: records.length, ready: records.filter((r)=>r.readiness==='ready').length,
       attention: records.filter((r)=>r.readiness==='attention').length,
       blocked: records.filter((r)=>r.readiness==='blocked').length,
@@ -84,4 +89,5 @@ export const buildSellerSetupAudit = ({ group, members = [], managerLinks = [], 
     records,
   };
 };
+
 

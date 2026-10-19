@@ -1,7 +1,7 @@
 import {previewNetworkMemberBulkEdit,confirmNetworkMemberBulkEdit,previewManagerRestoration,requestManagerRestorationCode,confirmManagerRestoration} from '../../controllers/System/networkMemberChange.controller.js';
 import express from 'express';
 import { previewManagerReplacement, requestManagerReplacementCode, confirmManagerReplacement, getManagerReplacementHistory } from '../../controllers/System/sellerManagerReplacement.controller.js';
-import { getSellerSetupAudit } from '../../controllers/System/sellerSetupAudit.controller.js';
+import { getSellerSetupAudit, getSellerTeamCompleteness } from '../../controllers/System/sellerSetupAudit.controller.js';
 import {
   createGroup,
   getGroups,
@@ -38,6 +38,7 @@ router.get('/:groupId/managers/replacements', requireExactRole('super_admin','sy
 router.get('/:groupId/managers/:userId/replace/preview', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), previewManagerReplacement);
 router.post('/:groupId/managers/:userId/replace/code', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), requestManagerReplacementCode);
 router.post('/:groupId/managers/:userId/replace/confirm', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), confirmManagerReplacement);
+router.get('/:groupId/team-completeness', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getSellerTeamCompleteness);
 router.get('/:groupId/setup-check', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getSellerSetupAudit);
 router.get('/pool-shares', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getNetworkPoolShares);
 router.get('/broker-check', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), checkNetworkBrokerName);
@@ -76,6 +77,7 @@ router.patch('/toggle-status/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_G
 router.delete('/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), deleteGroup);
 
 export default router;
+
 
 
 

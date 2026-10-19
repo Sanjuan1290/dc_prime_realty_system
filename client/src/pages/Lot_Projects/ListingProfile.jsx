@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import ReviewLiveRecordPanel from '../../components/Shared/ReviewLiveRecordPanel'
+import ReviewReturnLink from '../../components/Shared/ReviewReturnLink'
+import { dismissReviewRecordQuery } from '../../utils/reviewRecordNavigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FiArrowLeft,
@@ -112,7 +114,7 @@ const ListingProfile = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { projectSlug, listingId, accountId } = useParams()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { data: currentUserData } = useCurrentUser()
   const user = currentUserData?.user
   const isSuperAdmin = ['super_admin', 'system_admin'].includes(user?.role)
@@ -137,6 +139,7 @@ const ListingProfile = () => {
   const canCorrectReservation = hasPermission(user, PERMISSIONS.LOT_RESERVATION_CORRECT)
   const workflowAuditCaseId = Number(searchParams.get('auditCaseId') || 0)
   const workflowReviewId = Number(searchParams.get('reviewId') || 0)
+  const dismissedReviewId = Number(searchParams.get('reviewReturnId') || 0)
   const workflowAction = String(searchParams.get('workflowAction') || '').trim()
   const reviewView = searchParams.get('reviewView') === '1'
   const reviewEntityType = String(searchParams.get('reviewEntityType') || '')
@@ -721,6 +724,7 @@ const ListingProfile = () => {
 
   return (
     <main className="flex flex-col gap-6">
+      <ReviewReturnLink role={user?.role} reviewId={dismissedReviewId} />
       {alert ? (
         <StatusAlert
           type={alert.type}
@@ -1093,7 +1097,8 @@ const ListingProfile = () => {
         record={reviewRecord}
         loading={profileQuery.isLoading}
         error={profileQuery.isError ? 'You cannot access this record, or it is no longer available.' : !profileQuery.isLoading && !reviewRecord ? 'The exact record was not found. Return to Review Center to see its saved history.' : ''}
-        onClose={() => navigate(`/portal/${user?.role || 'super_admin'}/review-center/reviews/${workflowReviewId}`)}
+        onDismiss={() => setSearchParams(dismissReviewRecordQuery(searchParams), { replace: true })}
+        onBackToReview={() => navigate(`/portal/${user?.role || 'super_admin'}/review-center/reviews/${workflowReviewId}`)}
       /> : null}
       {!readOnly && canUpdateBuyerDocuments && showBuyerFormLinkModal ? (
         <BuyerFormLinkModal
@@ -1121,5 +1126,6 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+
 
 

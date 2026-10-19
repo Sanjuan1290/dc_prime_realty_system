@@ -172,6 +172,7 @@ const CreateUserModal = ({
   allowedRoles = Object.keys(roleLabels),
   actorRole = "super_admin",
   initialSellerGroupId = "",
+  initialReportsUnderUserId = "",
   lockSellerGroup = false,
   title = "Create User",
 }) => {
@@ -193,7 +194,7 @@ const CreateUserModal = ({
     role: initialRole,
     status: "active",
     seller_group_id: String(initialSellerGroupId || ""),
-    reports_under_user_id: "",
+    reports_under_user_id: String(initialReportsUnderUserId || ""),
     accreditation_date: new Date().toISOString().slice(0, 10),
   });
 
@@ -638,6 +639,7 @@ const CreateUserModal = ({
 };
 
 export default CreateUserModal;
+
 
 
 

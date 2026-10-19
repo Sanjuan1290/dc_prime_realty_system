@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiDollarSign, FiEye, FiRefreshCw, FiSearch, FiUsers } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
+import ReviewReturnLink from '../../components/Shared/ReviewReturnLink'
+import { dismissReviewRecordQuery } from '../../utils/reviewRecordNavigation'
 import ReleaseDetailsModal from '../../components/Lot_Projects/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal'
 import { groupCommissionRecords } from '../../utils/commissionRecords'
 import { useFetch as fetchJson, useFetchPatch as patchJson } from '../../utils/useFetch'
@@ -93,9 +95,10 @@ const matchesGroupFilters = (group, commissionTypeFilter, eligibilityFilter) => 
 const Commission = () => {
   const { projectSlug } = useParams()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const reviewView = searchParams.get('reviewView') === '1'
   const reviewId = Number(searchParams.get('reviewId') || 0)
+  const dismissedReviewId = Number(searchParams.get('reviewReturnId') || 0)
   const reviewCommissionId = Number(searchParams.get('commissionId') || 0)
   const reviewEntityType = searchParams.get('reviewEntityType') || ''
   const { data: currentUserData } = useCurrentUser()
@@ -309,6 +312,7 @@ const Commission = () => {
       {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing commission accounts..." /> : null}
       {isError ? <StatusAlert type="error" message={error?.message || 'Failed to load commissions.'} /> : null}
 
+      <ReviewReturnLink role={user?.role} reviewId={dismissedReviewId || (reviewView ? reviewId : 0)} />
       <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader
           title={`${project.name || 'Lot Project'} Commissions`}
@@ -506,7 +510,7 @@ const Commission = () => {
           onClose={() => {
             setSelected(null)
             setModalNotice(null)
-            if (reviewView) returnToReview()
+            if (reviewView) setSearchParams(dismissReviewRecordQuery(searchParams), { replace: true })
           }}
           onAction={handleCommissionAction}
           canRelease={!reviewView && canRelease}
@@ -523,5 +527,6 @@ const Commission = () => {
 }
 
 export default Commission
+
 
 

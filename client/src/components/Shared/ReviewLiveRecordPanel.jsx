@@ -35,7 +35,7 @@ const showValue = (value) => {
   return String(value).replace(/_/g,' ')
 }
 
-export default function ReviewLiveRecordPanel({ entityType, record, reviewId, onClose, error = '', loading = false }) {
+export default function ReviewLiveRecordPanel({ entityType, record, reviewId, onDismiss, onBackToReview, error = '', loading = false }) {
   const sections = FIELDS[entityType] || []
   const isFound = record && typeof record === 'object'
   return <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={titleFor(entityType)}>
@@ -43,7 +43,7 @@ export default function ReviewLiveRecordPanel({ entityType, record, reviewId, on
       <header className="flex items-center gap-3 border-b p-4">
         <FiEye className="text-xl text-blue-600"/>
         <div className="flex-1"><h2 className="text-base font-black text-slate-900">{titleFor(entityType)}</h2><p className="flex items-center gap-1 text-xs font-semibold text-slate-500"><FiLock/> Current Record · View Only</p></div>
-        <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100" aria-label="Back to Review"><FiX/></button>
+        <button type="button" onClick={onDismiss} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100" aria-label="Close record details"><FiX/></button>
       </header>
       <div className="overflow-y-auto p-4">
         {loading ? <p role="status" className="rounded-xl bg-slate-50 p-4 text-sm font-semibold text-slate-600">Loading record...</p> : error || !isFound ? <div role="alert" className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900"><FiAlertTriangle className="shrink-0"/>{error || 'The exact record could not be loaded. Its saved review is still available.'}</div> :
@@ -52,7 +52,8 @@ export default function ReviewLiveRecordPanel({ entityType, record, reviewId, on
           return visible.length ? <section key={sectionName}><h3 className="mb-3 text-xs font-black uppercase tracking-wide text-slate-500">{sectionName}</h3><dl className="grid gap-3 sm:grid-cols-2">{visible.map(([key,label])=><div key={key}><dt className="mb-1 text-xs font-semibold text-slate-600">{label}</dt><dd className="min-h-10 break-words rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900">{showValue(record[key])}</dd></div>)}</dl></section>:null
         })}{!sections.some(([_,fields])=>fields.some(([key])=>Object.prototype.hasOwnProperty.call(record,key)))?<p className="text-sm text-slate-600">The current details are not available in this view. Use the saved Before &amp; After information in Review Center.</p>:null}</div>}
       </div>
-      <footer className="flex justify-end border-t bg-slate-50 p-4"><button type="button" onClick={onClose} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700"><FiArrowLeft/> Back to Review</button></footer>
+      <footer className="flex justify-end border-t bg-slate-50 p-4"><button type="button" onClick={onBackToReview} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700"><FiArrowLeft/> Back to Review</button></footer>
     </div>
   </div>
 }
+

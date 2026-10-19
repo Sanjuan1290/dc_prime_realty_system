@@ -2,6 +2,7 @@ import { isOwnerAdministrator } from '../../config/permissions.js';
 import { db } from '../../db/connect.js';
 import { assertSellerIdentityAvailable } from '../../services/sellerIdentity.service.js';
 import { checkSellerCanReactivate } from '../../services/sellerReactivation.service.js';
+import { buildSellerTeamCompleteness } from '../../services/sellerTeamCompleteness.service.js';
 import { usesSellerStatusConfirmation } from '../../services/sellerConfirmationPolicy.js';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
@@ -2536,3 +2537,28 @@ export const resetUserPassword = async (req, res) => {
 
 
 
+
+
+// Pre-activation advisory only. The protected activation mutation still independently
+// checks reporting-chain eligibility within its own transaction.
+export const previewSellerActivationTeam = async (req, res) => {
+  try {
+    const userId = Number(req.params.id || 0);
+    if (!Number.isSafeInteger(userId) || userId <= 0) return res.status(400).json({ message: 'Invalid user ID.' });
+    const [[target]] = await db.query(`SELECT u.id,u.role,u.status,s.seller_group_id,s.accredited_seller_status
+      FROM users u LEFT JOIN accredited_sellers s ON s.user_id=u.id WHERE u.id=? LIMIT 1`, [userId]);
+    if (!target) return res.status(404).json({ message: 'Account not found.' });
+    if (!actorCanPerformUserAction(req, target.role)) return res.status(403).json({ message: 'Insufficient authorization.' });
+    if (!sellerRoles.has(target.role)) return res.json({ success: true, data: { warning: null } });
+    if (!target.seller_group_id) return res.json({ success: true, data: { warning: 'No Network assigned. Activation eligibility will be checked separately.' } });
+    const [members] = await db.query(`SELECT s.accredited_seller_id,s.user_id,s.accredited_seller_reports_under_user_id,s.is_system_dummy,
+      s.accredited_seller_status,u.role,u.status AS user_status FROM accredited_sellers s
+      JOIN users u ON u.id=s.user_id WHERE s.seller_group_id=?`, [target.seller_group_id]);
+    const prospective = members.map((member) => Number(member.user_id) === userId
+      ? { ...member, user_status: 'active', accredited_seller_status: 'active' } : member);
+    const result = buildSellerTeamCompleteness(prospective).records.find((member) => member.userId === userId);
+    const warning = result?.status === 'needs_assignment' || result?.status === 'partial'
+      ? result.messages.join('. ') + '. You may activate this seller if their own reporting setup is valid; assign the missing team members afterward.' : null;
+    return res.json({ success: true, data: { warning, team: result || null } });
+  } catch { return res.status(500).json({ message: 'Unable to preview this seller’s team.' }); }
+};

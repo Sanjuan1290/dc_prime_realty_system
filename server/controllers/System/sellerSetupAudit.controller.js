@@ -1,5 +1,6 @@
 import { db } from '../../db/connect.js';
 import { buildSellerSetupAudit } from '../../services/sellerSetupAudit.service.js';
+import { buildSellerTeamCompleteness } from '../../services/sellerTeamCompleteness.service.js';
 
 // Read-only owner-administrator report: does not modify seller, group or financial records.
 export const getSellerSetupAudit = async (req, res) => {
@@ -38,4 +39,21 @@ export const getSellerSetupAudit = async (req, res) => {
   } catch(error) {
     return res.status(500).json({message:'Could not check seller assignments. Try again.'});
   } finally {connection.release();}
+};
+
+
+// Authorized Network viewers receive advisory staffing status without exposing
+// protected seller setup details or changing seller readiness.
+export const getSellerTeamCompleteness = async (req, res) => {
+  try {
+    const groupId = Number(req.params.groupId || 0);
+    if (!Number.isSafeInteger(groupId) || groupId <= 0) return res.status(400).json({ message: 'Invalid Network ID.' });
+    const [[group]] = await db.query('SELECT seller_group_type FROM seller_groups WHERE seller_group_id=? LIMIT 1', [groupId]);
+    if (!group) return res.status(404).json({ message: 'Network not found.' });
+    if (group.seller_group_type !== 'in_house') return res.status(400).json({ message: 'Only In-House Networks have team completeness checks.' });
+    const [members] = await db.query(`SELECT s.accredited_seller_id,s.user_id,s.accredited_seller_reports_under_user_id,s.is_system_dummy,
+      s.accredited_seller_status,u.role,u.status AS user_status FROM accredited_sellers s
+      JOIN users u ON u.id=s.user_id WHERE s.seller_group_id=?`, [groupId]);
+    return res.json({ success: true, data: buildSellerTeamCompleteness(members) });
+  } catch { return res.status(500).json({ message: 'Unable to check team assignments.' }); }
 };

@@ -4,7 +4,7 @@ import StatusAlert from '../../Shared/StatusAlert'
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
 import { exportListingWorkbook, LISTING_EXPORT_STATUS_OPTIONS } from '../../../utils/listingBulkExcel'
 
-const ExportListingsModal = ({ projectSlug, projectName, canPrint, onClose }) => {
+const ExportListingsModal = ({ projectSlug, projectName, canPrint, onClose, editableOnly = false }) => {
   const [format, setFormat] = useState('editable')
   const [status, setStatus] = useState('all')
   const [months, setMonths] = useState('20')
@@ -52,8 +52,8 @@ const ExportListingsModal = ({ projectSlug, projectName, canPrint, onClose }) =>
         <div className="grid gap-5 p-5">
           <fieldset className="grid gap-2"><legend className="mb-2 text-xs font-black uppercase text-slate-600">Export Type</legend>
             {[
-              ...(canPrint ? [{ value: 'print', label: 'Price List — Print / PDF', helper: 'Existing printable price list and monthly computation' }] : []),
-              { value: 'inventory', label: 'Complete Listings — Excel', helper: 'Read-only reference inventory and calculated TCPs' },
+              ...(!editableOnly && canPrint ? [{ value: 'print', label: 'Price List — Print / PDF', helper: 'Existing printable price list and monthly computation' }] : []),
+              ...(!editableOnly ? [{ value: 'inventory', label: 'Complete Listings — Excel', helper: 'Read-only reference inventory and calculated TCPs' }] : []),
               { value: 'editable', label: 'Editable Listings Template — Excel', helper: 'Edit existing lot areas, Unit IDs, cadastral lots and prices' },
             ].map((choice) => <label key={choice.value} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${format === choice.value ? 'border-blue-400 bg-blue-50' : 'border-slate-200'}`}>
               <input type="radio" name="format" value={choice.value} checked={format === choice.value} onChange={() => handleFormat(choice.value)} className="mt-1" />
@@ -75,4 +75,5 @@ const ExportListingsModal = ({ projectSlug, projectName, canPrint, onClose }) =>
   )
 }
 export default ExportListingsModal
+
 

@@ -26,6 +26,8 @@ import {
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import ReviewLiveRecordPanel from '../../components/Shared/ReviewLiveRecordPanel'
+import ReviewReturnLink from '../../components/Shared/ReviewReturnLink'
+import { dismissReviewRecordQuery } from '../../utils/reviewRecordNavigation'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import EditGroupModal from '../../components/System/sellerGroupComponents/EditGroupModal'
 import SellerSetupCheck from '../../components/System/sellerGroupComponents/SellerSetupCheck'
@@ -237,6 +239,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const [showSellerSetupCheck, setShowSellerSetupCheck] = useState(false)
   const [memberPage, setMemberPage] = useState(1)
   const [showCreateUser, setShowCreateUser] = useState(false)
+  const [assignmentContext, setAssignmentContext] = useState(null)
   const [showMemberTools, setShowMemberTools] = useState(false)
   const [showBulkEditMembers, setShowBulkEditMembers] = useState(false)
   const [showMemberImport, setShowMemberImport] = useState(false)
@@ -255,12 +258,15 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const reviewEntityType = searchParams.get('reviewEntityType') || ''
   const reviewAccreditedSellerId = Number(searchParams.get('accreditedSellerId') || 0)
   const workflowReviewId = Number(searchParams.get('reviewId') || 0) || null
+  const dismissedReviewId = Number(searchParams.get('reviewReturnId') || 0)
   const workflowAuditCaseId = Number(searchParams.get('auditCaseId') || 0) || null
   const workflowSellerId = Number(searchParams.get('sellerId') || 0) || null
   const selectedProjectId = Number(searchParams.get('project') || 0)
   const { data: currentUserData } = useCurrentUser()
   const actor = currentUserData?.user
   const canAddMember = hasPermission(actor, PERMISSIONS.SYSTEM_USERS_CREATE)
+  const canEditSeller = hasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT)
+  const canEditNetwork = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE)
   const canImportMembers = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE)
     && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_CREATE)
     && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT)
@@ -299,6 +305,13 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const groupOption = projectOptionsQuery.data?.group || {}
   const groupType = groupOption.type || expectedGroupType || 'in_house'
   const isExternal = groupType === 'external'
+  const teamQuery = useQuery({
+    queryKey: ['seller-team-completeness', Number(groupId)],
+    queryFn: () => fetchJson(`/seller-groups/${groupId}/team-completeness`),
+    enabled: Boolean(groupId) && !isExternal && Boolean(actor), staleTime: 0,
+  })
+  const teamByUserId = useMemo(() => new Map((teamQuery.data?.data?.records || []).map((team) => [Number(team.userId), team])), [teamQuery.data])
+  const [teamFilter, setTeamFilter] = useState('all')
   const groupsPath = `${rootPath}/accredited/groups/${isExternal ? 'external' : 'in-house'}`
 
   // Old bookmarks and legacy Review Center links may contain the wrong section.
@@ -406,14 +419,15 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const filteredMembers = useMemo(() => {
     const key = memberSearch.trim().toLowerCase()
 
+    const byTeam = teamFilter === 'all' ? members : members.filter((member) => teamByUserId.get(Number(member.user_id))?.status === teamFilter)
     return key
-      ? members.filter((member) =>
+      ? byTeam.filter((member) =>
           `${member.display_name} ${member.full_name} ${member.role} ${member.reports_under_name}`
             .toLowerCase()
             .includes(key)
         )
-      : members
-  }, [members, memberSearch])
+      : byTeam
+  }, [members, memberSearch, teamFilter, teamByUserId])
 
   const memberTotalPages = Math.max(
     Math.ceil(filteredMembers.length / MEMBERS_PER_PAGE),
@@ -444,6 +458,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
     queryClient.invalidateQueries({
       queryKey: ['seller-group-project-analytics', Number(groupId)],
     })
+    queryClient.invalidateQueries({ queryKey: ['seller-team-completeness', Number(groupId)] })
+    queryClient.invalidateQueries({ queryKey: ['seller-setup-check', Number(groupId)] })
     queryClient.invalidateQueries({ queryKey: ['seller-groups'] })
     queryClient.invalidateQueries({ queryKey: ['reservation-agents'] })
     queryClient.invalidateQueries({ queryKey: ['commission-preview'] })
@@ -476,6 +492,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 
   return (
     <main className="flex flex-col gap-5">
+      <ReviewReturnLink role={portalRole} reviewId={dismissedReviewId} />
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-start gap-3">
           <PageHeader
@@ -531,14 +548,14 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             </button>
           ) : null}
 
-          <button
+          {canEditNetwork ? <button
             type="button"
             onClick={() => setShowEditGroupModal(true)}
             className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
             <FiEdit2 />
             Edit Network
-          </button>
+          </button> : null}
         </div>
       </div>
 
@@ -985,6 +1002,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                 title="In-House Members"
                 description="View members and their reporting managers."
                 actions={
+                  <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs font-semibold text-slate-600">Team status <select aria-label="Filter by team status" value={teamFilter} onChange={(event) => { setTeamFilter(event.target.value); setMemberPage(1) }} className="ml-2 rounded-lg border border-slate-200 bg-white p-2 text-sm"><option value="all">All</option><option value="needs_assignment">Needs Assignment</option><option value="partial">Partial</option><option value="complete">Complete</option><option value="inactive">Inactive</option></select></label>
                   <label className="relative block w-full lg:w-80">
                     <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
@@ -997,14 +1016,17 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                       className="h-10 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-sm font-medium outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
                     />
                   </label>
+                  </div>
                 }
               />
 
+              {teamQuery.data?.data?.summary ? <div className="flex flex-wrap gap-3 border-b border-slate-100 px-5 py-3 text-xs font-semibold text-slate-600"><span>Complete: {teamQuery.data.data.summary.complete}</span><span>Needs assignment: {teamQuery.data.data.summary.needsAssignment}</span><span>Partial: {teamQuery.data.data.summary.partial}</span><span>Inactive managers: {teamQuery.data.data.summary.inactive}</span><span>Agents needing manager: {teamQuery.data.data.summary.agentsNeedingManager}</span></div> : null}
+              {teamQuery.isError ? <p className="p-3 text-xs text-amber-700">Team completeness unavailable. Refresh to try again.</p> : null}
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] divide-y divide-slate-100 text-sm">
+                <table className="w-full min-w-[850px] divide-y divide-slate-100 text-sm">
                   <thead className="bg-slate-50/80">
                     <tr>
-                      {['Seller', 'Position', 'Reports Under', 'Status', 'Actions'].map(
+                      {['Seller', 'Position', 'Reports Under', 'Status', 'Team Status', 'Actions'].map(
                         (head) => (
                           <th
                             key={head}
@@ -1044,6 +1066,14 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                           </span>
                           {member.user_status !== member.accredited_seller_status && <span className="mt-1 flex items-center gap-1 text-xs text-amber-700"><FiAlertTriangle/> Statuses do not match</span>}
                         </td>
+                        <td className="px-5 py-4">
+                          {(() => {
+                            const team = teamByUserId.get(Number(member.user_id))
+                            if (!team) return <span className="text-xs text-slate-400">Checking…</span>
+                            const label = { complete: 'Complete', partial: 'Partial', needs_assignment: 'Needs Assignment', inactive: 'Inactive', not_applicable: 'Not applicable' }[team.status] || team.status
+                            return <button type="button" onClick={() => canCheckSellerSetup && setShowSellerSetupCheck(true)} disabled={!canCheckSellerSetup} title={team.messages.join('; ') || 'Team staffing is complete'} className={`rounded-full px-2.5 py-1 text-xs font-bold ${team.status === 'complete' ? 'bg-emerald-50 text-emerald-700' : team.status === 'inactive' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-800'}`}>{label}</button>
+                          })()}
+                        </td>
                         <td className="whitespace-nowrap px-5 py-4">
                           <NavLink
                             to={`${rootPath}/accredited/groups/in-house/${groupId}/members/${member.user_id}${selectedProjectId ? `?project=${selectedProjectId}` : ''}`}
@@ -1052,7 +1082,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                           >
                             <FiEye aria-hidden="true" /> View
                           </NavLink>
-                          <button
+                          {canEditSeller ? <button
                             type="button"
                             onClick={() => setSelectedMember({
                               ...member,
@@ -1068,7 +1098,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                           >
                             <FiEdit2 />
                             Edit Seller
-                          </button>
+                          </button> : null}
                           {canChangeSellerStatus && ['division_manager','sales_director','unit_manager'].includes(member.role) && member.user_status === 'active' && member.accredited_seller_status === 'active' && (
                             <button type="button" onClick={() => setReplaceManager(member)} className="ml-2 inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50"><FiRepeat/> Replace Manager</button>
                           )}
@@ -1087,7 +1117,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                     {!filteredMembers.length ? (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={6}
                           className="px-5 py-10 text-center font-medium text-slate-500"
                         >
                           No members found.
@@ -1171,6 +1201,12 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         <SellerSetupCheck
           groupId={groupId}
           onClose={() => setShowSellerSetupCheck(false)}
+          onAssignSeller={canAddMember ? (record) => {
+            if (!canAddMember || !record.team?.missingRole) return
+            setShowSellerSetupCheck(false)
+            setAssignmentContext({ role: record.team.missingRole, parentUserId: record.userId })
+            setShowCreateUser(true)
+          } : undefined}
           onViewSeller={(userId) => {
             const member = members.find((item) => Number(item.user_id) === Number(userId))
             if (!member) return
@@ -1215,8 +1251,9 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 
       {showCreateUser ? (
         <CreateUserModal
-          setShowCreateUser={setShowCreateUser}
-          allowedRoles={['division_manager','sales_director','unit_manager','sales_agent']}
+          setShowCreateUser={(open) => { setShowCreateUser(open); if (!open) setAssignmentContext(null) }}
+          allowedRoles={assignmentContext ? [assignmentContext.role] : ['division_manager','sales_director','unit_manager','sales_agent']}
+          initialReportsUnderUserId={assignmentContext?.parentUserId || ''}
           actorRole={portalRole}
           initialSellerGroupId={String(group.id || groupId)}
           lockSellerGroup
@@ -1273,7 +1310,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
           ? members.find((member) => Number(member.accredited_seller_id) === reviewAccreditedSellerId)
           : { ...group, ...fixedRates }}
         error={configurationQuery.isError ? 'You cannot access this Network, or it is no longer available.' : reviewEntityType === 'accredited_seller' && !members.find((member) => Number(member.accredited_seller_id) === reviewAccreditedSellerId) ? 'The selected seller was not found in this Network.' : ''}
-        onClose={() => navigate(`${rootPath}/review-center/reviews/${workflowReviewId}`)}
+        onDismiss={() => setSearchParams(dismissReviewRecordQuery(searchParams), { replace: true })}
+        onBackToReview={() => navigate(`${rootPath}/review-center/reviews/${workflowReviewId}`)}
       /> : null}
       {showEditGroupModal ? (
         <EditGroupModal
@@ -1293,6 +1331,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 }
 
 export default SellerGroupDetails
+
 
 
 
