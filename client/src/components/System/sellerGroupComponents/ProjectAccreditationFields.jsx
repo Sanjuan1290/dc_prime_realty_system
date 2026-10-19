@@ -140,10 +140,14 @@ const ProjectAccreditationFields = ({
           const companyProfitError = !isExternal && checked
             ? getCompanyProfitError(selectedRate, { maxPercentOfPool: maxCompanyProfitPercent, shares: poolShares })
             : ''
-          const valid = checked
-            && allocation.pool >= 6
-            && allocation.pool <= 15
-            && (isExternal || (!companyProfitError && Math.abs(allocation.accounted - allocation.pool) < 0.0001))
+          const poolRateError = !Number.isFinite(allocation.pool) || allocation.pool < 6 || allocation.pool > 15
+            ? 'Pool Rate must be between 6% and 15%.'
+            : ''
+          const distributionError = !isExternal && Math.abs(allocation.accounted - allocation.pool) >= 0.0001
+            ? 'Seller Distribution plus Company Profit must equal the Pool Rate.'
+            : ''
+          const validationMessage = poolRateError || companyProfitError || distributionError
+          const valid = checked && !validationMessage
 
           return (
             <article key={projectId} className={`rounded-2xl border p-4 transition ${checked ? 'border-blue-300 bg-white ring-4 ring-blue-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
@@ -203,7 +207,7 @@ const ProjectAccreditationFields = ({
 
                   <div className={`mt-3 flex flex-col gap-2 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${valid ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
                     <p className={`flex items-center gap-2 text-xs font-black ${valid ? 'text-emerald-700' : 'text-amber-800'}`}>{valid ? <FiCheckCircle /> : null}{isExternal ? `Full Pool Rate: ${rate4(allocation.pool)}%` : `Distributable: ${rate4(allocation.distributable)}%`}</p>
-                    <p className={`text-xs font-black ${valid ? 'text-emerald-700' : 'text-amber-800'}`}>{valid ? 'Ready' : companyProfitError || 'Check Pool Rate and CP'}</p>
+                    <p className={`text-xs font-black ${valid ? 'text-emerald-700' : 'text-amber-800'}`}>{valid ? 'Ready' : validationMessage}</p>
                   </div>
                 </div>
               ) : null}
@@ -227,5 +231,3 @@ const ProjectAccreditationFields = ({
 }
 
 export default ProjectAccreditationFields
-
-
