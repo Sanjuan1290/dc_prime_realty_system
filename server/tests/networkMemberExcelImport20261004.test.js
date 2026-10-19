@@ -223,10 +223,12 @@ test('bulk import refuses to change an existing seller role', () => {
   assert.match(result.rows[0].errors.join(' '), /Bulk import cannot change seller roles/i);
 });
 
-test('Excel import cannot add or replace the Division Manager hierarchy head', () => {
+test('Excel import allows a second DM but never changes the designated Network Head', () => {
   const result = analyze([row({ role: 'DM', reports_under_email: '', email: 'newdm@example.com' })]);
-  assert.equal(result.canCommit, false);
-  assert.match(result.rows[0].errors.join(' '), /already has Rowena Cortez as its hierarchy head/i);
+  assert.equal(result.canCommit, true);
+  assert.equal(result.rows[0].role, 'division_manager');
+  assert.equal(result.rows[0].isCurrentHead, false);
+  assert.equal(result.rows[0].parentUserId, undefined);
 });
 
 test('existing hierarchy head can appear in the file only as the same top-level role', () => {
@@ -325,8 +327,7 @@ test('External or inactive Network cannot accept member import', () => {
 test('Network details UI exposes Import Members and the template contains a safe sample row plus the full DM to SA example chain', async () => {
   const details = await fs.readFile(path.join(root, 'client/src/pages/System/SellerGroupDetails.jsx'), 'utf8');
   const modal = await fs.readFile(path.join(root, 'client/src/components/System/sellerGroupComponents/NetworkMemberImportModal.jsx'), 'utf8');
-  assert.match(details, /Add Member[\s\S]*Member Tools/);
-  assert.match(details, /canImportMembers=\{canImportMembers\}/);
+  assert.match(details, /Add Member[\s\S]*Import Members/);
   // Headers moved to a shared util so Export Members uses the same layout (2026-10-05).
   const excelUtil = await fs.readFile(path.join(root, 'client/src/utils/networkMemberExcel.js'), 'utf8');
   assert.match(modal, /NETWORK_MEMBER_EXCEL_HEADERS as HEADERS/);

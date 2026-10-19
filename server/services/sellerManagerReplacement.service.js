@@ -28,7 +28,7 @@ export async function getManagerReplacementPlan(connection, { groupId, outgoingU
     if (child.role!==expectedChildRoles[outgoing.role]) throw bad(`${nameOf(child)} has an incorrect reporting position. Check Seller Setup first.`);
     // Inactive direct reports are moved too; they must retain their inactive status.
   }
-  if (outgoing.role==='division_manager' && Number(group.seller_group_head_user_id||0)!==outgoingKey) throw bad('Only the current Network Head can be replaced as Division Manager.');
+  const replacesNetworkHead = Number(group.seller_group_head_user_id || 0) === outgoingKey;
   if (outgoing.role!=='division_manager' && Number(group.seller_group_head_user_id||0)===outgoingKey) throw bad('This Network Head must be reviewed before replacement.');
   const available = members.filter(row => row.user_id!==outgoingKey && row.role===outgoing.role && row.user_status==='active'
     && row.accredited_seller_status==='active' && !Number(row.is_system_dummy||0));
@@ -44,13 +44,23 @@ export async function getManagerReplacementPlan(connection, { groupId, outgoingU
       if(!parent || parent.role!==getRequiredParentRole(current.role) || parent.user_status!=='active' || parent.accredited_seller_status!=='active') return false;
       current=parent;
     }
-    return Number(current?.user_id||0)===Number(group.seller_group_head_user_id||0) && current?.role==='division_manager';
+    // Reporting may terminate at ANY valid DM, not necessarily the designated Head.
+    return current?.role === 'division_manager' && !positive(current.accredited_seller_reports_under_user_id);
+
   };
-  const candidates=available.filter(validCandidate);
+  // An ordinary replacement must stay in the same branch. Moving a UM/SD
+  // across superior managers is a separately reviewed hierarchy transfer.
+  const candidates=available.filter(row => validCandidate(row) &&
+    (outgoing.role === 'division_manager' ||
+      positive(row.accredited_seller_reports_under_user_id) === positive(outgoing.accredited_seller_reports_under_user_id)));
+
   const replacement = replacementKey ? candidates.find(row=>Number(row.user_id)===replacementKey) : null;
   if(replacementKey && !replacement) throw bad('Replacement is unavailable. Select an active manager with a complete reporting setup in this Network.');
   // Ensure a directly reported child cannot become an ancestor of its own former manager.
   if(replacement && directReports.some(row=>Number(row.user_id)===replacementKey)) throw bad('The replacement cannot be someone currently reporting to this manager.');
+  const existingDirectReports = replacement
+    ? members.filter(row => positive(row.accredited_seller_reports_under_user_id) === replacementKey)
+    : [];
   const impacted = directReports.map(row=>({userId:Number(row.user_id),sellerId:Number(row.accredited_seller_id),name:nameOf(row),role:row.role,previousManagerUserId:outgoingKey,nextManagerUserId:replacementKey,userStatus:row.user_status,sellerStatus:row.accredited_seller_status}));
   const descendantIds=new Set([outgoingKey]);
   for(let i=0;i<members.length;i++){
@@ -61,6 +71,12 @@ export async function getManagerReplacementPlan(connection, { groupId, outgoingU
     replacement:replacement?{userId:replacementKey,sellerId:Number(replacement.accredited_seller_id),name:nameOf(replacement),role:replacement.role}:null,
     candidates:candidates.map(row=>({userId:Number(row.user_id),name:nameOf(row),role:row.role})),
     directReports:impacted, totalAffected:descendantIds.size-1,
+    replacesNetworkHead,
+    existingDirectReports:existingDirectReports.map(row=>({
+      userId:Number(row.user_id),name:nameOf(row),role:row.role,
+    })),
+    mergeRequired:Boolean(replacement && directReports.length && existingDirectReports.length),
+    finalDirectReportCount:directReports.length+existingDirectReports.length,
     currentHeadUserId:Number(group.seller_group_head_user_id||0),
     stateHash:crypto.createHash('sha256').update(JSON.stringify(members.map(row=>[Number(row.user_id),row.role,row.user_status,row.accredited_seller_status,Number(row.accredited_seller_reports_under_user_id||0)]))).digest('hex'),
   };
@@ -81,7 +97,11 @@ export async function assertReplacementApplied(connection, plan) {
     FROM accredited_sellers s JOIN users u ON u.id=s.user_id WHERE s.user_id IN (${plan.directReports.length?plan.directReports.map(()=>'?').join(','):'0'})`,plan.directReports.map(row=>row.userId));
   if(rows.length!==plan.directReports.length || rows.some(row=>Number(row.accredited_seller_reports_under_user_id)!==plan.replacement.userId )) throw bad('Team assignments did not save correctly. Nothing was changed.');
   const [[group]]=await connection.query('SELECT seller_group_head_user_id FROM seller_groups WHERE seller_group_id=?',[plan.groupId]);
-  if(plan.role==='division_manager' && Number(group?.seller_group_head_user_id)!==plan.replacement.userId) throw bad('Network Head did not update. Nothing was changed.');
+  const expectedHeadId = plan.replacesNetworkHead ? plan.replacement.userId : plan.currentHeadUserId;
+  if (Number(group?.seller_group_head_user_id || 0) !== Number(expectedHeadId)) {
+    throw bad('Network Head assignment changed unexpectedly. Nothing was changed.');
+  }
 }
 
 export const managerRoleLabels = SELLER_ROLE_LABELS;
+

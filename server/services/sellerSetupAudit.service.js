@@ -47,7 +47,6 @@ export const buildSellerSetupAudit = ({ group, members = [], managerLinks = [], 
       if (visited.has(currentUserId)) { add('CYCLE','Reporting assignments form a loop');break; }
       visited.add(currentUserId);
       if (current.role === 'division_manager') {
-        if (currentUserId !== headId) add('DM_NOT_HEAD','Division Manager is not the Network Head');
         if (numberId(current.accredited_seller_reports_under_user_id)) add('DM_PARENT','Division Manager must report to the Developer');
         break;
       }
@@ -85,3 +84,4 @@ export const buildSellerSetupAudit = ({ group, members = [], managerLinks = [], 
     records,
   };
 };
+

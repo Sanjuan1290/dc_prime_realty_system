@@ -54,7 +54,8 @@ const sellerLabel = (seller = {}) =>
  * Validates the live in-house reporting chain used for new reservations.
  * Historical commission rows remain untouched, but a new reservation must use
  * the exact Sales Agent -> Unit Manager -> Sales Director -> Division Manager
- * structure, ending at the in-house Network hierarchy head.
+ * structure, ending at a Division Manager in the same Network.
+ * The Network has exactly one separately designated Head, who may be another DM.
  */
 export const validateSellerReportingChain = (
   chain = [],
@@ -98,12 +99,14 @@ export const validateSellerReportingChain = (
 
   if (requireGroupHead) {
     const terminal = chain[chain.length - 1] || {};
-    if (!terminal.is_group_head || terminal.role !== 'division_manager' || chain.length !== 4) {
-      throw new Error('Complete the Sales Agent → Unit Manager → Sales Director → Division Manager assignment before reserving.');
+    if (terminal.role !== 'division_manager' || chain.length !== 4 ||
+        (!terminal.is_group_head && !terminal.has_designated_group_head)) {
+      throw new Error('Complete the Sales Agent → Unit Manager → Sales Director → Division Manager assignment and designate one active Network Head before reserving.');
     }
   }
 
   return true;
 };
+
 
 

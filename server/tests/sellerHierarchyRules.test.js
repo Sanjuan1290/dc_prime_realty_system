@@ -80,3 +80,15 @@ test('live in-house reservation chains reject skipped positions and require a Ne
 });
 
 
+
+
+test('a non-Head DM can receive commissions if the Network has a separate active Head', () => {
+ const chain = [
+   {role:'sales_agent',user_id:4,seller_group_id:7,accredited_seller_reports_under_user_id:3},
+   {role:'unit_manager',user_id:3,seller_group_id:7,accredited_seller_reports_under_user_id:2},
+   {role:'sales_director',user_id:2,seller_group_id:7,accredited_seller_reports_under_user_id:20},
+   {role:'division_manager',user_id:20,seller_group_id:7,has_designated_group_head:true},
+ ];
+ assert.equal(validateSellerReportingChain(chain,{requireGroupHead:true}),true);
+ assert.throws(() => validateSellerReportingChain(chain.map(x=>({...x,has_designated_group_head:false})),{requireGroupHead:true}),/designate one active Network Head/);
+});

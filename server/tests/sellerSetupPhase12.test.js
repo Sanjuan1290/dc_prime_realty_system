@@ -68,3 +68,13 @@ test('authorization and protected status changes enforced by code',()=>{
  const importer=source('server/controllers/System/sellerGroup.controller.js');
  assert.match(importer,/Use Activate Seller before importing/);
 });
+
+
+test('multiple independent DMs are valid while exactly one is designated Head', () => {
+ const anotherDM = {accredited_seller_id:19,user_id:9,role:'division_manager',full_name:'DM B',user_status:'active',accredited_seller_status:'active',accredited_seller_reports_under_user_id:null};
+ const otherSD = {accredited_seller_id:20,user_id:10,role:'sales_director',full_name:'SD B',user_status:'active',accredited_seller_status:'active',accredited_seller_reports_under_user_id:9};
+ const report = run({members:[...people,anotherDM,otherSD],managerLinks:[...links,{managed_user_id:10,manager_user_id:9}]});
+ assert.equal(report.summary.blocked,0);
+ assert.equal(report.summary.ready,6);
+ assert(!report.records.some(r => r.issues.some(i => i.code==='DM_NOT_HEAD')));
+});

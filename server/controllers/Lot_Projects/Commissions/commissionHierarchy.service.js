@@ -102,8 +102,9 @@ const loadGroupHeadSeller = async (connection, sellerGroupId) => {
 
 /**
  * Loads the current reporting chain. The first entry is always the assigned
- * Sales Agent. Parent sellers follow in reporting order and the Network Hierarchy Head is added
- * when they are not already part of the explicit reporting chain.
+ * Sales Agent. Parent sellers follow in reporting order. The designated
+ * administrative Head is checked independently: another Division Manager's
+ * branch must not append a second DM and collect a second DM commission.
  */
 export const loadCurrentSellerChain = async (connection, accreditedSellerId) => {
   const chain = [];
@@ -128,16 +129,17 @@ export const loadCurrentSellerChain = async (connection, accreditedSellerId) => 
     terminalSeller?.seller_group_id || chain[0]?.seller_group_id
   );
 
-  if (headSeller) {
-    const existingHeadIndex = chain.findIndex(
-      (seller) => Number(seller.accredited_seller_id) === Number(headSeller.accredited_seller_id)
-    );
-
-    if (existingHeadIndex >= 0) {
-      chain[existingHeadIndex] = { ...chain[existingHeadIndex], is_group_head: true };
-    } else {
-      chain.push(headSeller);
-    }
+  if (headSeller && headSeller.role === 'division_manager' &&
+      Number(headSeller.seller_group_id) === Number(chain[0]?.seller_group_id) && chain.length) {
+    // The Network Head exists and is active, but is not necessarily the DM
+    // receiving commissions on this seller's branch.
+    const terminalIndex = chain.length - 1;
+    const terminal = chain[terminalIndex];
+    chain[terminalIndex] = {
+      ...terminal,
+      has_designated_group_head: true,
+      is_group_head: Number(terminal.user_id) === Number(headSeller.user_id),
+    };
   }
 
   return chain;
@@ -712,4 +714,5 @@ export const hasReleasedCommissionActivity = ({
   Number(releasedCommissionCount || 0) > 0 ||
   Number(releasedStageCount || 0) > 0 ||
   Number(receiptCount || 0) > 0;
+
 

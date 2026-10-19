@@ -320,11 +320,8 @@ export const analyzeNetworkMemberImport = ({
     }
 
     const isCurrentHead = Boolean(existing && headUserId && Number(existing.user_id) === headUserId);
-    if (row.role === 'division_manager' && !isCurrentHead) {
-      errors.push(headUserId
-        ? `This Network already has ${currentMemberName(headMember)} as its hierarchy head. Excel import cannot add or replace the Division Manager head.`
-        : 'Assign the Network hierarchy head through Add Member/Edit Network before using Excel import.');
-    }
+    // A Network may contain several DMs, but the existing Head remains the
+    // only designated Head. Excel imports never change that designation.
     if (isCurrentHead && row.role && String(existing.role || '') !== row.role) {
       errors.push('Excel import cannot change the Network hierarchy head role.');
     }
@@ -466,5 +463,6 @@ export const sortNetworkMemberImportRows = (rows = []) => [...rows].sort((a, b) 
   if (roleDelta) return roleDelta;
   return Number(a.sourceRow || 0) - Number(b.sourceRow || 0);
 });
+
 
 

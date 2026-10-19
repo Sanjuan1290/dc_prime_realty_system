@@ -500,8 +500,8 @@ export const assertSellerGroupRoleHierarchy = async (connection, groupId) => {
     if (head.accredited_seller_reports_under_user_id) {
       throw createValidationError('The In-House Network Hierarchy Head must report directly to the developer.');
     }
-  } else if (topLevelSellers.length > 1) {
-    throw createValidationError('A headless In-House Network can have only one top-level Division Manager or Sales Director.');
+  } else if (topLevelSellers.some((seller) => !isGroupHeadRole(seller.role))) {
+    throw createValidationError('Only a Division Manager or legacy top-level Sales Director can be root-level while a Network Head is unset.');
   }
 
   for (const seller of rows) {
@@ -510,7 +510,7 @@ export const assertSellerGroupRoleHierarchy = async (connection, groupId) => {
     }
     const isHead = headUserId && Number(seller.user_id) === headUserId;
     if (!seller.accredited_seller_reports_under_user_id) {
-      if (isHead || (!headUserId && isGroupHeadRole(seller.role))) continue;
+      if (isHead || seller.role === 'division_manager' || (!headUserId && isGroupHeadRole(seller.role))) continue;
       const expected = getRequiredParentRole(seller.role);
       throw createValidationError(`${seller.full_name || 'Seller'} must report under a ${SELLER_ROLE_LABELS[expected] || 'valid in-house parent'}.`);
     }
@@ -3279,6 +3279,7 @@ export const undoNetworkMemberImport = async (req, res) => {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally { connection.release(); }
 };
+
 
 
 

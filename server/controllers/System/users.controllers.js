@@ -421,6 +421,18 @@ const validateSellerRemovalOrRoleChange = async (connection, userId, requestedRo
   return dependencies;
 };
 
+// A second (or subsequent) DM must never silently overwrite the sole Head.
+// Lock the Network row so concurrent Add Member requests cannot both claim it.
+const assignFirstNetworkHeadIfMissing = async (connection, groupId, userId) => {
+  const [rows] = await connection.query(
+    'SELECT seller_group_head_user_id FROM seller_groups WHERE seller_group_id = ? FOR UPDATE',
+    [groupId]
+  );
+  if (!rows.length) throw createValidationError('In-House Network not found.');
+  if (rows[0].seller_group_head_user_id) return;
+  await assignTopLevelSellerAsGroupHead(connection, groupId, userId);
+};
+
 const validateSellerHierarchyAssignment = async (
   connection,
   {
@@ -500,12 +512,9 @@ const validateSellerHierarchyAssignment = async (
 
   if (role === 'division_manager') {
     if (parentUserId) throw createValidationError('A Division Manager reports directly to the developer.');
-    const canReplaceBrokerHead = group.seller_group_head_user_id
-      && group.seller_group_head_role === 'sales_director'
-      && !isCurrentGroupHead;
-    if (group.seller_group_head_user_id && !isCurrentGroupHead && !canReplaceBrokerHead) {
-      throw createValidationError('This group already has a Division Manager as its Network Hierarchy Head.');
-    }
+    // The Division Manager position is not the Network Head designation.
+    // Multiple DMs may belong to one Network; the group stores exactly one
+    // designated Head user ID independently of the member roles.
     return null;
   }
 
@@ -1714,7 +1723,7 @@ export const createUser = async (req, res) => {
 
       accreditedSellerId = sellerResult.insertId;
       if (isGroupHeadRole(role) && !normalizedReportsUnderUserId) {
-        await assignTopLevelSellerAsGroupHead(connection, Number(seller_group_id), userId);
+        await assignFirstNetworkHeadIfMissing(connection, Number(seller_group_id), userId);
       }
       await syncManagedSellerLink(connection, accreditedSellerId, normalizedReportsUnderUserId);
       await assertSellerGroupRoleHierarchy(connection, Number(seller_group_id));
@@ -2102,7 +2111,7 @@ export const editUser = async (req, res) => {
 
       accreditedSellerId = sellerRows[0]?.accredited_seller_id;
       if (isGroupHeadRole(role) && !normalizedReportsUnderUserId) {
-        await assignTopLevelSellerAsGroupHead(connection, Number(seller_group_id), userId);
+        await assignFirstNetworkHeadIfMissing(connection, Number(seller_group_id), userId);
       }
       await syncManagedSellerLink(connection, accreditedSellerId, normalizedReportsUnderUserId);
       await assertSellerGroupRoleHierarchy(connection, Number(seller_group_id));
@@ -2524,5 +2533,6 @@ export const resetUserPassword = async (req, res) => {
     connection.release();
   }
 };
+
 
 

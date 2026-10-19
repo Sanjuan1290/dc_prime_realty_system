@@ -277,16 +277,10 @@ const EditUserModal = ({
 
   const isSelectedUserGroupHead = Number(selectedGroup?.seller_group_head_user_id || 0) === Number(selectedUser?.id || 0);
   const groupHasHead = Boolean(selectedGroup?.seller_group_head_user_id);
-  const groupHeadRole = selectedGroup?.seller_group_head_role || '';
-  const canReplaceBrokerHead = form.role === "division_manager"
-    && groupHeadRole === "sales_director"
-    && !isSelectedUserGroupHead;
-  const roleConflictsWithGroupHead = form.role === "division_manager"
-    && groupHasHead
-    && !isSelectedUserGroupHead
-    && !canReplaceBrokerHead;
-  const canLeaveParentEmpty = (form.role === "division_manager" && (!groupHasHead || isSelectedUserGroupHead || canReplaceBrokerHead))
-    || (form.role === "sales_director" && (isSelectedUserGroupHead || !groupHasHead));
+  // DM is a role; Network Head is one independently designated user.
+  // Any number of DMs may belong to the same Network.
+  const canLeaveParentEmpty = form.role === "division_manager"
+    || (form.role === "sales_director" && (!groupHasHead || isSelectedUserGroupHead));
   const parentIsRequired = isSellerRole && !canLeaveParentEmpty;
 
   const groupOptions = useMemo(
@@ -376,11 +370,6 @@ const EditUserModal = ({
 
     if (!form.seller_group_id) {
       setWarning("Select an In-House Network.");
-      return false;
-    }
-
-    if (roleConflictsWithGroupHead) {
-      setWarning("This Network already has a Division Manager as its head.");
       return false;
     }
 
@@ -697,5 +686,6 @@ const EditUserModal = ({
 };
 
 export default EditUserModal;
+
 
 

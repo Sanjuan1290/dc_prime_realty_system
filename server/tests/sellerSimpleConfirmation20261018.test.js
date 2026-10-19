@@ -25,6 +25,7 @@ test('Manager replacement requires email only for Division Manager Network Head'
   assert.equal(managerReplacementAuthMode('unit_manager'),'confirmation');
   assert.equal(managerReplacementAuthMode('sales_director'),'confirmation');
   assert.equal(managerReplacementAuthMode('division_manager'),'email_code');
+  assert.equal(managerReplacementAuthMode('division_manager',{replacesNetworkHead:false}),'confirmation');
   assert.throws(()=>managerReplacementAuthMode('sales_agent'),/Choose a Unit Manager/);
 });
 test('Seller confirmation cannot bypass locked role/status validation or reason requirement',()=>{
@@ -44,7 +45,7 @@ test('Seller confirmation cannot bypass locked role/status validation or reason 
 test('Manager confirmation is single transaction, binds approval to live reviewed state',()=>{
   const c=read('server/controllers/System/sellerManagerReplacement.controller.js');
   const routes=read('server/routers/System/sellerGroup.routers.js');
-  assert.match(c,/managerReplacementAuthMode\(plan\.role\)/);
+  assert.match(c,/managerReplacementAuthMode\(plan\.role, \{ replacesNetworkHead: plan\.replacesNetworkHead \}\)/);
   assert.match(c,/expectedStateHash/);
   assert.match(c,/expectedHeadUserId/);
   assert.match(c,/req\.body\?\.confirmReplacement !== true/);
@@ -78,3 +79,4 @@ test('Migration permits nullable verification for direct UM and SD confirmation'
   assert.match(sql,/`verification_id` BIGINT UNSIGNED NULL/);
   assert.doesNotMatch(sql,/DROP TABLE|TRUNCATE|DELETE FROM/i);
 });
+

@@ -32,11 +32,24 @@ test('Sales Director replacement moves UMs, not their Sales Agents',async()=>{
  assert.equal(plan.totalAffected,2);
 });
 
-test('Division Manager replacement requires outgoing Network Head',async()=>{
- const plan=await getManagerReplacementPlan(conn([dm(),dm(101),sd(200),um(300),sa(400)]),{groupId:5,outgoingUserId:100,replacementUserId:101});
- assert.equal(plan.directReports.length,1);
- assert.equal(plan.currentHeadUserId,100);
- await assert.rejects(()=>getManagerReplacementPlan(conn([dm(),dm(101)]),{groupId:5,outgoingUserId:101,replacementUserId:100}),/current Network Head/);
+test('Division Manager replacement distinguishes a designated Head from ordinary DMs',async()=>{
+ const members=[dm(),dm(101),dm(102),sd(200),sd(201,101),um(300),sa(400)];
+ const headPlan=await getManagerReplacementPlan(conn(members),{groupId:5,outgoingUserId:100,replacementUserId:101});
+ assert.equal(headPlan.replacesNetworkHead,true);
+ assert.equal(headPlan.directReports.length,1);
+ assert.equal(headPlan.existingDirectReports.length,1);
+ assert.equal(headPlan.mergeRequired,true);
+ const regularPlan=await getManagerReplacementPlan(conn(members),{groupId:5,outgoingUserId:101,replacementUserId:102});
+ assert.equal(regularPlan.replacesNetworkHead,false);
+ assert.equal(regularPlan.currentHeadUserId,100);
+ assert.equal(regularPlan.directReports.length,1);
+ assert.equal(regularPlan.mergeRequired,false);
+});
+
+test('UM and SD replacements cannot silently cross reporting branches',async()=>{
+ const members=[dm(),dm(101),sd(200,100),sd(201,101),um(300,200),um(301,201),sa(400,300)];
+ await assert.rejects(()=>getManagerReplacementPlan(conn(members),{groupId:5,outgoingUserId:300,replacementUserId:301}),/Replacement is unavailable/);
+ await assert.rejects(()=>getManagerReplacementPlan(conn(members),{groupId:5,outgoingUserId:200,replacementUserId:201}),/Replacement is unavailable/);
 });
 
 test('Inactive direct reports retain their status in transfer plan',async()=>{
@@ -80,3 +93,4 @@ test('Migration and API safeguards exist without modifying historical commission
  assert.doesNotMatch(migration,/CREATE TRIGGER|DROP TRIGGER|DELIMITER/);
  assert.doesNotMatch(controller,/UPDATE\s+lot_project_commissions/i);
 });
+

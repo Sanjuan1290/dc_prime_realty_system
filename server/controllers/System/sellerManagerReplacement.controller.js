@@ -29,7 +29,7 @@ export const requestManagerReplacementCode = (req,res)=>transaction(req,res,asyn
   await connection.beginTransaction();
   const plan=await getManagerReplacementPlan(connection,parse(req));
   if(!plan.replacement) { await connection.rollback(); return res.status(400).json({message:'Choose a replacement manager.'}); }
-  if(managerReplacementAuthMode(plan.role)!=='email_code') {await connection.rollback();return res.status(400).json({message:'This manager uses direct confirmation. No email code is required.'});}
+  if(managerReplacementAuthMode(plan.role, { replacesNetworkHead: plan.replacesNetworkHead })!=='email_code') {await connection.rollback();return res.status(400).json({message:'This manager uses direct confirmation. No email code is required.'});}
   const fingerprint=replacementFingerprint(plan,reason(req));
   const payload={fingerprint,actorId:Number(req.authUser.id),groupId:plan.groupId,outgoingUserId:plan.outgoing.userId,replacementUserId:plan.replacement.userId};
   const {verificationId,code}=await createSensitiveActionVerification(connection,{userId:req.authUser.id,actionType:ACTION,entityType:'accredited_seller',entityId:String(plan.outgoing.sellerId),payload,reason:reason(req),requestIp:getSensitiveActionRequestIp(req)});
@@ -46,7 +46,7 @@ export const confirmManagerReplacement = (req,res)=>transaction(req,res,async co
   // Lock the network and all current members so stale previews cannot be confirmed.
   const plan=await getManagerReplacementPlan(connection,{groupId,outgoingUserId,replacementUserId,lock:true});
   if (!plan.replacement) { await connection.rollback(); return res.status(400).json({message:'Choose a replacement manager.'}); }
-  const authMode=managerReplacementAuthMode(plan.role);
+  const authMode=managerReplacementAuthMode(plan.role, { replacesNetworkHead: plan.replacesNetworkHead });
   // Confirm the exact reviewed snapshot, not an outdated team preview.
   if (!req.body?.expectedStateHash || req.body.expectedStateHash !== plan.stateHash ||
       Number(req.body?.expectedHeadUserId) !== plan.currentHeadUserId) {
@@ -62,6 +62,10 @@ export const confirmManagerReplacement = (req,res)=>transaction(req,res,async co
     await connection.rollback();
     return res.status(400).json({message:'Confirm the manager replacement before saving.'});
   }
+  if (plan.mergeRequired && req.body?.confirmTeamMerge !== true) {
+    await connection.rollback();
+    return res.status(400).json({message:'The replacement already manages a team. Review the combined team and explicitly confirm the merge.'});
+  }
   const rows=plan.directReports;
   // No historical sales, payment or commission rows are touched.
   for(const row of rows){
@@ -69,7 +73,7 @@ export const confirmManagerReplacement = (req,res)=>transaction(req,res,async co
     await connection.query('DELETE FROM accredited_seller_managed_sellers WHERE managed_accredited_seller_id=?',[row.sellerId]);
     await connection.query('INSERT INTO accredited_seller_managed_sellers(manager_accredited_seller_id,managed_accredited_seller_id) VALUES(?,?)',[plan.replacement.sellerId,row.sellerId]);
   }
-  if(plan.role==='division_manager') await connection.query('UPDATE seller_groups SET seller_group_head_user_id=? WHERE seller_group_id=? AND seller_group_head_user_id=?',[plan.replacement.userId,plan.groupId,plan.outgoing.userId]);
+  if(plan.replacesNetworkHead) await connection.query('UPDATE seller_groups SET seller_group_head_user_id=? WHERE seller_group_id=? AND seller_group_head_user_id=?',[plan.replacement.userId,plan.groupId,plan.outgoing.userId]);
   await connection.query(`UPDATE users SET status='inactive',can_login=0,deactivated_at=NOW(),deactivated_by_user_id=?,deactivation_reason=?,auth_version=COALESCE(auth_version,0)+1 WHERE id=?`,[req.authUser.id,reason(req),plan.outgoing.userId]);
   await connection.query(`UPDATE accredited_sellers SET accredited_seller_status='inactive' WHERE accredited_seller_id=?`,[plan.outgoing.sellerId]);
   await assertReplacementApplied(connection,plan);
@@ -81,7 +85,7 @@ export const confirmManagerReplacement = (req,res)=>transaction(req,res,async co
   const replacementId=Number(saved.insertId);
   for(const row of rows) await connection.query(`INSERT INTO seller_manager_replacement_items(replacement_id,affected_accredited_seller_id,previous_manager_user_id,new_manager_user_id) VALUES(?,?,?,?)`,[replacementId,row.sellerId,row.previousManagerUserId,row.nextManagerUserId]);
   const review=await createOperationalReview(connection,{actor:req.authUser,actionKey:'seller.manager_replace',department:'marketing',entityType:'accredited_seller',entityId:String(plan.outgoing.sellerId),entityLabel:plan.outgoing.name,beforeSnapshot:{manager:plan.outgoing,reportingSellers:rows,accountStatus:'active'},afterSnapshot:{manager:plan.replacement,reportingSellers:rows,formerManagerStatus:'inactive',replacementId}});
-  await writeAuditLog(connection,req,{action:'update',module:'Accreditation',entityType:'accredited_seller',entityId:String(plan.outgoing.sellerId),entityLabel:plan.outgoing.name,title:'Replaced and deactivated manager',description:`Reassigned ${rows.length} direct reports to ${plan.replacement.name}.`,metadata:{replacementId,groupId:plan.groupId,role:plan.role,fromUserId:plan.outgoing.userId,toUserId:plan.replacement.userId,fromManagerName:plan.outgoing.name,toManagerName:plan.replacement.name,affected:rows,reason:reason(req),verificationId:authMode==='email_code'?verificationId:null,verificationMethod:authMode==='email_code'?'email_code':'administrator_confirmation',reviewId:review.reviewId,reviewNumber:review.reviewNumber}});
+  await writeAuditLog(connection,req,{action:'update',module:'Accreditation',entityType:'accredited_seller',entityId:String(plan.outgoing.sellerId),entityLabel:plan.outgoing.name,title:'Replaced and deactivated manager',description:`Reassigned ${rows.length} direct reports to ${plan.replacement.name}.`,metadata:{replacementId,groupId:plan.groupId,role:plan.role,fromUserId:plan.outgoing.userId,toUserId:plan.replacement.userId,fromManagerName:plan.outgoing.name,toManagerName:plan.replacement.name,affected:rows,reason:reason(req),verificationId:authMode==='email_code'?verificationId:null,verificationMethod:authMode==='email_code'?'email_code':'administrator_confirmation',mergeApproved:Boolean(plan.mergeRequired && req.body.confirmTeamMerge),headChanged:plan.replacesNetworkHead,reviewId:review.reviewId,reviewNumber:review.reviewNumber}});
   await connection.query('UPDATE seller_manager_replacements SET operational_review_id=? WHERE replacement_id=?',[review.reviewId,replacementId]);
   await connection.commit();
   return res.json({success:true,message:'Manager replaced and team moved.',data:{replacementId,review,affected:rows.length}});
@@ -107,3 +111,4 @@ export const getManagerReplacementHistory = (req,res)=>transaction(req,res,async
     ORDER BY history.replacement_id DESC LIMIT ? OFFSET ?`,[groupId,limit,(page-1)*limit]);
   return res.json({success:true,data:rows,page});
 });
+
