@@ -69,3 +69,4 @@ const SellerSetupCheck=({groupId,onClose,onViewSeller})=>{
 }
 export default SellerSetupCheck
 
+

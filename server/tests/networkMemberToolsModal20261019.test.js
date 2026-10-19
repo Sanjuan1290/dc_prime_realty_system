@@ -30,3 +30,14 @@ test('seller setup opens as an accessible modal, replacement history uses a hist
   assert.match(setup, /Export Results/)
   assert.match(page, /setShowSellerSetupCheck\(false\)[\s\S]*setSelectedMember/)
 })
+
+
+test('latest multiple-DM UI remains intact and the old header actions do not return', () => {
+  const page = read('client/src/pages/System/SellerGroupDetails.jsx')
+  assert.match(page, /member\.role === 'division_manager' && Number\(member\.user_id\) === Number\(group\.headUserId\)/)
+  assert.match(page, /Network Head/)
+  assert.match(page, /member\.role === 'division_manager' \|\| Number\(member\.user_id\)/)
+  assert.doesNotMatch(page, /onClick=\{\(\) => setShowMemberImport\(true\)\}/)
+  assert.doesNotMatch(page, /onClick=\{\(\) => setShowImportHistory\(true\)\}/)
+  assert.equal((page.match(/<SellerSetupCheck\b/g) || []).length, 1)
+})

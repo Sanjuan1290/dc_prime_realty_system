@@ -327,7 +327,8 @@ test('External or inactive Network cannot accept member import', () => {
 test('Network details UI exposes Import Members and the template contains a safe sample row plus the full DM to SA example chain', async () => {
   const details = await fs.readFile(path.join(root, 'client/src/pages/System/SellerGroupDetails.jsx'), 'utf8');
   const modal = await fs.readFile(path.join(root, 'client/src/components/System/sellerGroupComponents/NetworkMemberImportModal.jsx'), 'utf8');
-  assert.match(details, /Add Member[\s\S]*Import Members/);
+  assert.match(details, /Add Member[\s\S]*Member Tools/);
+  assert.match(details, /canImportMembers=\{canImportMembers\}/);
   // Headers moved to a shared util so Export Members uses the same layout (2026-10-05).
   const excelUtil = await fs.readFile(path.join(root, 'client/src/utils/networkMemberExcel.js'), 'utf8');
   assert.match(modal, /NETWORK_MEMBER_EXCEL_HEADERS as HEADERS/);
@@ -413,6 +414,7 @@ test('commit preserves an existing employee/system login by creating a non-login
   assert.match(controller, /if \(accreditedSellerId\)[\s\S]*UPDATE accredited_sellers[\s\S]*else \{[\s\S]*INSERT INTO accredited_sellers/);
   assert.match(controller, /UPDATE employees[\s\S]*linked_user_id = COALESCE\(linked_user_id, \?\)/);
 });
+
 
 
 

@@ -9,18 +9,17 @@ import {
   FiXCircle,
   FiClipboard,
   FiDollarSign,
-  FiDownload,
+  FiClock,
+  FiTool,
   FiEdit2,
   FiExternalLink,
   FiMail,
   FiMapPin,
   FiPhone,
-  FiRotateCcw,
   FiRepeat,
   FiSearch,
   FiShoppingBag,
   FiTrendingUp,
-  FiUpload,
   FiUserPlus,
   FiUsers,
 } from 'react-icons/fi'
@@ -33,6 +32,7 @@ import ReplaceManagerModal from '../../components/System/sellerGroupComponents/R
 import ManagerReplacementHistory from '../../components/System/sellerGroupComponents/ManagerReplacementHistory'
 import NetworkMemberImportModal from '../../components/System/sellerGroupComponents/NetworkMemberImportModal'
 import NetworkMemberImportHistoryModal from '../../components/System/sellerGroupComponents/NetworkMemberImportHistoryModal'
+import NetworkMemberToolsModal from '../../components/System/sellerGroupComponents/NetworkMemberToolsModal'
 import CreateUserModal from '../../components/System/userComponents/CreateUserModal'
 import EditUserModal from '../../components/System/userComponents/EditUserModal'
 import DeactivateSystemUserModal from '../../components/System/userComponents/DeactivateSystemUserModal'
@@ -235,6 +235,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const [showSellerSetupCheck, setShowSellerSetupCheck] = useState(false)
   const [memberPage, setMemberPage] = useState(1)
   const [showCreateUser, setShowCreateUser] = useState(false)
+  const [showMemberTools, setShowMemberTools] = useState(false)
   const [showMemberImport, setShowMemberImport] = useState(false)
   const [showImportHistory, setShowImportHistory] = useState(false)
   const [selectedMember, setSelectedMember] = useState(null)
@@ -501,12 +502,12 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
           </NavLink>
 
           {!isExternal && canCheckSellerSetup ? (
-            <button type="button" onClick={() => setShowSellerSetupCheck(current=>!current)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+            <button type="button" onClick={() => setShowSellerSetupCheck(true)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50">
               <FiClipboard/> Check Seller Setup
             </button>
           ) : null}
 
-          {!isExternal && canCheckSellerSetup ? <button type="button" onClick={()=>setShowReplacementHistory(true)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FiRotateCcw/> Replacement History</button>:null}
+          {!isExternal && canCheckSellerSetup ? <button type="button" onClick={()=>setShowReplacementHistory(true)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FiClock/> Replacement History</button>:null}
           {!isExternal && canAddMember ? (
             <button
               type="button"
@@ -518,36 +519,14 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             </button>
           ) : null}
 
-          {!isExternal && canImportMembers ? (
+          {/* Consolidate the three member actions without changing their permissions or flows. */}
+          {!isExternal && (canImportMembers || canExportMembers) ? (
             <button
               type="button"
-              onClick={() => setShowMemberImport(true)}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+              onClick={() => setShowMemberTools(true)}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
             >
-              <FiUpload />
-              Import Members
-            </button>
-          ) : null}
-
-          {!isExternal && canImportMembers ? (
-            <button
-              type="button"
-              onClick={() => setShowImportHistory(true)}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-200 bg-white px-4 text-sm font-semibold text-amber-800 transition hover:bg-amber-50"
-            >
-              <FiRotateCcw /> Undo Import
-            </button>
-          ) : null}
-
-          {!isExternal && canExportMembers ? (
-            <button
-              type="button"
-              onClick={exportMembers}
-              disabled={isExportingMembers}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <FiDownload className={isExportingMembers ? 'animate-bounce' : ''} />
-              {isExportingMembers ? 'Exporting...' : 'Export Members'}
+              <FiTool /> Member Tools
             </button>
           ) : null}
 
@@ -587,10 +566,6 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 
 
       
-      {showSellerSetupCheck && !isExternal && canCheckSellerSetup ? (
-        <SellerSetupCheck groupId={groupId} onClose={()=>setShowSellerSetupCheck(false)} onViewSeller={(userId)=>{const m=members.find(item=>Number(item.user_id)===Number(userId));if(m)setSelectedMember({...m,id:Number(m.user_id),status:m.user_status,seller_group_id:Number(group.id||groupId),reports_under_user_id:m.accredited_seller_reports_under_user_id||''})}}/>
-      ) : null}
-
       {configuration ? (
         <>
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
@@ -1158,6 +1133,47 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         </>
       ) : null}
 
+      {showMemberTools && !isExternal && (canImportMembers || canExportMembers) ? (
+        <NetworkMemberToolsModal
+          networkName={group.name || groupOption.name || 'In-House Network'}
+          canImportMembers={canImportMembers}
+          canExportMembers={canExportMembers}
+          isExportingMembers={isExportingMembers}
+          onClose={() => setShowMemberTools(false)}
+          onImport={() => {
+            setShowMemberTools(false)
+            setShowMemberImport(true)
+          }}
+          onUndo={() => {
+            setShowMemberTools(false)
+            setShowImportHistory(true)
+          }}
+          onExport={async () => {
+            setShowMemberTools(false)
+            await exportMembers()
+          }}
+        />
+      ) : null}
+
+      {showSellerSetupCheck && !isExternal && canCheckSellerSetup ? (
+        <SellerSetupCheck
+          groupId={groupId}
+          onClose={() => setShowSellerSetupCheck(false)}
+          onViewSeller={(userId) => {
+            const member = members.find((item) => Number(item.user_id) === Number(userId))
+            if (!member) return
+            setShowSellerSetupCheck(false)
+            setSelectedMember({
+              ...member,
+              id: Number(member.user_id),
+              status: member.user_status,
+              seller_group_id: Number(group.id || groupId),
+              reports_under_user_id: member.accredited_seller_reports_under_user_id || '',
+            })
+          }}
+        />
+      ) : null}
+
       {showImportHistory ? (
         <NetworkMemberImportHistoryModal
           groupId={Number(group.id || groupId)}
@@ -1268,6 +1284,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 }
 
 export default SellerGroupDetails
+
 
 
 
