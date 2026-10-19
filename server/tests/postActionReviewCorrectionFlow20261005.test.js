@@ -129,12 +129,13 @@ test('Audit correction owner is System Admin normally, but Super Admin for a Sup
 
 test('Review Center explains correction ownership and gives original Staff a Correct & Resubmit action', async () => {
   const page = await readProjectFile('client/src/pages/System/ReviewCenter.jsx');
-  assert.match(page, /Correction Requested · Staff Action Required/);
+  assert.match(page, /Returned for Correction/);
   assert.match(page, /Correct &amp; Resubmit/);
   assert.match(page, /Auditor-confirmed correction required/);
   assert.match(page, /correctionRoleLabel/);
-  assert.match(page, /Authorized edits remain available during returned corrections and open Audit Cases/);
+  assert.match(page, /An open Audit Case does not prevent permitted changes/);
 });
+
 
 
 

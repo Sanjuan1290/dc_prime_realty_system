@@ -1,14 +1,14 @@
 import NetworkProfitAcknowledgementLibrary from '../../components/Lot_Projects/CommissionComponents/NetworkProfitAcknowledgementLibrary'
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import PageHeader from "../../components/Shared/PageHeader";
 import StatusAlert from "../../components/Shared/StatusAlert";
 import ReadOnlyNotice from "../../components/Shared/ReadOnlyNotice";
 import SignedCopyUploadModal from "../../components/Shared/SignedCopyUploadModal";
 import useCurrentUser from "../../utils/useCurrentUser";
 import { FaUserPlus } from "react-icons/fa";
-import { FiCalendar, FiDownload, FiExternalLink, FiFileText, FiHome, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
+import { FiCalendar, FiDownload, FiExternalLink, FiFileText, FiHome, FiEye, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
 import { formatDateTime } from "../../utils/formatDateTime";
 import {useFetch as fetchApi, useFetchPost as postApi, getDoubleCheckNotice} from "../../utils/useFetch";
 import { PERMISSIONS, hasPermission } from "../../config/permissions";
@@ -902,15 +902,24 @@ const Accredited = () => {
   const canViewSellerGroups = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW);
   const canOpenProofWorkspace = canPrint || canUploadProof;
   const roleBasePath = `/portal/${actor?.role || "super_admin"}`;
+  const location = useLocation();
+  const initialDirectoryFilters = new URLSearchParams(location.search);
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [search, setSearch] = useState(() => initialDirectoryFilters.get('sellerSearch') || '');
+  const [roleFilter, setRoleFilter] = useState(() => initialDirectoryFilters.get('sellerRole') || 'all');
+  const [statusFilter, setStatusFilter] = useState(() => initialDirectoryFilters.get('sellerStatus') || 'all');
+  const [page, setPage] = useState(() => Math.max(1, Number(initialDirectoryFilters.get('sellerPage')) || 1));
+  const [limit, setLimit] = useState(() => [10,25,50].includes(Number(initialDirectoryFilters.get('sellerLimit'))) ? Number(initialDirectoryFilters.get('sellerLimit')) : 10);
   const [alert, setAlert] = useState(null);
   const [proofSeller, setProofSeller] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
+
+  const directoryReturnQuery = new URLSearchParams({ from: 'directory',
+    ...(search.trim() ? { sellerSearch: search.trim() } : {}),
+    ...(roleFilter !== 'all' ? { sellerRole: roleFilter } : {}),
+    ...(statusFilter !== 'all' ? { sellerStatus: statusFilter } : {}),
+    sellerPage: String(page), sellerLimit: String(limit),
+  }).toString();
 
   const queryString = new URLSearchParams({
     page: String(page),
@@ -1036,7 +1045,14 @@ const Accredited = () => {
                   <p className="font-semibold text-slate-700">{seller.seller_group_name || "No Network"}</p>
                   <p className="text-slate-600">{seller.reports_under_name || "Direct to Developer"}</p>
                   <div><span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold ${seller.accredited_seller_status === "active" && seller.user_status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}>{seller.accredited_seller_status === "active" && seller.user_status === "active" ? "Active" : "Inactive"}</span>{seller.user_status !== seller.accredited_seller_status && <p className="mt-1 text-xs font-semibold text-amber-700">Account and seller status do not match</p>}<p className="mt-1 text-xs text-slate-500">{seller.accredited_seller_updated_at ? formatDateTime(seller.accredited_seller_updated_at) : "—"}</p></div>
-                  <div className="flex flex-wrap gap-2">{canOpenProofWorkspace ? <button type="button" onClick={() => handlePrintProof(seller)} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Print Proof of Income</button> : <span className="text-xs font-semibold text-slate-400">View only</span>}</div>
+                  <div className="flex flex-wrap gap-2">
+                    <NavLink
+                      to={seller.seller_group_type === 'in_house' && seller.seller_group_id && seller.user_id
+                        ? `${roleBasePath}/accredited/groups/in-house/${seller.seller_group_id}/members/${seller.user_id}?${directoryReturnQuery}`
+                        : `${roleBasePath}/accredited/sellers/${seller.accredited_seller_id}?${directoryReturnQuery}`}
+                      aria-label={`View seller ${getAccreditedDisplayName(seller)}`}
+                      className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"><FiEye className="h-4 w-4" />View</NavLink>
+                    {canOpenProofWorkspace ? <button type="button" onClick={() => handlePrintProof(seller)} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Print Proof of Income</button> : null}</div>
                 </div>
               );
             })}
@@ -1066,5 +1082,6 @@ const Accredited = () => {
 };
 
 export default Accredited;
+
 
 

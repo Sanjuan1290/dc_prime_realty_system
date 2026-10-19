@@ -139,6 +139,52 @@ const hydrateSellerRates = async (sellers) => {
   }));
 };
 
+// Read-only details for External Network and unassigned sellers from the seller directory.
+export const getAccreditedSellerDirectoryProfile = async (req, res) => {
+  try {
+    const sellerId = Number(req.params.sellerId);
+    if (!Number.isSafeInteger(sellerId) || sellerId <= 0) return res.status(400).json({ message: 'Choose a valid seller.' });
+    const [rows] = await db.query(`SELECT a.accredited_seller_id, a.user_id, a.seller_group_id,
+      ${fullNameSql('u')} AS full_name, u.first_name, u.middle_name, u.last_name,
+      u.email, u.contact_no, u.tin_no, u.prc_no, u.address, u.account_code, u.role,
+      u.status AS user_status, u.can_login,
+      a.accredited_seller_created_at, a.accredited_seller_accreditation_date,
+      a.accredited_seller_status, a.accredited_seller_reports_under_user_id AS reports_under_user_id,
+      ${fullNameSql('parent')} AS reports_under_name,
+      sg.seller_group_name, sg.seller_group_type
+      FROM accredited_sellers a JOIN users u ON u.id = a.user_id
+      LEFT JOIN users parent ON parent.id = a.accredited_seller_reports_under_user_id
+      LEFT JOIN seller_groups sg ON sg.seller_group_id = a.seller_group_id
+      WHERE a.accredited_seller_id = ? AND COALESCE(a.is_system_dummy, 0) = 0 LIMIT 1`, [sellerId]);
+    if (!rows.length) return res.status(404).json({ message: 'Seller record not found.' });
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ data: rows[0] });
+  } catch (error) { return res.status(500).json({ message: getErrorMessage(error) }); }
+};
+
+// Read-only reporting view used by the Accredited Sellers directory, including Auditors.
+// No commission records, password fields, access tokens, or write operations are returned.
+export const getAccreditedNetworkMemberDirectory = async (req, res) => {
+  try {
+    const groupId = Number(req.params.groupId);
+    if (!Number.isSafeInteger(groupId) || groupId <= 0) return res.status(400).json({ message: 'Choose a valid Network.' });
+    const [[group]] = await db.query(`SELECT seller_group_id, seller_group_name, seller_group_type, seller_group_head_user_id
+      FROM seller_groups WHERE seller_group_id = ? LIMIT 1`, [groupId]);
+    if (!group || group.seller_group_type !== 'in_house') return res.status(404).json({ message: 'In-House Network not found.' });
+    const [members] = await db.query(`SELECT a.accredited_seller_id, a.user_id,
+        ${fullNameSql('u')} AS full_name, u.first_name, u.middle_name, u.last_name,
+        u.email, u.contact_no, u.tin_no, u.prc_no, u.address, u.account_code, u.can_login,
+        u.role, u.status AS user_status, a.accredited_seller_created_at,
+        a.accredited_seller_accreditation_date, a.accredited_seller_status,
+        a.accredited_seller_reports_under_user_id AS reports_under_user_id
+      FROM accredited_sellers a INNER JOIN users u ON u.id = a.user_id
+      WHERE a.seller_group_id = ? AND COALESCE(a.is_system_dummy, 0) = 0
+      ORDER BY FIELD(u.role, 'division_manager', 'sales_director', 'unit_manager', 'sales_agent'), u.last_name, u.first_name, a.accredited_seller_id`, [groupId]);
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ data: { group, members } });
+  } catch (error) { return res.status(500).json({ message: getErrorMessage(error) }); }
+};
+
 export const getAccreditedExport = async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -1448,5 +1494,6 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     connection.release();
   }
 };
+
 
 

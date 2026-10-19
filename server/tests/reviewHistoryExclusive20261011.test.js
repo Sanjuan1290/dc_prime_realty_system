@@ -96,12 +96,13 @@ test('Queue remains unchanged, and filtering History by status operates before p
 })
 
 test('Client names History correctly and never temporarily displays queue rows as History', () => {
-  assert.match(client, />History<\/button>/)
+  assert.match(client, />Review History<\/button>/)
   assert.doesNotMatch(client, /History &amp; Tracking/)
   assert.match(client, /Needs My Action/)
-  assert.match(client, /reviewScope === 'history' \? 'View' : 'Open'/)
+  assert.match(client, /reviewScope === 'history' \? 'View Details' : 'Review'/)
   assert.match(client, /reviewScope === 'history' \? <select aria-label="Filter History by status"/)
   assert.doesNotMatch(client, /placeholderData:\s*\(previous\) => previous/)
   assert.doesNotMatch(client, /Waiting on you/)
 })
+
 

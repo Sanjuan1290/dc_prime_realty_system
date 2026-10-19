@@ -41,8 +41,8 @@ const invariants = [
   [center.includes('Mark All as Read'), 'Internal Notifications bulk-read control was removed.'],
   [center.includes('Mark as Read'), 'Internal Notifications individual-read control was removed.'],
   [details.includes('Submit Correction Details for Recheck'), 'Staff manual correction resubmission was removed.'],
-  [center.includes('>History</button>') && !center.includes('History &amp; Tracking'), 'The History-only tab label regressed.'],
-  [center.includes("reviewScope === 'history' ? 'View' : 'Open'"), 'History must remain view-only.'],
+  [center.includes('>Review History</button>') && !center.includes('History &amp; Tracking'), 'The History-only tab label regressed.'],
+  [center.includes("reviewScope === 'history' ? 'View Details' : 'Review'") && center.includes('navigate(`${actorRoot}/review-center/reviews/${row.operational_review_id}`)'), 'History must remain view-only.'],
   [center.includes('const actorRoot = actor.role'), 'Review Center route scope is missing.'],
   [details.includes('PaymentProofReviewFiles'), 'Protected payment-proof review was removed.'],
 ]
@@ -50,4 +50,5 @@ for (const [ok, message] of invariants) {
   if (!ok) fail(message)
 }
 console.log('Review Center prebuild check passed.')
+
 

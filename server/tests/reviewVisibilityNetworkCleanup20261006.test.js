@@ -19,7 +19,7 @@ test('Review list supports a History scope, excluding work waiting on the viewer
   assert.match(controller, /needs_my_action/);
   const center = read('client/src/pages/System/ReviewCenter.jsx');
   assert.match(center, /Needs My Action/);
-  assert.match(center, />History<\/button>/);
+  assert.match(center, />Review History<\/button>/);
   assert.match(center, /&scope=\$\{reviewScope\}/);
 });
 
@@ -114,6 +114,7 @@ test('Listings page has no imports from recharts internal type paths', () => {
   const listings = read('client/src/pages/Lot_Projects/Listings.jsx');
   assert.doesNotMatch(listings, /from 'recharts\/types\//);
 });
+
 
 
 

@@ -39,11 +39,15 @@ const InHouseMemberProfile = () => {
   const [statusFilter, setStatusFilter] = useState('all')
   const [teamScope, setTeamScope] = useState('all')
   const [page, setPage] = useState(1)
+  const fromDirectory = new URLSearchParams(location.search).get('from') === 'directory'
+  const directoryParams = new URLSearchParams(location.search)
+  directoryParams.delete('from')
+  const directoryPath = `/portal/${role}/accredited${directoryParams.toString() ? `?${directoryParams}` : ''}`
   const networkPath = `/portal/${role}/accredited/groups/in-house/${groupId}${location.search || ''}`
   const memberPath = userId => `/portal/${role}/accredited/groups/in-house/${groupId}/members/${userId}${location.search || ''}`
   const groupQuery = useQuery({
     queryKey: ['in-house-member-profile', Number(groupId)],
-    queryFn: () => fetchJson(`/seller-groups/${groupId}`),
+    queryFn: () => fetchJson(`/accredited/groups/${groupId}/member-directory`),
     enabled: Number.isSafeInteger(Number(groupId)) && Number(groupId) > 0,
     retry: 1,
     staleTime: 15000,
@@ -70,7 +74,7 @@ const InHouseMemberProfile = () => {
   useEffect(() => setPage(current => Math.min(current, pages)), [pages])
   const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  const back = <NavLink to={networkPath} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"><FiArrowLeft /> Back to Network</NavLink>
+  const back = <NavLink to={fromDirectory ? directoryPath : networkPath} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"><FiArrowLeft /> {fromDirectory ? 'Back to Accredited Sellers' : 'Back to Network'}</NavLink>
   return <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 p-4 pb-12 sm:p-6">
     <div className="flex flex-wrap items-center justify-between gap-3">{back}<span className="text-xs font-medium text-slate-500">Accredited Sellers / In-House Members / Member Details</span></div>
     {groupQuery.isPending ? <div role="status" className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-600">Loading member details and reporting team…</div> : null}

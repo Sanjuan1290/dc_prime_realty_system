@@ -42,7 +42,7 @@ test('guard rejects accidental notification or History feature removals', () => 
   const source = fs.readFileSync(reviewFile, 'utf8')
   const variants = [
     [source.replace('Mark All as Read', 'Read notifications'), 'bulk-read'],
-    [source.replace('>History</button>', '>History &amp; Tracking</button>'), 'History'],
+    [source.replace('>Review History</button>', '>History &amp; Tracking</button>'), 'History'],
   ]
   for (const [broken, label] of variants) {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'dcprime-review-feature-'))
@@ -54,4 +54,5 @@ test('guard rejects accidental notification or History feature removals', () => 
     } finally { fs.rmSync(temp, { recursive: true, force: true }) }
   }
 })
+
 

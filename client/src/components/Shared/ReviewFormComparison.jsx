@@ -94,7 +94,7 @@ export const buildReviewFormSections = ({ before, after, entityType, labels = {}
 }
 
 const ReviewFormComparison = ({ beforeValue, afterValue, events = [], revision = 1, entityType, lookups = {}, labels = {}, isHiddenField, fieldOrder = [], listRenderers = {} }) => {
-  const [mode,setMode] = useState('forms')
+  const [mode,setMode] = useState('changes')
   const [mobileSide,setMobileSide] = useState('after')
   const [highlight,setHighlight] = useState(true)
   const [selectedRevision,setSelectedRevision] = useState('latest')
@@ -111,7 +111,7 @@ const ReviewFormComparison = ({ beforeValue, afterValue, events = [], revision =
   const count = sections.reduce((sum,section)=>sum + section.fields.filter(field=>!sameValue(entryValue(before,field.key),entryValue(after,field.key))).length,0)
   const renderSide = (side) => <div className="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
     <h4 className="flex items-center gap-2 border-b border-slate-100 pb-2 text-sm font-black text-slate-900">{side==='before'?'Before':'After'} <span className="ml-auto text-xs font-semibold text-slate-500">Read Only</span></h4>
-    {side==='before'&&!hasBefore ? <p className="rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-600">No Previous Record</p> : side==='after'&&!hasAfter ? <p className="rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-600">No Current Record</p> : sections.length ? sections.map(section=><section key={section.name} className="space-y-3">
+    {side==='before'&&!hasBefore ? <p className="rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-600">No previous values were saved with this review</p> : side==='after'&&!hasAfter ? <p className="rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-600">No after-values were saved with this review</p> : sections.length ? sections.map(section=><section key={section.name} className="space-y-3">
       <h5 className="text-xs font-black uppercase tracking-wide text-slate-500">{section.name}</h5>
       <dl className="grid gap-3 sm:grid-cols-2">{section.fields.map(field=><HistoricalField key={field.key} field={field} side={side} changed={highlight&&!sameValue(entryValue(before,field.key),entryValue(after,field.key))} before={entryValue(before,field.key)} after={entryValue(after,field.key)} opts={opts} hide={isHiddenField}/>)}</dl>
     </section>) : <p className="text-sm text-slate-500">No form values were saved with this review.</p>}
@@ -129,8 +129,8 @@ const ReviewFormComparison = ({ beforeValue, afterValue, events = [], revision =
         </select></label> : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1">
-          <button type="button" onClick={()=>setMode('forms')} className={`rounded-lg px-3 py-2 text-xs font-bold ${mode==='forms'?'bg-white text-blue-700 shadow-sm':'text-slate-600'}`}><FiColumns className="mr-1 inline"/> Full Forms</button>
-          <button type="button" onClick={()=>setMode('changes')} className={`rounded-lg px-3 py-2 text-xs font-bold ${mode==='changes'?'bg-white text-blue-700 shadow-sm':'text-slate-600'}`}><FiList className="mr-1 inline"/> Changes Only</button>
+          <button type="button" onClick={()=>setMode('forms')} className={`rounded-lg px-3 py-2 text-xs font-bold ${mode==='forms'?'bg-white text-blue-700 shadow-sm':'text-slate-600'}`}><FiColumns className="mr-1 inline"/> All Saved Details</button>
+          <button type="button" onClick={()=>setMode('changes')} className={`rounded-lg px-3 py-2 text-xs font-bold ${mode==='changes'?'bg-white text-blue-700 shadow-sm':'text-slate-600'}`}><FiList className="mr-1 inline"/> Changed Fields Only</button>
         </div>
         {mode==='forms' ? <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={highlight} onChange={(event)=>setHighlight(event.target.checked)}/> Highlight Changes</label> : null}
       </div>
@@ -146,3 +146,4 @@ const ReviewFormComparison = ({ beforeValue, afterValue, events = [], revision =
 }
 
 export default ReviewFormComparison
+

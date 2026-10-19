@@ -157,7 +157,7 @@ const ReviewSnapshotDiff = ({ beforeValue, afterValue, lookups = {}, mode = 'cha
   }
 
   return <div className="grid gap-5">
-    {isNewRecord && !showUnchanged ? <p className="text-sm font-semibold text-slate-500">This record was newly created, so there are no earlier values.</p> : null}
+    {isNewRecord && !showUnchanged ? <p className="text-sm font-semibold text-slate-500">No earlier values were saved with this review. This might be a new record or an incomplete historical snapshot.</p> : null}
     {(showUnchanged ? fieldRows.length : changedFieldCount) ? <FieldTable ctx={ctx} rows={fieldRows} showUnchanged={showUnchanged} /> : null}
     {listRows.map((row) => {
       const Custom = listRenderers[row.key]
@@ -172,6 +172,7 @@ const ReviewSnapshotDiff = ({ beforeValue, afterValue, lookups = {}, mode = 'cha
 }
 
 export default ReviewSnapshotDiff
+
 
 
 

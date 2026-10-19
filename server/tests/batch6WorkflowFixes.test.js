@@ -158,16 +158,17 @@ test('Cancellations and reserved/sold edits are wired to Head approval and the A
 
 test('Review Center makes post-action checks explicit and keeps correction controls', async () => {
   const page = await readProjectFile('client/src/pages/System/ReviewCenter.jsx');
-  assert.match(page, /Completed · Head Check Pending/);
-  assert.match(page, /Completed · Auditor Check Pending/);
-  assert.match(page, /Operation saved successfully/);
-  assert.match(page, /never locks the record/);
+  assert.match(page, /Awaiting Department Head Review/);
+  assert.match(page, /Awaiting Auditor Review/);
+  assert.match(page, /Change already saved/);
+  assert.match(page, /does not automatically undo or lock it/);
   assert.match(page, /Super Admin direct entry/);
   assert.match(page, /Correct &amp; Confirm/);
   assert.match(page, /reassign-responder/);
   assert.match(page, /responders\?\.canRespond/);
   assert.match(page, /approvalStatus/);
 });
+
 
 
 
