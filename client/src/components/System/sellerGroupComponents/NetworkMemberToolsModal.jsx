@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { FiDownload, FiFileText, FiRotateCcw, FiUpload, FiX } from 'react-icons/fi'
+import { FiDownload, FiFileText, FiRotateCcw, FiUpload, FiUsers, FiX } from 'react-icons/fi'
 
 const NetworkMemberToolsModal = ({
   networkName,
@@ -11,6 +11,8 @@ const NetworkMemberToolsModal = ({
   onImport,
   onUndo,
   onExport,
+  onBulkEdit,
+  canBulkEditMembers,
 }) => {
   const dialogRef = useRef(null)
   const closeRef = useRef(null)
@@ -62,7 +64,7 @@ const NetworkMemberToolsModal = ({
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
           <div>
             <h2 id="network-member-tools-title" className="flex items-center gap-2 text-lg font-bold text-slate-950"><FiFileText className="text-emerald-600" /> Member Tools</h2>
-            <p className="mt-1 text-sm text-slate-500">{networkName} · Import, export, or undo an import</p>
+            <p className="mt-1 text-sm text-slate-500">{networkName} · Import, export, undo an import, or edit reporting assignments</p>
           </div>
           <button ref={closeRef} type="button" onClick={onClose} aria-label="Close member tools" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"><FiX /></button>
         </header>
@@ -79,6 +81,7 @@ const NetworkMemberToolsModal = ({
               <span><span className="block font-semibold text-slate-900">Export Members</span><span className="mt-1 block text-sm text-slate-500">Download the Network's current members as an Excel workbook.</span></span>
             </button>
           ) : null}
+          {canBulkEditMembers ? <button type="button" onClick={onBulkEdit} className={actionClass}><FiUsers className="mt-0.5 shrink-0 text-indigo-600"/><span><span className="block font-semibold text-slate-900">Bulk Edit Members</span><span className="mt-1 block text-sm text-slate-500">Move selected sellers to another eligible manager, with a preview and confirmation.</span></span></button> : null}
           {canImportMembers ? (
             <button type="button" onClick={onUndo} className={actionClass}>
               <FiRotateCcw className="mt-0.5 shrink-0 text-amber-700" />

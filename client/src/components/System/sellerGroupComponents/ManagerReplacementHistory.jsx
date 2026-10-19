@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { FiClock, FiRepeat, FiChevronLeft, FiChevronRight, FiRefreshCw, FiX } from 'react-icons/fi'
 import { useFetch as fetchApi } from '../../../utils/useFetch'
+import RestoreManagerReplacementModal from './RestoreManagerReplacementModal'
 
 const PAGE_SIZE = 15
 
@@ -18,7 +19,8 @@ const roleLabel = (role) => ({
   unit_manager: 'Unit Manager',
 }[role] || role || '—')
 
-const ManagerReplacementHistory = ({ groupId, networkName, onClose }) => {
+const ManagerReplacementHistory = ({ groupId, networkName, onClose, onSaved, canRestore = false }) => {
+  const [restoreId, setRestoreId] = useState(null)
   const [page, setPage] = useState(1)
   const dialogRef = useRef(null)
   const closeRef = useRef(null)
@@ -120,7 +122,7 @@ const ManagerReplacementHistory = ({ groupId, networkName, onClose }) => {
                     <th scope="col" className="px-4 py-3">Previous Manager</th>
                     <th scope="col" className="px-4 py-3">Replacement</th>
                     <th scope="col" className="px-4 py-3">Sellers Moved</th>
-                    <th scope="col" className="px-4 py-3">Review</th>
+                    <th scope="col" className="px-4 py-3">Review</th><th scope="col" className="px-4 py-3">Restore</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -138,6 +140,7 @@ const ManagerReplacementHistory = ({ groupId, networkName, onClose }) => {
                       </td>
                       <td className="px-4 py-3 text-slate-700"><span className="inline-flex items-center gap-1"><FiRepeat />{item.direct_reports_moved ?? 0}</span></td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.operational_review_id ? `Review #${item.operational_review_id}` : '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3">{item.reversal_id ? <span className="font-semibold text-emerald-700">Restored</span> : canRestore ? <button type="button" className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50" onClick={() => setRestoreId(item.replacement_id)}>Check Restore</button> : <span className="text-xs text-slate-500">Restricted</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -165,9 +168,11 @@ const ManagerReplacementHistory = ({ groupId, networkName, onClose }) => {
           </div>
         </footer>
       </div>
+      {restoreId ? <RestoreManagerReplacementModal groupId={groupId} replacementId={restoreId} onClose={() => setRestoreId(null)} onSaved={(message) => {query.refetch();onSaved?.(message)}} /> : null}
     </div>,
     document.body
   )
 }
 
 export default ManagerReplacementHistory
+

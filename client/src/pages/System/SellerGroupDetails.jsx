@@ -33,6 +33,7 @@ import ManagerReplacementHistory from '../../components/System/sellerGroupCompon
 import NetworkMemberImportModal from '../../components/System/sellerGroupComponents/NetworkMemberImportModal'
 import NetworkMemberImportHistoryModal from '../../components/System/sellerGroupComponents/NetworkMemberImportHistoryModal'
 import NetworkMemberToolsModal from '../../components/System/sellerGroupComponents/NetworkMemberToolsModal'
+import BulkEditMembersModal from '../../components/System/sellerGroupComponents/BulkEditMembersModal'
 import CreateUserModal from '../../components/System/userComponents/CreateUserModal'
 import EditUserModal from '../../components/System/userComponents/EditUserModal'
 import DeactivateSystemUserModal from '../../components/System/userComponents/DeactivateSystemUserModal'
@@ -236,6 +237,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const [memberPage, setMemberPage] = useState(1)
   const [showCreateUser, setShowCreateUser] = useState(false)
   const [showMemberTools, setShowMemberTools] = useState(false)
+  const [showBulkEditMembers, setShowBulkEditMembers] = useState(false)
   const [showMemberImport, setShowMemberImport] = useState(false)
   const [showImportHistory, setShowImportHistory] = useState(false)
   const [selectedMember, setSelectedMember] = useState(null)
@@ -1138,6 +1140,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
           networkName={group.name || groupOption.name || 'In-House Network'}
           canImportMembers={canImportMembers}
           canExportMembers={canExportMembers}
+          canBulkEditMembers={canCheckSellerSetup && hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_BULK_EDIT) && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT)}
+          onBulkEdit={() => { setShowMemberTools(false); setShowBulkEditMembers(true) }}
           isExportingMembers={isExportingMembers}
           onClose={() => setShowMemberTools(false)}
           onImport={() => {
@@ -1154,6 +1158,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
           }}
         />
       ) : null}
+
+      {showBulkEditMembers && !isExternal && canCheckSellerSetup ? <BulkEditMembersModal groupId={Number(group.id || groupId)} members={members} onClose={() => setShowBulkEditMembers(false)} onSaved={(message) => {setAlert({type:'success',message});queryClient.invalidateQueries();}}/> : null}
 
       {showSellerSetupCheck && !isExternal && canCheckSellerSetup ? (
         <SellerSetupCheck
@@ -1220,7 +1226,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
       ) : null}
 
       {showReplacementHistory && !isExternal && canCheckSellerSetup ? (
-        <ManagerReplacementHistory groupId={Number(group.id || groupId)} networkName={group.name} onClose={() => setShowReplacementHistory(false)} />
+        <ManagerReplacementHistory groupId={Number(group.id || groupId)} networkName={group.name} onClose={() => setShowReplacementHistory(false)} canRestore={hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_MANAGER_RESTORE) && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_DEACTIVATE)} onSaved={(message) => {setAlert({type:'success',message});queryClient.invalidateQueries();}} />
       ) : null}
 
       {replaceManager ? <ReplaceManagerModal groupId={Number(group.id||groupId)} manager={replaceManager} onClose={()=>setReplaceManager(null)} onSaved={(message)=>{setReplaceManager(null);setAlert({type:'success',message});refresh()}} onCreateManager={()=>{setResumeReplacement(replaceManager);setNewReplacementRole(replaceManager.role);setReplaceManager(null);setShowCreateUser(true)}}/> : null}

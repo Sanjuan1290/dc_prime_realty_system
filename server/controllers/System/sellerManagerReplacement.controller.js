@@ -100,15 +100,18 @@ export const getManagerReplacementHistory = (req,res)=>transaction(req,res,async
     history.replacement_id, history.outgoing_role, history.reason,
     history.created_at AS created_at, history.direct_reports_moved,
     history.operational_review_id,
+    reversal.reversal_id, reversal.created_at AS restored_at,
     old.account_code AS old_account_code,
     new_manager.account_code AS new_account_code,
     CONCAT_WS(' ',old.first_name,old.last_name) AS outgoing_name,
     CONCAT_WS(' ',new_manager.first_name,new_manager.last_name) AS replacement_name
     FROM seller_manager_replacements AS history
+    LEFT JOIN seller_manager_replacement_reversals AS reversal ON reversal.replacement_id=history.replacement_id
     INNER JOIN users AS old ON old.id = history.outgoing_user_id
     INNER JOIN users AS new_manager ON new_manager.id = history.replacement_user_id
     WHERE history.seller_group_id = ?
     ORDER BY history.replacement_id DESC LIMIT ? OFFSET ?`,[groupId,limit,(page-1)*limit]);
   return res.json({success:true,data:rows,page});
 });
+
 

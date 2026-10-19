@@ -14,6 +14,8 @@ export const PERMISSIONS = Object.freeze({
   SYSTEM_ACCREDITED_UPLOAD_PROOF: 'system.accredited.upload_proof',
   SYSTEM_SELLER_GROUPS_VIEW: 'system.seller_groups.view',
   SYSTEM_SELLER_GROUPS_MANAGE: 'system.seller_groups.manage',
+  SYSTEM_SELLER_GROUPS_BULK_EDIT: 'system.seller_groups.members.bulk_edit',
+  SYSTEM_SELLER_MANAGER_RESTORE: 'system.seller_groups.manager_replacement.restore',
   SYSTEM_DOCUMENTS_VIEW: 'system.documents.view',
   SYSTEM_DOCUMENTS_CREATE: 'system.documents.create',
   SYSTEM_DOCUMENTS_EDIT: 'system.documents.edit',
@@ -384,6 +386,7 @@ export const hasProjectScope = (user = {}, projectSlug = '') => {
   const normalizedSlug = String(projectSlug).trim().toLowerCase()
   return projects.some((project) => String(project?.slug || project?.lot_project_slug || '').trim().toLowerCase() === normalizedSlug)
 }
+
 
 
 

@@ -14,6 +14,8 @@ export const PERMISSIONS = Object.freeze({
   SYSTEM_ACCREDITED_UPLOAD_PROOF: 'system.accredited.upload_proof',
   SYSTEM_SELLER_GROUPS_VIEW: 'system.seller_groups.view',
   SYSTEM_SELLER_GROUPS_MANAGE: 'system.seller_groups.manage',
+  SYSTEM_SELLER_GROUPS_BULK_EDIT: 'system.seller_groups.members.bulk_edit',
+  SYSTEM_SELLER_MANAGER_RESTORE: 'system.seller_groups.manager_replacement.restore',
   SYSTEM_DOCUMENTS_VIEW: 'system.documents.view',
   SYSTEM_DOCUMENTS_CREATE: 'system.documents.create',
   SYSTEM_DOCUMENTS_EDIT: 'system.documents.edit',
@@ -356,6 +358,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
   super_admin: allPermissions,
   auditor: AUDITOR_ALLOWED_PERMISSIONS,
 });
+
 
 
 
