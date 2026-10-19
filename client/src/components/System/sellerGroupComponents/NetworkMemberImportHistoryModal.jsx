@@ -1,23 +1,41 @@
 import { formatPhilippineDateTime } from '../../../utils/formatDateTime'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiAlertTriangle, FiCheckCircle, FiRotateCcw, FiX } from 'react-icons/fi'
+import { FiAlertTriangle, FiCheckCircle, FiChevronLeft, FiChevronRight, FiRotateCcw, FiX } from 'react-icons/fi'
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
 import StatusAlert from '../../Shared/StatusAlert'
 
 const dateLabel = (value) => formatPhilippineDateTime(value, { fallback: '—' })
+const PAGE_SIZE = 5
 
 const NetworkMemberImportHistoryModal = ({ groupId, networkName, onClose, onUndone }) => {
   const queryClient = useQueryClient()
+  const [page, setPage] = useState(1)
   const [selected, setSelected] = useState(null)
   const [confirmation, setConfirmation] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const historyQuery = useQuery({
-    queryKey: ['network-member-import-history', groupId],
-    queryFn: () => useFetch(`/seller-groups/${groupId}/members/import/history`),
+    queryKey: ['network-member-import-history', groupId, page],
+    queryFn: () => useFetch(`/seller-groups/${groupId}/members/import/history?page=${page}`),
   })
-  const history = historyQuery.data?.data || []
+  const history = Array.isArray(historyQuery.data?.data) ? historyQuery.data.data : []
+  const total = Number(historyQuery.data?.total || 0)
+  const totalPages = Math.max(1, Number(historyQuery.data?.totalPages || 1))
+  const firstShown = total && history.length ? (page - 1) * PAGE_SIZE + 1 : 0
+  const lastShown = total && history.length ? firstShown + history.length - 1 : 0
+
+  useEffect(() => {
+    if (!historyQuery.isPending && !historyQuery.isError && page > totalPages) setPage(totalPages)
+  }, [historyQuery.isPending, historyQuery.isError, page, totalPages])
+
+  const goToPage = (nextPage) => {
+    if (submitting || nextPage < 1 || nextPage > totalPages) return
+    setSelected(null)
+    setConfirmation('')
+    setError('')
+    setPage(nextPage)
+  }
 
   const undo = async () => {
     if (!selected?.canUndo || confirmation.trim() !== `UNDO ${selected.batch_id}` || submitting) return
@@ -59,6 +77,12 @@ const NetworkMemberImportHistoryModal = ({ groupId, networkName, onClose, onUndo
           {!historyQuery.isPending && !historyQuery.isError && !history.length && (
             <p className="rounded-xl border border-slate-200 p-5 text-sm text-slate-500">No tracked member imports yet. Only imports performed after the undo-history database migration can be safely reversed.</p>
           )}
+          {!historyQuery.isPending && !historyQuery.isError && history.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-slate-500" role="status">
+              <span>Showing imports {firstShown}–{lastShown} of {total} · Newest first</span>
+              <span>Page {page} of {totalPages}</span>
+            </div>
+          )}
           {history.map((batch) => (
             <div key={batch.batch_id} className="rounded-xl border border-slate-200 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -79,6 +103,16 @@ const NetworkMemberImportHistoryModal = ({ groupId, networkName, onClose, onUndo
               {batch.status === 'undone' && <p className="mt-1 text-xs text-slate-500">Undone on {dateLabel(batch.undone_at)}</p>}
             </div>
           ))}
+          {!historyQuery.isPending && !historyQuery.isError && totalPages > 1 && (
+            <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4" aria-label="Import history pages">
+              <span className="text-xs text-slate-500">{PAGE_SIZE} imports per page</span>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => goToPage(page - 1)} disabled={page <= 1 || submitting} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"><FiChevronLeft /> Previous</button>
+                <span className="min-w-20 text-center text-xs font-semibold text-slate-600">{page} / {totalPages}</span>
+                <button type="button" onClick={() => goToPage(page + 1)} disabled={page >= totalPages || submitting} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Next <FiChevronRight /></button>
+              </div>
+            </nav>
+          )}
           {error && <StatusAlert type="error" message={error} />}
         </div>
         {selected && (
@@ -99,6 +133,7 @@ const NetworkMemberImportHistoryModal = ({ groupId, networkName, onClose, onUndo
 }
 
 export default NetworkMemberImportHistoryModal
+
 
 
 

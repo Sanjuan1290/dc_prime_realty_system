@@ -3146,13 +3146,25 @@ const getImportUndoEligibility = async (connection, entry, lock = false) => {
 
 export const getNetworkMemberImportHistory = async (req, res) => {
   const groupId = Number(req.params.groupId || 0);
-  if (!groupId) return res.status(400).json({ message: 'Invalid Network id.' });
+  if (!Number.isSafeInteger(groupId) || groupId <= 0) return res.status(400).json({ message: 'Invalid Network id.' });
+  const page = Number(req.query?.page ?? 1);
+  const pageSize = 5;
+  if (!Number.isSafeInteger(page) || page < 1 || page > 100000) {
+    return res.status(400).json({ message: 'Choose a valid import history page.' });
+  }
   const connection = await db.getConnection();
   try {
+    // Apply pagination in TiDB before the expensive per-batch undo eligibility checks.
+    // A separate total ensures that earlier imports remain accessible beyond page one.
+    const [[countRow]] = await connection.query(
+      'SELECT COUNT(*) AS total FROM network_member_import_batches WHERE seller_group_id = ?', [groupId]
+    );
+    const total = Number(countRow?.total || 0);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const [batches] = await connection.query(
       `SELECT batch_id, seller_group_id, member_count, status, imported_at, undone_at
        FROM network_member_import_batches WHERE seller_group_id = ?
-       ORDER BY batch_id DESC LIMIT 25`, [groupId]
+       ORDER BY batch_id DESC LIMIT ? OFFSET ?`, [groupId, pageSize, (page - 1) * pageSize]
     );
     const history = [];
     for (const batch of batches) {
@@ -3162,7 +3174,7 @@ export const getNetworkMemberImportHistory = async (req, res) => {
         email: item.member_email, action: item.import_action,
       })) });
     }
-    return res.json({ success: true, data: history });
+    return res.json({ success: true, data: history, page, pageSize, total, totalPages });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally { connection.release(); }
