@@ -12,6 +12,7 @@ import {
   FiClock,
   FiTool,
   FiEdit2,
+  FiEye,
   FiExternalLink,
   FiMail,
   FiMapPin,
@@ -244,8 +245,6 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const [sellerStatusModal, setSellerStatusModal] = useState(null)
   const [sellerStatusTarget, setSellerStatusTarget] = useState(null)
   const [replaceManager, setReplaceManager] = useState(null)
-  const [newReplacementRole, setNewReplacementRole] = useState(null)
-  const [resumeReplacement, setResumeReplacement] = useState(null)
   const [showReplacementHistory, setShowReplacementHistory] = useState(false)
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
   const [range, setRange] = useState(defaultRange)
@@ -1045,7 +1044,14 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                           </span>
                           {member.user_status !== member.accredited_seller_status && <span className="mt-1 flex items-center gap-1 text-xs text-amber-700"><FiAlertTriangle/> Statuses do not match</span>}
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="whitespace-nowrap px-5 py-4">
+                          <NavLink
+                            to={`${rootPath}/accredited/groups/in-house/${groupId}/members/${member.user_id}${selectedProjectId ? `?project=${selectedProjectId}` : ''}`}
+                            aria-label={`View details for ${member.display_name || member.full_name || 'seller'}`}
+                            className="mr-2 inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
+                          >
+                            <FiEye aria-hidden="true" /> View
+                          </NavLink>
                           <button
                             type="button"
                             onClick={() => setSelectedMember({
@@ -1210,16 +1216,13 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
       {showCreateUser ? (
         <CreateUserModal
           setShowCreateUser={setShowCreateUser}
-          allowedRoles={newReplacementRole ? [newReplacementRole] : ['division_manager','sales_director','unit_manager','sales_agent']}
+          allowedRoles={['division_manager','sales_director','unit_manager','sales_agent']}
           actorRole={portalRole}
           initialSellerGroupId={String(group.id || groupId)}
           lockSellerGroup
-          title={newReplacementRole ? 'Create Replacement Manager' : `Add User to ${group.name}`}
+          title={`Add User to ${group.name}`}
           onSaved={(message) => {
             setAlert({ type: 'success', message })
-            if (resumeReplacement) setReplaceManager(resumeReplacement)
-            setResumeReplacement(null)
-            setNewReplacementRole(null)
             refresh()
           }}
         />
@@ -1229,7 +1232,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         <ManagerReplacementHistory groupId={Number(group.id || groupId)} networkName={group.name} onClose={() => setShowReplacementHistory(false)} canRestore={hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_MANAGER_RESTORE) && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_DEACTIVATE)} onSaved={(message) => {setAlert({type:'success',message});queryClient.invalidateQueries();}} />
       ) : null}
 
-      {replaceManager ? <ReplaceManagerModal groupId={Number(group.id||groupId)} manager={replaceManager} onClose={()=>setReplaceManager(null)} onSaved={(message)=>{setReplaceManager(null);setAlert({type:'success',message});refresh()}} onCreateManager={()=>{setResumeReplacement(replaceManager);setNewReplacementRole(replaceManager.role);setReplaceManager(null);setShowCreateUser(true)}}/> : null}
+      {replaceManager ? <ReplaceManagerModal groupId={Number(group.id||groupId)} manager={replaceManager} onClose={()=>setReplaceManager(null)} onSaved={(message)=>{setReplaceManager(null);setAlert({type:'success',message});refresh()}}/> : null}
       {sellerStatusModal === 'deactivate' && sellerStatusTarget ? (
         <DeactivateSystemUserModal user={sellerStatusTarget} onClose={() => {setSellerStatusModal(null);setSellerStatusTarget(null)}} onSaved={(message)=>{setAlert({type:'success',message});refresh()}} />
       ) : null}

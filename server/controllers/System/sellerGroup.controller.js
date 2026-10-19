@@ -1828,8 +1828,8 @@ export const viewGroup = async (req, res) => {
     const [members] = await db.query(
       `SELECT a.accredited_seller_id, a.user_id, ${fullNameSql('u')} AS full_name,
               u.first_name, u.middle_name, u.last_name,
-              u.email, u.contact_no, u.tin_no, u.prc_no, u.address, u.role, u.status AS user_status,
-              a.accredited_seller_reports_under_user_id AS reports_under_user_id,
+              u.email, u.contact_no, u.tin_no, u.prc_no, u.address, u.account_code, u.can_login, u.role, u.status AS user_status,
+              a.accredited_seller_created_at, a.accredited_seller_reports_under_user_id AS reports_under_user_id,
               ${fullNameSql('parent')} AS reports_under_name,
               parent.email AS reports_under_email,
               COALESCE(a.is_system_dummy, 0) AS is_system_dummy,
@@ -3279,6 +3279,7 @@ export const undoNetworkMemberImport = async (req, res) => {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally { connection.release(); }
 };
+
 
 
 

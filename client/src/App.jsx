@@ -45,6 +45,7 @@ const Reports = lazy(() => import('./pages/System/Reports'))
 const Documents = lazy(() => import('./pages/System/Documents'))
 const SellerGroup = lazy(() => import('./pages/System/SellerGroup'))
 const SellerGroupDetails = lazy(() => import('./pages/System/SellerGroupDetails'))
+const InHouseMemberProfile = lazy(() => import('./pages/System/InHouseMemberProfile'))
 const Users = lazy(() => import('./pages/System/Users'))
 const Accredited = lazy(() => import('./pages/System/Accredited'))
 const Projects = lazy(() => import('./pages/System/Projects'))
@@ -126,6 +127,7 @@ const systemRoleRoutes = SYSTEM_USER_ROLES.map((role) => (
     <Route path="accredited" element={protect(PERMISSIONS.SYSTEM_ACCREDITED_VIEW, <Accredited />)} />
     <Route path="accredited/groups/in-house" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <SellerGroup groupType="in_house" />)} />
     <Route path="accredited/groups/in-house/:groupId" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <SellerGroupDetails expectedGroupType="in_house" />)} />
+    <Route path="accredited/groups/in-house/:groupId/members/:memberId" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <InHouseMemberProfile />)} />
     <Route path="accredited/groups/external" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <SellerGroup groupType="external" />)} />
     <Route path="accredited/groups/external/:groupId" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <SellerGroupDetails expectedGroupType="external" />)} />
     <Route path="users/seller_group" element={<LegacySellerGroupRedirect groupType="in_house" />} />
@@ -233,5 +235,6 @@ const App = () => {
 }
 
 export default App
+
 
 

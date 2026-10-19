@@ -10,7 +10,7 @@ const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2
 const managerLabel = person => `${person?.name || 'Unknown manager'}${person?.accountCode ? ` (${person.accountCode})` : ''}`
 
 // A replacement moves the old manager's DIRECT reports. It does not exchange teams.
-const ReplaceManagerModal = ({ groupId, manager, onClose, onSaved, onCreateManager }) => {
+const ReplaceManagerModal = ({ groupId, manager, onClose, onSaved }) => {
   const [replacementUserId, setReplacementUserId] = useState('')
   const [search, setSearch] = useState('')
   const [reason, setReason] = useState('')
@@ -161,7 +161,6 @@ const ReplaceManagerModal = ({ groupId, manager, onClose, onSaved, onCreateManag
               {filteredCandidates.length > 8 ? <p className="text-xs text-slate-600">Showing 8 of {filteredCandidates.length} matching managers. Keep typing to narrow your search.</p> : <p className="text-xs text-slate-600">{filteredCandidates.length} {filteredCandidates.length === 1 ? 'eligible manager' : 'eligible managers'} matching your search.</p>}
               {currentSelection ? <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-900"><strong>Selected:</strong> {managerLabel(currentSelection)}</p> : null}
             </> : null}
-            {step === 'choose' && onCreateManager ? <button type="button" className="text-sm font-semibold text-blue-700 hover:underline" onClick={onCreateManager}>+ Create a New Manager</button> : null}
           </section>
 
           {plan?.replacement ? <section aria-labelledby="team-review-heading" className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
