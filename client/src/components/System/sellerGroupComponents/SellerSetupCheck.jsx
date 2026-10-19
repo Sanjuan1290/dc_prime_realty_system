@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { FiAlertTriangle, FiCheckCircle, FiDownload, FiRefreshCw, FiSearch, FiShieldOff, FiX, FiEye } from 'react-icons/fi'
 import { useFetch } from '../../../utils/useFetch'
@@ -15,14 +16,39 @@ const downloadReport=(audit)=>{
 }
 const SellerSetupCheck=({groupId,onClose,onViewSeller})=>{
   const [search,setSearch]=useState('');const [onlyIssues,setOnlyIssues]=useState(false);const [page,setPage]=useState(1)
+  const dialogRef = useRef(null)
+  const closeRef = useRef(null)
+  useEffect(() => {
+    const previousFocus = document.activeElement
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    closeRef.current?.focus()
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose() }
+      if (event.key === 'Tab') {
+        const focusable = dialogRef.current?.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')
+        if (!focusable?.length) return
+        if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable[focusable.length - 1].focus() }
+        else if (!event.shiftKey && document.activeElement === focusable[focusable.length - 1]) { event.preventDefault(); focusable[0].focus() }
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = previousOverflow
+      if (previousFocus instanceof HTMLElement) previousFocus.focus()
+    }
+  }, [onClose])
   const {data,error,isLoading,isFetching,refetch}=useQuery({queryKey:['seller-setup-check',Number(groupId)],queryFn:()=>useFetch(`/seller-groups/${groupId}/setup-check`),enabled:Boolean(groupId),staleTime:30000});
   const audit=data?.data;const rows=useMemo(()=> (audit?.records||[]).filter(r=>(!onlyIssues || r.readiness!=='ready') && `${r.name} ${r.role} ${r.issues.map(i=>i.message).join(' ')}`.toLowerCase().includes(search.toLowerCase())),[audit,onlyIssues,search])
   useEffect(()=>setPage(1),[search,onlyIssues,groupId])
   const pageCount=Math.max(Math.ceil(rows.length/10),1)
   const pageRows=rows.slice((Math.min(page,pageCount)-1)*10,Math.min(page,pageCount)*10)
-  return <section id="seller-setup-check" aria-label="Check Seller Setup" className="rounded-2xl border border-blue-100 bg-white shadow-sm">
-    <header className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-4"><div className="flex items-center gap-2"><FiCheckCircle className="text-blue-700"/><h2 className="text-base font-bold text-slate-950">Check Seller Setup</h2></div><div className="flex gap-2"><button type="button" onClick={()=>refetch()} disabled={isFetching} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold"><FiRefreshCw/> Refresh</button><button type="button" onClick={onClose} aria-label="Close seller setup" className="rounded-lg border p-2"><FiX/></button></div></header>
-    <div className="grid gap-4 p-5">
+  return createPortal(
+    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/55 p-3 sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <section ref={dialogRef} id="seller-setup-check" role="dialog" aria-modal="true" aria-labelledby="seller-setup-title" className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
+    <header className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-4"><div className="flex items-center gap-2"><FiCheckCircle className="text-blue-700"/><h2 id="seller-setup-title" className="text-base font-bold text-slate-950">Check Seller Setup</h2></div><div className="flex gap-2"><button type="button" onClick={()=>refetch()} disabled={isFetching} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold"><FiRefreshCw/> Refresh</button><button type="button" ref={closeRef} onClick={onClose} aria-label="Close seller setup" className="rounded-lg border p-2"><FiX/></button></div></header>
+    <div className="grid min-h-0 gap-4 overflow-y-auto p-5">
       {isLoading && <p role="status" className="text-sm text-slate-500">Checking seller assignments...</p>}
       {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error.message||'Could not check seller setup.'}</p>}
       {audit && <>
@@ -36,6 +62,10 @@ const SellerSetupCheck=({groupId,onClose,onViewSeller})=>{
         <p className="text-xs text-slate-500">Read-only check. No sellers, reservations or commissions were changed.</p>
       </>}
     </div>
-  </section>
+      </section>
+    </div>,
+    document.body
+  )
 }
 export default SellerSetupCheck
+

@@ -102,9 +102,12 @@ test('Rate inputs accept 4 decimals', async () => {
 test('Network page offers Export Members in the import layout and gates Import Members', async () => {
   const page = await readProjectFile('client/src/pages/System/SellerGroupDetails.jsx');
   const util = await readProjectFile('client/src/utils/networkMemberExcel.js');
-  assert.match(page, /Export Members/);
-  assert.match(page, /!isExternal && canImportMembers/);
+  assert.match(page, /NetworkMemberToolsModal/);
+  assert.match(page, /canExportMembers=\{canExportMembers\}/);
+  assert.match(page, /!isExternal && \(canImportMembers \|\| canExportMembers\)/);
+  assert.match(page, /canImportMembers=\{canImportMembers\}/);
   assert.match(util, /NETWORK_MEMBER_EXCEL_HEADERS/);
 });
+
 
 
