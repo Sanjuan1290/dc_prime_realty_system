@@ -4,48 +4,10 @@ import {
   formatSnapshotValue, humanizeKey, isPlainObject, parseSnapshotValue, sameValue,
 } from '../../utils/reviewSnapshotFormat'
 import ReviewSnapshotDiff from './ReviewSnapshotDiff'
+import { REVIEW_FORM_TEMPLATES } from '../../utils/reviewFormTemplates'
+export { REVIEW_FORM_TEMPLATES } from '../../utils/reviewFormTemplates'
 import { getSavedReviewRevisions } from '../../utils/reviewRevisionHistory'
 
-// Form groups are display-only. Never hydrate historical fields from live database.
-export const REVIEW_FORM_TEMPLATES = Object.freeze({
-  accredited_seller: { title: 'Seller Details', sections: [
-    ['Seller Information', ['name','fullName','firstName','lastName','role','status','accreditationDate']],
-    ['Network Assignment', ['groupId','sellerGroupId','groupName','networkName','reportsUnderUserId','reportsUnderName','managerName','headUserId']],
-  ] },
-  seller_group: { title: 'Network Details', sections: [
-    ['Network Information', ['name','networkName','groupType','status','description','headUserId']],
-    ['Broker Information', ['broker','broker_name','broker_license_number','realty_name','broker_prc_number']],
-  ] },
-  seller_group_project_rates: { title: 'Project Commission Rates', sections: [
-    ['Network & Project', ['groupId','projectId','name','networkName','status']],
-    ['Rates', ['poolRate','companyProfitRate','divisionManagerRate','salesDirectorRate','unitManagerRate','salesAgentRate','rates']],
-  ] },
-  lot_project_listing: { title: 'Listing Details', sections: [
-    ['Unit Information', ['unitCode','unitId','listingId','lotType','lotAreaSqm','status','soldSubstatus']],
-    ['Prices & Charges', ['netSellingPrice','cashPricePerSqm','installmentPricePerSqm','reservationFee','legalMiscRate','legalMiscAmount','annualInterestRate']],
-    ['Requirements', ['cadastralLots','documentRequirements']],
-  ] },
-  lot_project_client_profile: { title: 'Buyer Details', sections: [
-    ['Buyer Information', ['buyerType','buyerName','buyerFullName','firstName','lastName','buyer_first_name','buyer_last_name','buyer_email','buyer_contact_number']],
-    ['Address & Employment', ['buyer_present_address','buyer_permanent_address','buyer_employment_status','buyer_monthly_income']],
-    ['Seller Assignment', ['assignedSellerId','assignedAccreditedSellerId','sellerName','saleChannel']],
-  ] },
-  lot_project_payment: { title: 'Payment Details', sections: [
-    ['Payment Information', ['paymentType','paymentMethod','paymentDate','amount','paymentAmount','referenceId','paymentStatus']],
-    ['Buyer Account', ['listingId','accountId','paymentId','buyerName']],
-  ] },
-  lot_project_reservation: { title: 'Reservation Details', sections: [
-    ['Reservation', ['unitCode','listingId','accountId','reservationDate','reservationFee','status']],
-    ['Buyer & Seller', ['buyerName','assignedSellerId','sellerName','saleChannel']],
-  ] },
-  lot_project_commission: { title: 'Commission Details', sections: [
-    ['Seller', ['sellerName','commissionRole','sellerDisplayName']],
-    ['Commission', ['commissionRate','commissionBaseAmount','grossCommissionAmount','releasedCommissionAmount','commissionStatus']],
-  ] },
-  lot_project_settings: { title: 'Project Settings', sections: [
-    ['General Settings', ['name','status','reservationFee','annualInterestRate','legalMiscRate']],
-  ] },
-})
 
 const neverShow = (key, hide) => hide?.(key) || /password|passcode|token|secret|otp|authorization|cookie|private.key|verification.code|_normalized|Normalized/i.test(key)
 const asObj = (value) => { const parsed = parseSnapshotValue(value); return isPlainObject(parsed) ? parsed : {} }
@@ -59,17 +21,18 @@ const displayValue = (key, value, opts) => {
 
 const HistoricalField = ({ field, side, changed, opts, before, after, hide }) => {
   const value = side === 'before' ? before : after
+  if (value === undefined || value === null) return <div className="min-w-0"><dt className="mb-1 text-xs font-semibold text-slate-600">{field.label}</dt><dd className="min-h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">{displayValue(field.key,value,opts)}</dd></div>
   if (isPlainObject(value)) {
-    return <div className="col-span-full rounded-xl border border-slate-200 p-3">
+    return <div className={`col-span-full rounded-xl border p-3 ${changed ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}>
       <p className="mb-3 text-xs font-bold text-slate-600">{field.label}</p>
       <dl className="grid gap-2 sm:grid-cols-2">{Object.entries(value).filter(([key]) => !neverShow(key, hide)).map(([key, item]) =>
         <div key={key} className="min-w-0"><dt className="text-xs text-slate-500">{opts.labelFor(key)}</dt><dd className="break-words text-sm font-semibold">{displayValue(key,item,opts)}</dd></div>)}</dl>
     </div>
   }
   if (Array.isArray(value) && value.some(isPlainObject)) {
-    return <div className="col-span-full rounded-xl border border-slate-200 p-3">
+    return <div className={`col-span-full rounded-xl border p-3 ${changed ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}>
       <p className="mb-2 text-xs font-bold text-slate-600">{field.label} ({value.length})</p>
-      <div className="max-h-64 space-y-2 overflow-y-auto">{value.map((item,index) => <div key={index} className="rounded-lg bg-slate-50 p-2"><dl className="grid gap-2 sm:grid-cols-2">{Object.entries(item).filter(([key])=>!neverShow(key,hide)).map(([key,v]) => <div key={key}><dt className="text-xs text-slate-500">{opts.labelFor(key)}</dt><dd className="break-words text-xs font-semibold">{displayValue(key,v,opts)}</dd></div>)}</dl></div>)}</div>
+      <div className="max-h-64 space-y-2 overflow-y-auto">{value.slice(0, 50).map((item,index) => <div key={index} className="rounded-lg bg-slate-50 p-2"><dl className="grid gap-2 sm:grid-cols-2">{(isPlainObject(item) ? Object.entries(item) : [['value',item]]).filter(([key])=>!neverShow(key,hide)).map(([key,v]) => <div key={key}><dt className="text-xs text-slate-500">{opts.labelFor(key)}</dt><dd className="break-words text-xs font-semibold">{displayValue(key,v,opts)}</dd></div>)}</dl></div>)}{value.length > 50 ? <p className="mt-2 text-xs font-semibold text-amber-700">Showing the first 50 saved entries. No values have been changed.</p> : null}</div>
     </div>
   }
   return <div className="min-w-0">
@@ -86,7 +49,7 @@ export const buildReviewFormSections = ({ before, after, entityType, labels = {}
   const used = new Set()
   const sections = template.sections.map(([name, fields])=>({
     name,
-    fields: fields.filter(key=>availableKeys.includes(key)).map(key=>{ used.add(key); return {key,label:labels[key]||humanizeKey(key)} }),
+    fields: fields.filter(key => !neverShow(key,isHiddenField)).map(key=>{ used.add(key); return {key,label:labels[key]||humanizeKey(key)} }),
   })).filter(group=>group.fields.length)
   const remaining = availableKeys.filter(key=>!used.has(key)).map(key=>({key,label:labels[key]||humanizeKey(key)}))
   if (remaining.length) sections.push({name:template.sections.length ? 'Other Saved Details' : 'Record Details',fields:remaining})
@@ -94,7 +57,7 @@ export const buildReviewFormSections = ({ before, after, entityType, labels = {}
 }
 
 const ReviewFormComparison = ({ beforeValue, afterValue, events = [], revision = 1, actionKey = null, entityType, lookups = {}, labels = {}, isHiddenField, fieldOrder = [], listRenderers = {} }) => {
-  const [mode,setMode] = useState('changes')
+  const [mode,setMode] = useState('forms')
   const [mobileSide,setMobileSide] = useState('after')
   const [highlight,setHighlight] = useState(true)
   const [selectedRevision,setSelectedRevision] = useState('latest')
@@ -148,7 +111,7 @@ const ReviewFormComparison = ({ beforeValue, afterValue, events = [], revision =
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1">
-          <button type="button" onClick={()=>setMode('forms')} className={`rounded-lg px-3 py-2 text-xs font-bold ${mode==='forms'?'bg-white text-blue-700 shadow-sm':'text-slate-600'}`}><FiColumns className="mr-1 inline"/> All Saved Details</button>
+          <button type="button" onClick={()=>setMode('forms')} className={`rounded-lg px-3 py-2 text-xs font-bold ${mode==='forms'?'bg-white text-blue-700 shadow-sm':'text-slate-600'}`}><FiColumns className="mr-1 inline"/> Full Form Comparison</button>
           <button type="button" onClick={()=>setMode('changes')} className={`rounded-lg px-3 py-2 text-xs font-bold ${mode==='changes'?'bg-white text-blue-700 shadow-sm':'text-slate-600'}`}><FiList className="mr-1 inline"/> Changed Fields Only</button>
         </div>
         {mode==='forms' ? <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={highlight} onChange={(event)=>setHighlight(event.target.checked)}/> Highlight Changes</label> : null}
@@ -165,5 +128,6 @@ const ReviewFormComparison = ({ beforeValue, afterValue, events = [], revision =
 }
 
 export default ReviewFormComparison
+
 
 

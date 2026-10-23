@@ -145,6 +145,8 @@ const ListingProfile = () => {
   const reviewEntityType = String(searchParams.get('reviewEntityType') || '')
   const reviewTargetId = Number(searchParams.get('reviewTargetId') || 0)
   const reviewPaymentId = Number(searchParams.get('paymentId') || 0)
+  const reviewScheduleId = Number(searchParams.get('scheduleId') || 0)
+  const reviewTab = searchParams.get('reviewTab') || ''
   const isAccountRoute = Boolean(accountId)
   const profileKey = ['lot-listing-profile', projectSlug, listingId, accountId || 'current']
   const profileUrl = accountId
@@ -199,14 +201,19 @@ const ListingProfile = () => {
   // A review record is strictly read-only. The normal page fetch is still
   // protected by its existing project/account permissions.
   const reviewedPayment = (profile.payments || []).find((payment) => Number(payment.paymentId || payment.id || payment.lot_project_payment_id) === reviewPaymentId)
-  const reviewRecord = reviewView ? (
-    reviewEntityType === 'lot_project_listing' ? profile.listing :
-    reviewEntityType === 'lot_project_client_profile' ? profile.client :
+  const exactAccount = !accountId || Number(profile.account?.id || profile.account?.lot_project_account_id || 0) === Number(accountId)
+  const exactListing = Number(profile.listing?.id || profile.listing?.listingId || profile.listing?.lot_project_listing_id || 0) === Number(listingId)
+  const reviewRecord = reviewView && exactAccount && exactListing ? (
+    reviewEntityType === 'lot_project_listing' ? reviewTargetId === Number(profile.listing?.id || 0) ? profile.listing : null :
+    reviewEntityType === 'lot_project_client_profile' ? reviewTargetId === Number(profile.client?.id || 0) ? profile.client : null :
     ['lot_project_payment','lot_project_payment_proof','lot_project_signed_receipt'].includes(reviewEntityType) ? reviewedPayment :
-    ['lot_project_account','lot_project_commission_account','lot_project_reservation','lot_project_cancellation'].includes(reviewEntityType) ? profile.account :
-    ['lot_project_lmf_schedule','lot_project_penalty_schedule'].includes(reviewEntityType) ? (profile.soaRows || []).find((row)=>Number(row.scheduleId||row.id||row.lot_project_payment_schedule_id)===reviewTargetId) : null
+    ['lot_project_account','lot_project_commission_account','lot_project_reservation','lot_project_cancellation'].includes(reviewEntityType) ? reviewTargetId === Number(profile.account?.id || 0) ? profile.account : null :
+    ['lot_project_lmf_schedule','lot_project_penalty_schedule'].includes(reviewEntityType) ? (profile.soaRows || []).find((row)=>Number(row.scheduleId||row.id||row.lot_project_payment_schedule_id)===reviewScheduleId && reviewScheduleId === reviewTargetId) : null
   ) : null
   const readOnly = Boolean(profile.readOnly)
+  useEffect(() => {
+    if (reviewView && visibleTabs.some(tab => tab.key === reviewTab)) setActiveTab(reviewTab)
+  }, [reviewView, reviewTab, visibleTabs])
   useEffect(() => {
     if (['payment_correction','penalty_adjustment','lmf_correction','payment_proof_review'].includes(workflowAction)) setActiveTab('payments')
     if (workflowAction === 'signed_receipt_review') setActiveTab('printouts')
@@ -1096,7 +1103,7 @@ const ListingProfile = () => {
         reviewId={workflowReviewId}
         record={reviewRecord}
         loading={profileQuery.isLoading}
-        error={profileQuery.isError ? 'You cannot access this record, or it is no longer available.' : !profileQuery.isLoading && !reviewRecord ? 'The exact record was not found. Return to Review Center to see its saved history.' : ''}
+        error={profileQuery.isError ? 'You cannot access this record, or it is no longer available.' : !profileQuery.isLoading && !exactAccount ? 'This buyer account does not match the requested review record.' : !profileQuery.isLoading && !exactListing ? 'This listing does not match the requested review record.' : !profileQuery.isLoading && !reviewRecord ? 'The exact record was not found. Return to Review Center to see its saved history.' : ''}
         onDismiss={() => setSearchParams(dismissReviewRecordQuery(searchParams), { replace: true })}
         onBackToReview={() => navigate(`/portal/${user?.role || 'super_admin'}/review-center/reviews/${workflowReviewId}`)}
       /> : null}
@@ -1126,6 +1133,7 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+
 
 
 

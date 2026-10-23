@@ -325,7 +325,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   }, [expectedGroupType, groupOption.type, groupId, location.search, navigate, rootPath])
 
   useEffect(() => {
-    if (!accreditedProjects.length) return
+    if (!accreditedProjects.length || (reviewView && reviewEntityType === 'seller_group_project_rates')) return
 
     if (
       !accreditedProjects.some(
@@ -338,7 +338,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         return next
       }, { replace: true })
     }
-  }, [accreditedProjects, selectedProjectId, setSearchParams])
+  }, [accreditedProjects, selectedProjectId, setSearchParams, reviewView, reviewEntityType])
 
   const configurationQuery = useQuery({
     queryKey: [
@@ -1309,8 +1309,10 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         loading={configurationQuery.isLoading}
         record={reviewEntityType === 'accredited_seller'
           ? members.find((member) => Number(member.accredited_seller_id) === reviewAccreditedSellerId)
-          : { ...group, ...fixedRates }}
-        error={configurationQuery.isError ? 'You cannot access this Network, or it is no longer available.' : reviewEntityType === 'accredited_seller' && !members.find((member) => Number(member.accredited_seller_id) === reviewAccreditedSellerId) ? 'The selected seller was not found in this Network.' : ''}
+          : reviewEntityType === 'seller_group_project_rates' && !accreditedProjects.some(item=>Number(item.lot_project_id)===selectedProjectId)
+            ? null
+            : { ...group, ...fixedRates }}
+        error={configurationQuery.isError ? 'You cannot access this Network, or it is no longer available.' : reviewEntityType === 'seller_group_project_rates' && !accreditedProjects.some(item=>Number(item.lot_project_id)===selectedProjectId) ? 'The reviewed project is unavailable for this Network. Another project was not substituted.' : reviewEntityType === 'accredited_seller' && !members.find((member) => Number(member.accredited_seller_id) === reviewAccreditedSellerId) ? 'The selected seller was not found in this Network.' : ''}
         onDismiss={() => setSearchParams(dismissReviewRecordQuery(searchParams), { replace: true })}
         onBackToReview={() => navigate(`${rootPath}/review-center/reviews/${workflowReviewId}`)}
       /> : null}
@@ -1332,6 +1334,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 }
 
 export default SellerGroupDetails
+
 
 
 

@@ -75,14 +75,14 @@ test('seller link uses current group membership and type, not previous snapshot'
   const review = reviewOf('accredited_seller', 7, { after_snapshot_json: JSON.stringify({ sellerGroupId: 2, userId: 14 }) })
   const location = await resolveReviewRecordLocation(dbStub([{ accredited_seller_id:7, seller_group_id:55, user_id:24, seller_group_type:'external' }], /FROM accredited_sellers/), review)
   const url = getReviewRecordLink({ review: { ...review, ...location }, actorRole:'auditor', reviewId:19 })
-  assert.match(url, /^\/portal\/auditor\/accredited\/groups\/external\/55\?/)
+  assert.match(url, /^\/portal\/auditor\/accredited\/sellers\/7\?/)
   assert.match(url, /sellerId=24/)
   assert.ok(!url.includes('/in-house/'))
 })
-test('seller without current network opens Accredited Sellers list', async () => {
+test('seller without current network still opens its direct read-only profile', async () => {
   const review = reviewOf('accredited_seller', 9)
   const loc = await resolveReviewRecordLocation(dbStub([{ accredited_seller_id: 9, seller_group_id: null, user_id: 15, seller_group_type: null }], /FROM accredited_sellers/), review)
-  assert.equal(getReviewRecordLink({ review: { ...review, ...loc }, actorRole:'auditor', reviewId:99 }), null)
+  assert.match(getReviewRecordLink({ review: { ...review, ...loc }, actorRole:'auditor', reviewId:99 }), /\/accredited\/sellers\/9\?/)
 })
 test('database query failure is not silently treated as success', async () => {
   await assert.rejects(() => resolveReviewRecordLocation({ query: async () => { throw Error('DB offline') } }, reviewOf('seller_group',15)), /DB offline/)
@@ -113,5 +113,6 @@ test('network project selection retains workflow context and corrects outdated r
   assert.match(source, /groups\/\$\{correctSection\}/)
   assert.doesNotMatch(source, /message="This Network was opened from the wrong Network section/)
 })
+
 
 

@@ -66,14 +66,18 @@ export async function resolveReviewRecordLocation(connection, review) {
     if (!rows?.length) return notFound('This seller no longer exists. Its saved review is still available.')
     const row=rows[0]
     const verifiedType = ['external','in_house'].includes(row.seller_group_type) ? row.seller_group_type:null
-    if (!verifiedType || !positiveId(row.seller_group_id)) return notFound('This seller has no valid Network. View the saved review instead.')
-    return {entityExists:true,recordLocation:{kind:'seller',sellerId:id,sellerUserId:Number(row.user_id),sellerGroupId:Number(row.seller_group_id),groupType:verifiedType},recordUnavailableReason:null}
+    // A seller remains inspectable after removal from a Network. Direct view
+    // requires only the exact seller ID; editing still requires valid context.
+    return {entityExists:true,recordLocation:{kind:'seller',sellerId:id,sellerUserId:Number(row.user_id),sellerGroupId:positiveId(row.seller_group_id),groupType:verifiedType},recordUnavailableReason:null}
   }
   // Fixed table/primary-key allowlist. The joined account is used to open the
   // exact buyer history rather than silently opening a different unit buyer.
   const specification = typeRecord[type]
   if (specification) {
-    const id = entityId || positiveId(after.paymentId) || positiveId(after.listingId) || positiveId(before.listingId)
+    // Entity ID is the primary key for THIS record type, not an unrelated
+    // payment/listing ID saved as metadata in a different review.
+    const id = entityId
+
     if (!id) return missing()
     const {table,pk}=specification
     const [rows] = await connection.query(`SELECT * FROM ${table} WHERE ${pk}=? LIMIT 1`,[id])
@@ -85,15 +89,19 @@ export async function resolveReviewRecordLocation(connection, review) {
     let accountId=positiveId(row.lot_project_account_id)
     const profileId=positiveId(row.lot_project_client_profile_id) || (type==='lot_project_client_profile'?id:null)
     if (!accountId && profileId) {
-      const [accountRows]=await connection.query(`SELECT lot_project_account_id,lot_project_listing_id,lot_project_id FROM lot_project_accounts WHERE lot_project_client_profile_id=? LIMIT 1`,[profileId])
+      const [accountRows]=await connection.query(`SELECT lot_project_account_id,lot_project_listing_id,lot_project_id FROM lot_project_accounts WHERE lot_project_client_profile_id=? LIMIT 2`,[profileId])
+      // A profile associated with multiple historical accounts needs explicit
+      // identification; never open an arbitrary account returned by LIMIT 1.
+      if (accountRows.length > 1) return notFound('Multiple buyer accounts refer to this profile. The exact reviewed account cannot be inferred.')
       if (accountRows.length) {
         if (Number(accountRows[0].lot_project_listing_id)!==listingId || Number(accountRows[0].lot_project_id)!==Number(row.lot_project_id)) return notFound()
         accountId=positiveId(accountRows[0].lot_project_account_id)
       }
     }
-    if (['lot_project_payment','lot_project_payment_proof','lot_project_signed_receipt','lot_project_client_profile','lot_project_commission_account','lot_project_account','lot_project_penalty_schedule','lot_project_lmf_schedule'].includes(type) && !accountId && !['lot_project_account','lot_project_commission_account'].includes(type)) return notFound('The exact buyer account could not be found. View the saved review instead.')
+    if (['lot_project_payment','lot_project_payment_proof','lot_project_signed_receipt','lot_project_client_profile','lot_project_penalty_schedule','lot_project_lmf_schedule'].includes(type) && !accountId) return notFound('The exact buyer account could not be found. View the saved review instead.')
     return {entityExists:true,recordLocation:{kind:'listing_profile',listingId,accountId: accountId || (['lot_project_account','lot_project_commission_account','lot_project_reservation','lot_project_cancellation'].includes(type)?id:null),paymentId:['lot_project_payment','lot_project_payment_proof','lot_project_signed_receipt'].includes(type)?id:positiveId(row.lot_project_payment_id),proofId:null,scheduleId:['lot_project_penalty_schedule','lot_project_lmf_schedule'].includes(type)?id:null},recordUnavailableReason:null}
   }
   // All other types keep their existing review view; no unverified deep link.
   return { entityExists:true,recordLocation:null,recordUnavailableReason:null }
 }
+

@@ -24,7 +24,7 @@ test('Dedicated review workspace shows form-based history and compact changes on
   assert.match(center, /Dedicated review workspace/)
   assert.match(center, /<ReviewFormComparison/)
   const form = read('client/src/components/Shared/ReviewFormComparison.jsx')
-  assert.match(form, /All Saved Details/)
+  assert.match(form, /Full Form Comparison/)
   assert.match(form, /Changed Fields Only/)
   assert.match(form, /<ReviewSnapshotDiff/)
   assert.match(form, /Not Recorded/)
@@ -49,6 +49,7 @@ test('Dedicated review page preserves Head, Auditor and correction actions', () 
     'Submit Correction Details for Recheck',
   ]) assert.match(center, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 })
+
 
 
 

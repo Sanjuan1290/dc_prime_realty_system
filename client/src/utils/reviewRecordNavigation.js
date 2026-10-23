@@ -1,4 +1,4 @@
-const DISMISS_KEYS = ['reviewView','reviewId','reviewEntityType','reviewTargetId','auditCaseId','sellerId','accreditedSellerId'];
+const DISMISS_KEYS = ['reviewView','reviewId','reviewEntityType','reviewTargetId','auditCaseId','sellerId','accreditedSellerId','reviewTab','paymentId','proofId','scheduleId'];
 export const dismissReviewRecordQuery = (searchParams) => {
   const next = new URLSearchParams(searchParams);
   const id = Number(next.get('reviewId') || 0);
@@ -8,3 +8,4 @@ export const dismissReviewRecordQuery = (searchParams) => {
 };
 export const reviewReturnPath = (role, id) => Number.isSafeInteger(Number(id)) && Number(id) > 0
   ? `/portal/${encodeURIComponent(role || 'super_admin')}/review-center/reviews/${Number(id)}` : null;
+

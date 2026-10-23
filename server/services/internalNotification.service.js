@@ -19,7 +19,9 @@ export const REVIEW_ACTION_NOTIFICATION_STAGES = Object.freeze({
   review_has_no_head: "r.status = 'pending_head_review'",
   review_returned: "r.status = 'returned_for_correction'",
   audit_review_required: "r.status = 'pending_auditor_review'",
-  audit_case_response_required: "r.status = 'audit_case_open' AND ac.status = 'awaiting_head_response' AND (ac.assigned_responder_user_id IS NULL OR ac.assigned_responder_user_id = n.user_id)",
+  // An old Super Admin notification must not be shown as an actionable request
+  // after the responder policy has moved admin-direct cases to System Admin.
+  audit_case_response_required: "r.status = 'audit_case_open' AND ac.status = 'awaiting_head_response' AND (ac.assigned_responder_user_id IS NULL OR ac.assigned_responder_user_id = n.user_id) AND (ac.assigned_responder_user_id IS NOT NULL OR COALESCE(r.approval_type,'') NOT IN ('emergency_super_admin','system_admin_direct') OR EXISTS (SELECT 1 FROM users responder_user WHERE responder_user.id = n.user_id AND responder_user.role = 'system_admin' AND responder_user.status = 'active'))",
   audit_case_no_responder: "r.status = 'audit_case_open' AND ac.status = 'awaiting_head_response' AND ac.assigned_responder_user_id IS NULL",
   audit_case_head_response: "r.status = 'audit_case_open' AND ac.status = 'under_auditor_review'",
   system_correction_required: "r.status = 'correction_required'",
@@ -170,5 +172,6 @@ export const notifySystemAdmins = async (connection, { reviewId, auditCaseId = n
   const userIds = await getEligibleRoleUserIds(connection, { role: 'system_admin' });
   return createInternalNotifications(connection, { userIds, type, title, message, reviewId, auditCaseId });
 };
+
 
 

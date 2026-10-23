@@ -36,7 +36,7 @@ const REVIEW_CENTER_ROLES = new Set(['super_admin','system_admin','auditor','mar
 
 const getQueueCopy = (role) => {
   if (role === 'auditor') return { title: 'Auditor Review Queue', description: 'Check saved changes, verify correct records, or report issues that need correction.' }
-  if (role === 'system_admin') return { title: 'System Correction Queue', description: 'Shows only Auditor-confirmed cases that require controlled System Admin correction or an unassigned Head response.' }
+  if (role === 'system_admin') return { title: 'System Correction Queue', description: 'Shows Auditor-confirmed corrections, Audit Cases awaiting a System Admin explanation, and cases requiring responder reassignment.' }
   if (role === 'super_admin') return { title: 'Owner Correction Queue', description: 'Shows only correction cases that specifically require Super Admin authority.' }
   if (DEPARTMENT_STAFF_ROLES.includes(role)) return { title: 'My Correction Queue', description: 'Shows only records you entered that your Department Head returned for correction. Open an item, review the reason, correct the record, and resubmit the same Review.' }
   return { title: 'Department Head Review Queue', description: 'Shows only Staff changes from your department and Audit Cases waiting for your explanation.' }
@@ -71,6 +71,15 @@ const REVIEW_STATUS_LABELS = Object.freeze({
 
 // System Admin and Super Admin share the owner-level direct-entry path (stored
 // as emergency_super_admin), so the label must name whoever actually entered it.
+const auditCaseStatusLabel = (auditCase, responders) => {
+  if (auditCase?.status !== 'awaiting_head_response') return titleCase(auditCase?.status)
+  if (responders?.mode === 'reassigned') return 'Awaiting Assigned Responder'
+  if (['system_admin_case_responder', 'initiating_system_admin', 'system_admin_fallback'].includes(responders?.mode)) {
+    return 'Awaiting System Admin Response'
+  }
+  return 'Awaiting Head Response'
+}
+
 const directEntryRoleLabel = (review = {}) => (review?.initiated_by_role === 'system_admin' ? 'System Admin' : 'Super Admin')
 const approvalTypeLabel = (review = {}) => (review?.approval_type === 'emergency_super_admin'
   ? `${directEntryRoleLabel(review)} direct entry`
@@ -537,7 +546,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
         {review.snapshotRecoveredFromAuditLog ? <p role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-800">Older price values were recovered from the matching Audit Log. No saved records were changed.</p> : null}
         {reviewActionKey === 'payment_proof.verify' ? <PaymentProofReviewFiles reviewId={reviewId} files={review.proofFiles || []} /> : null}
         {review.entity_type === 'lot_project_signed_receipt' ? <ReviewSignedReceiptFile reviewId={reviewId} before={before} after={after}/> : null}
-        {auditCase ? <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-wide text-red-600">Audit Case</p><p className="text-lg font-black text-red-950">{auditCase.case_number}</p></div><span className="rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-black text-red-700">{titleCase(auditCase.status)}</span></div><div className="mt-3 grid gap-3"><div><p className="text-xs font-black uppercase text-red-600">Finding</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.finding}</p></div>{auditCase.head_response ? <div><p className="text-xs font-black uppercase text-red-600">Responder Explanation</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.head_response}</p></div> : null}{auditCase.auditor_resolution ? <div><p className="text-xs font-black uppercase text-red-600">Auditor Resolution</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.auditor_resolution}</p></div> : null}{auditCase.correction_summary ? <div><p className="text-xs font-black uppercase text-red-600">{correctionRoleLabel} Correction</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.correction_summary}</p></div> : null}{responders ? <div><p className="text-xs font-black uppercase text-red-600">Who must answer</p><p className="mt-1 text-sm font-semibold text-red-950">{responders.label}{responders.users?.length ? `: ${responders.users.map((user) => user.full_name).join(', ')}` : ': nobody is available. An administrator must reassign the responder.'}</p></div> : null}</div></section> : null}
+        {auditCase ? <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-wide text-red-600">Audit Case</p><p className="text-lg font-black text-red-950">{auditCase.case_number}</p></div><span className="rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-black text-red-700">{auditCaseStatusLabel(auditCase, responders)}</span></div><div className="mt-3 grid gap-3"><div><p className="text-xs font-black uppercase text-red-600">Finding</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.finding}</p></div>{auditCase.head_response ? <div><p className="text-xs font-black uppercase text-red-600">Responder Explanation</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.head_response}</p></div> : null}{auditCase.auditor_resolution ? <div><p className="text-xs font-black uppercase text-red-600">Auditor Resolution</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.auditor_resolution}</p></div> : null}{auditCase.correction_summary ? <div><p className="text-xs font-black uppercase text-red-600">{correctionRoleLabel} Correction</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.correction_summary}</p></div> : null}{responders ? <div><p className="text-xs font-black uppercase text-red-600">Who must answer</p><p className="mt-1 text-sm font-semibold text-red-950">{responders.label}{responders.users?.length ? `: ${responders.users.map((user) => user.full_name).join(', ')}` : ': nobody is available. An administrator must reassign the responder.'}</p></div> : null}</div></section> : null}
         <section id="review-history" className="scroll-mt-24 rounded-2xl border border-slate-200 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Review History</p><div className="mt-3 space-y-3">{(review.events || []).map((event) => <div key={event.operational_review_event_id} className="flex gap-3 border-l-2 border-blue-200 pl-3"><div className="min-w-0"><p className="font-black text-slate-800">{titleCase(event.event_type)}</p><p className="text-xs font-semibold text-slate-500">{event.actor_name || ROLE_LABELS[event.actor_role] || 'System'} · {fmtDate(event.created_at)}</p>{event.message ? <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{event.message}</p> : null}</div></div>)}</div></section>
 
         {isHead && review.status === 'pending_head_review' && !supportsRecordCorrection ? <StatusAlert type="info" message="This action is already completed and cannot be edited in place. If it is incorrect, use Return for Correction to notify the original staff member. They can make an authorized follow-up change, describe the correction, and resubmit the Review for your check. No records are locked." /> : null}
@@ -706,6 +715,7 @@ const ReviewCenter = () => {
 }
 
 export default ReviewCenter
+
 
 
 

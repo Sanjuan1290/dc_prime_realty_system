@@ -111,11 +111,11 @@ test('all review and case stages leave records editable without querying a revie
 
 test('Audit Case responders: emergency, original Head, fallback, reassigned', async () => {
   const connection = fakeConnection([
-    [/role = 'super_admin'/, () => [[{ id: 9 }]]],
+    [/u\.role = 'system_admin'/, () => [[{ id: 7 }, { id: 8 }]]],
     [/WHERE u\.role = \? AND u\.status = 'active'/, () => [[{ id: 4 }, { id: 5 }]]],
     [/WHERE id = \? AND status = 'active'/, (_sql, params) => [params[0] === 6 ? [{ id: 6 }] : []]],
   ]);
-  assert.deepEqual(await resolveAuditCaseResponders(connection, { approval_type: 'emergency_super_admin', department: 'accounting' }), { mode: 'emergency_super_admin', userIds: [9], originalHeadUserId: null });
+  assert.deepEqual(await resolveAuditCaseResponders(connection, { approval_type: 'emergency_super_admin', initiated_by_role: 'super_admin', department: 'accounting' }), { mode: 'system_admin_case_responder', userIds: [7, 8], originalHeadUserId: null });
   assert.equal((await resolveAuditCaseResponders(connection, { department: 'accounting', head_reviewed_by_user_id: 4 })).mode, 'original_head');
   const fallback = await resolveAuditCaseResponders(connection, { department: 'accounting', head_reviewed_by_user_id: 99 });
   assert.deepEqual([fallback.mode, fallback.userIds], ['department_head_fallback', [4, 5]]);
@@ -168,6 +168,7 @@ test('Review Center makes post-action checks explicit and keeps correction contr
   assert.match(page, /responders\?\.canRespond/);
   assert.match(page, /approvalStatus/);
 });
+
 
 
 

@@ -8,7 +8,7 @@ const slugParam = (value) => encodeURIComponent(String(value))
 export const getReviewRecordLink = ({
   review, actorRole, reviewId, auditCaseId, workflowAction = '', mode = 'view',
 } = {}) => {
-  if (!review || review.entityExists === false || review.action_key === 'network.delete') return null
+  if (!review || review.entityExists === false || review.action_key === 'network.delete' || !validId(reviewId)) return null
   const location = review.recordLocation || {}
   const params = new URLSearchParams()
   params.set('reviewId', String(reviewId))
@@ -24,12 +24,16 @@ export const getReviewRecordLink = ({
   const networkTypeSegment = location.groupType === 'external' ? 'external' : location.groupType === 'in_house' ? 'in-house' : null
   if (location.kind === 'network' || location.kind === 'seller') {
     if (validId(location.projectId)) params.set('project', String(location.projectId))
-    if (!validId(location.groupId || location.sellerGroupId) || !networkTypeSegment) return null
+    if (location.kind === 'network' && (!validId(location.groupId || location.sellerGroupId) || !networkTypeSegment)) return null
     if (location.kind === 'seller') {
       if (!validId(location.sellerUserId) || !validId(location.sellerId)) return null
       params.set('sellerId', String(location.sellerUserId))
       params.set('accreditedSellerId', String(location.sellerId))
-      if (mode !== 'view') params.set('workflowAction','seller_edit_review')
+      // The dedicated seller profile fetches the exact ID itself, so pagination
+      // of the Network member list can never hide or substitute the seller.
+      if (mode === 'view') return `${root}/accredited/sellers/${location.sellerId}?${params}`
+      params.set('workflowAction','seller_edit_review')
+      if (!validId(location.sellerGroupId) || !networkTypeSegment) return null
     }
     return `${root}/accredited/groups/${networkTypeSegment}/${location.groupId || location.sellerGroupId}?${params}`
   }
@@ -39,9 +43,25 @@ export const getReviewRecordLink = ({
   if (location.kind === 'listing_profile') {
     if (!validId(location.listingId)) return null
     const accountPart = validId(location.accountId) ? `/accounts/${location.accountId}` : ''
+    const type = String(review.entity_type || '')
+    const accountTypes = ['lot_project_payment','lot_project_payment_proof','lot_project_signed_receipt','lot_project_client_profile','lot_project_account','lot_project_reservation','lot_project_cancellation','lot_project_commission_account','lot_project_penalty_schedule','lot_project_lmf_schedule']
+    if (accountTypes.includes(type) && !validId(location.accountId)) return null
+    if (['lot_project_payment','lot_project_payment_proof','lot_project_signed_receipt'].includes(type) && !validId(location.paymentId)) return null
+    if (['lot_project_penalty_schedule','lot_project_lmf_schedule'].includes(type) && !validId(location.scheduleId)) return null
     if (location.paymentId) params.set('paymentId', String(location.paymentId))
     if (location.proofId) params.set('proofId', String(location.proofId))
     if (location.scheduleId) params.set('scheduleId', String(location.scheduleId))
+    if (mode === 'view') {
+      const tabByType = {
+        lot_project_listing:'unit', lot_project_client_profile:'client',
+        lot_project_payment:'payments', lot_project_payment_proof:'payments',
+        lot_project_signed_receipt:'printouts', lot_project_lmf_schedule:'payments',
+        lot_project_penalty_schedule:'payments', lot_project_commission_account:'unit',
+        lot_project_reservation:'unit', lot_project_cancellation:'unit',
+        lot_project_account:'unit',
+      }
+      if (tabByType[type]) params.set('reviewTab', tabByType[type])
+    }
     return `/portal/lot-projects/${encodedSlug}/listings/${location.listingId}${accountPart}?${params}`
   }
   if (review.entity_type === 'lot_project_settings')
@@ -53,3 +73,4 @@ export const getReviewRecordLink = ({
   }
   return null
 }
+
