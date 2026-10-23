@@ -506,9 +506,6 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
     <div className="flex flex-wrap items-center justify-between gap-3"><button type="button" onClick={onClose} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50"><FiArrowLeft />Back to Review Center</button><p className="text-xs font-semibold text-slate-500">Dedicated review workspace</p></div>
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <header className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6"><div><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-black text-blue-700">{review.review_number}</span><span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(review.status)}`}>{reviewStatusLabel(review.status)}</span>{review.approval_type ? <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${review.approval_type === 'emergency_super_admin' ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{approvalTypeLabel(review)}</span> : null}</div><h2 className="mt-2 text-2xl font-black">{review.entity_label || titleCase(review.entity_type)}</h2><p className="mt-1 text-sm font-semibold text-slate-500">{titleCase(review.department)} department, {review.action_label || titleCase(review.action_key)}{review.lot_project_name ? `, ${review.lot_project_name}` : ''}</p></div></header>
-      <nav aria-label="Review sections" className="flex flex-wrap gap-2 border-b border-slate-200 px-5 py-3 text-xs sm:px-6">
-        {[['review-overview','Overview'],['review-changes','Changes Made'],['review-history','Review History'],['review-decision','Review Decision']].map(([id,label]) => <a key={id} href={`#${id}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-semibold text-blue-700 transition hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">{label}</a>)}
-      </nav>
       <div className="grid gap-5 p-5 sm:p-6">
         {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={() => setNotice(null)} /> : null}
         {!canAct ? <StatusAlert type="info" title="View only" message={review.status === 'closed' || review.status === 'auditor_verified' ? 'This review is complete. Nothing else is needed from anyone.' : `This review is now at "${reviewStatusLabel(review.status)}". Nothing is waiting on your account, so it is shown for reference only.`} /> : null}
@@ -715,12 +712,3 @@ const ReviewCenter = () => {
 }
 
 export default ReviewCenter
-
-
-
-
-
-
-
-
-

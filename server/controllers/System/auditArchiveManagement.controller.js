@@ -5,10 +5,11 @@ import { sendEmail } from '../../services/email.service.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { normalizeIpAddress } from '../../utils/requestIp.js';
 import { redactReportMetadata } from '../../utils/auditReportValidation.js';
+import { ensureArchiveSettings } from '../../services/archiveSettings.service.js';
 
 const PAGE = 25;
 const errorWith = (message, statusCode = 403) => Object.assign(new Error(message), { statusCode });
-const fail = (res, e) => res.status(e.statusCode || 500).json({ message: e.statusCode ? e.message : getErrorMessage(e) });
+const fail = (res, e) => res.status(e.statusCode || 500).json({ message: e.statusCode ? e.message : getErrorMessage(e), ...(e.code ? { code: e.code } : {}) });
 const parseJson = v => { try { return typeof v === 'string' ? JSON.parse(v) : (v || {}); } catch { return {}; } };
 const admin = async (req, owner = false) => {
   const user = await getAuthenticatedUser(req);
@@ -16,16 +17,7 @@ const admin = async (req, owner = false) => {
   if (owner ? user.role !== 'super_admin' : !['super_admin','system_admin'].includes(user.role)) throw errorWith('Only an authorized administrator can perform this action.');
   return user;
 };
-const requireInstalled = async c => {
-  const [[r]] = await c.query("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ('audit_archive_settings','audit_archive_holds','audit_archive_purge_codes','audit_archive_purge_receipts')");
-  if(Number(r.n)!==4)throw errorWith('Archive Management needs its database update. Please run the supplied SQL migration.',503);
-};
-const getSettings = async c => {
-  await requireInstalled(c);
-  const [[s]]=await c.query('SELECT archive_days,auto_delete_enabled FROM audit_archive_settings WHERE id=1');
-  if(!s)throw errorWith('The archive settings have not been initialized.',503);
-  return {archiveDays:Number(s.archive_days),autoDeleteEnabled:Boolean(s.auto_delete_enabled)};
-};
+const getSettings = ensureArchiveSettings;
 const batchSql=`SELECT b.audit_log_archive_batch_id AS id,b.created_at AS archivedAt,b.record_count AS recordCount,b.export_filename AS filename,b.export_sha256 AS fileHash,b.archived_by_name AS archivedBy,
  DATE_ADD(b.created_at,INTERVAL s.archive_days DAY) AS eligibleAfter,
  (b.created_at < DATE_SUB(NOW(),INTERVAL s.archive_days DAY)) AS expired,
@@ -164,4 +156,3 @@ export const runArchiveCleanup=async()=>{
     return {removed};
   }finally{c.release();}
 };
-
