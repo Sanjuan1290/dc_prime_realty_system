@@ -31,12 +31,17 @@ test('Review Details explains task and action, never assumes unavailable means d
   assert.match(source, /review-history/)
 })
 
-test('Review history displays differences first and explains missing historical values', () => {
+test('Review history defaults to the full saved form and keeps changed fields optional', () => {
   const comparison = read('client/src/components/Shared/ReviewFormComparison.jsx')
   const diff = read('client/src/components/Shared/ReviewSnapshotDiff.jsx')
-  assert.match(comparison, /useState\('changes'\)/)
+  assert.match(comparison, /useState\('forms'\)/)
+  assert.match(comparison, /Full Form Comparison/)
   assert.match(comparison, /Changed Fields Only/)
-  assert.match(comparison, /All Saved Details/)
+  assert.match(comparison, /mode==='forms'/)
+  assert.match(comparison, /mode==='changes'\s*\?\s*<ReviewSnapshotDiff/)
+  assert.match(comparison, /Not Recorded/)
+  assert.match(comparison, /Not Set/)
+  assert.match(comparison, /They have not been filled in from live data/)
   assert.match(diff, /No earlier values were saved/)
   assert.doesNotMatch(diff, /This record was newly created, so there are no earlier values/)
 })
