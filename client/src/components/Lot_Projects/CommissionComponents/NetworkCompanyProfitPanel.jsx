@@ -215,14 +215,14 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
         <h3 className="text-lg font-black">Release Network Company Profit</h3>
         <p className="mt-1 text-sm">{releaseChoice.profit.unit} · {releaseChoice.stage.stage} · <strong>{money(releaseChoice.stage.amount)}</strong></p>
         <p className="mt-2 text-sm text-slate-600">Recipient: <strong>{releaseChoice.profit.payee}</strong>. This is the Network's payout, not the Head's personal commission.</p>
-        <label className="mt-4 block text-sm font-bold">Payment Method<select value={method} onChange={(e) => setMethod(e.target.value)} className="mt-1 w-full rounded-lg border p-3"><option value="bank_transfer">Bank Transfer</option><option value="cash">Cash</option><option value="check">Check</option><option value="other">Other</option></select></label>
-        <ReleaseReceiptFields value={receiptDetails} onChange={(next) => { setReceiptDetails(next); setReceiptError('') }} />
+        <label className="mt-4 block text-sm font-bold">Payment Method<select value={method} onChange={(e) => {setMethod(e.target.value); setReceiptDetails(previous=>({...previous,bankName:'',accountNumber:'',referenceNumber:''}));setReceiptError('')}} className="mt-1 w-full rounded-lg border p-3"><option value="bank_transfer">Bank Transfer</option><option value="cash">Cash</option><option value="check">Check</option><option value="other">Other</option></select></label>
+        <ReleaseReceiptFields value={receiptDetails} paymentMethod={method} onChange={(next) => { setReceiptDetails(next); setReceiptError('') }} />
         {receiptError ? <p role="alert" className="mt-2 text-sm font-bold text-red-700">{receiptError}</p> : null}
         <p className="mt-3 text-xs text-amber-800"><FiShield className="mr-1 inline"/> This release requires Final Double-Check and is recorded in Audit Logs and the Head Review Center.</p>
         <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setReleaseChoice(null)} disabled={mutation.isPending} className="rounded-lg border px-4 py-2">Cancel</button>
           <button type="button" disabled={mutation.isPending} onClick={() => {
             if (!releaseChoice.stage.canRelease) { setReceiptError('This milestone cannot be released today. Refresh to check the next release date.'); return }
-            const problem = validateReleaseReceipt(receiptDetails)
+            const problem = validateReleaseReceipt(receiptDetails, undefined, method)
             if (problem) { setReceiptError(problem); return }
             mutation.mutate({ ...releaseChoice, paymentMethod: method, paymentReference: receiptDetails.referenceNumber.trim(), receiptDetails })
           }} className="rounded-lg bg-blue-700 px-4 py-2 font-bold text-white disabled:opacity-40">{mutation.isPending ? 'Saving...' : 'Review & Release'}</button></div>

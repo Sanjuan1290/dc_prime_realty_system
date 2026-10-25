@@ -5,10 +5,11 @@ const properIsoDate = (value) => {
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 };
-export const validateReleaseReceiptDetails = (input, actualReleaseDate, today) => {
+export const validateReleaseReceiptDetails = (input, actualReleaseDate, today, paymentMethod = 'bank_transfer') => {
+  const isCash = paymentMethod === 'cash';
   const fields = {
-    bankName: clean(input?.bankName),
-    accountNumber: clean(input?.accountNumber),
+    bankName: isCash ? 'Not applicable (Cash)' : clean(input?.bankName),
+    accountNumber: isCash ? 'Not applicable' : clean(input?.accountNumber),
     receiptDate: clean(input?.receiptDate),
     referenceNumber: clean(input?.referenceNumber),
     witnessName: clean(input?.witnessName),
@@ -26,4 +27,5 @@ export const validateReleaseReceiptDetails = (input, actualReleaseDate, today) =
   }
   return fields;
 };
+
 

@@ -57,7 +57,7 @@ export default function ReleaseAllCommissionsModal({ profit, sellers, stage, pro
     if (!pending.length) return setError('All recipients were already released.')
     if (!confirmed) return setError('Confirm that all payout details were reviewed.')
     for(const r of pending){
-      const problem = validateReleaseReceipt(forms[r.key]?.receiptDetails)
+      const problem = validateReleaseReceipt(forms[r.key]?.receiptDetails, undefined, forms[r.key]?.paymentMethod)
       if(problem){ setSelected(r.key); return setError(`${r.name}: ${problem}`) }
     }
     mutation.mutate()
@@ -74,7 +74,7 @@ export default function ReleaseAllCommissionsModal({ profit, sellers, stage, pro
         <p className="text-xs font-semibold text-slate-600">Each payee needs their own receipt details. Saved stages are skipped and cannot be paid twice.</p>
         {pending.length ? <>
           <nav className="flex flex-wrap gap-2">{pending.map(r=><button type="button" key={r.key} onClick={()=>{setSelected(r.key);setError('')}} className={`rounded-lg border px-3 py-2 text-xs font-bold ${selected===r.key?'border-blue-600 bg-blue-50 text-blue-800':'border-slate-200'}`}>{r.role}</button>)}</nav>
-          {chosen && currentForm ? <div><p className="font-bold">{chosen.name} · {chosen.role}</p><label className="mt-3 block text-xs font-bold">Payment Method<select className="mt-1 block w-full rounded-lg border p-2" value={currentForm.paymentMethod} onChange={e=>update(chosen.key,{paymentMethod:e.target.value})}>{METHODS.map(([val,name])=><option key={val} value={val}>{name}</option>)}</select></label><ReleaseReceiptFields value={currentForm.receiptDetails} onChange={receiptDetails=>update(chosen.key,{receiptDetails})}/></div>:null}
+          {chosen && currentForm ? <div><p className="font-bold">{chosen.name} · {chosen.role}</p><label className="mt-3 block text-xs font-bold">Payment Method<select className="mt-1 block w-full rounded-lg border p-2" value={currentForm.paymentMethod} onChange={e=>update(chosen.key,{paymentMethod:e.target.value,receiptDetails:{...currentForm.receiptDetails,bankName:'',accountNumber:'',referenceNumber:''}})}>{METHODS.map(([val,name])=><option key={val} value={val}>{name}</option>)}</select></label><ReleaseReceiptFields value={currentForm.receiptDetails} paymentMethod={currentForm.paymentMethod} onChange={receiptDetails=>update(chosen.key,{receiptDetails})}/></div>:null}
           <button type="button" onClick={()=>setForms(current=>Object.fromEntries(Object.entries(current).map(([k,f])=>[k,{...f,receiptDetails:{...f.receiptDetails,receiptDate:current[selected]?.receiptDetails?.receiptDate||f.receiptDetails.receiptDate,witnessName:current[selected]?.receiptDetails?.witnessName||''}}])))} className="rounded-lg border px-3 py-2 text-xs font-bold">Copy receipt date and witness to all pending</button>
           <label className="flex items-start gap-2 text-xs font-semibold"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} className="mt-1"/>I reviewed every recipient, net amount, payment reference and receipt detail. Record all releases for this milestone.</label>
         </>:null}

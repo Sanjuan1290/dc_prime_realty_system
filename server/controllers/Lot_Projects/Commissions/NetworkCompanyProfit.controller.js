@@ -131,7 +131,7 @@ export const releaseNetworkCompanyProfit = async (req, res) => {
     const method = clean(req.body?.paymentMethod).toLowerCase();
     const reference = clean(req.body?.paymentReference);
     const date = todayDateOnly();
-    const receiptDetails = validateReleaseReceiptDetails(req.body?.receiptDetails, date, date);
+    const receiptDetails = validateReleaseReceiptDetails(req.body?.receiptDetails, date, date, method);
     if (!Number.isSafeInteger(profitId) || profitId <= 0 || !Number.isSafeInteger(releaseId) || releaseId <= 0) {
       return res.status(400).json({ success: false, message: 'Select a valid Company Profit release.' });
     }
@@ -268,5 +268,6 @@ export const getNetworkCompanyProfitAcknowledgments = async (req, res) => {
   } catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error) }); }
   finally { connection.release(); }
 };
+
 
 

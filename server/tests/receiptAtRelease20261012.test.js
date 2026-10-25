@@ -54,7 +54,7 @@ test('network company profit release records shared receipt fields atomically', 
   const controller=read('server/controllers/Lot_Projects/Commissions/NetworkCompanyProfit.controller.js')
   assert.match(component, /<ReleaseReceiptFields value=\{receiptDetails\}/)
   assert.match(component, /paymentReference: receiptDetails.referenceNumber.trim\(\), receiptDetails/)
-  assert.match(controller, /validateReleaseReceiptDetails\(req.body\?\.receiptDetails, date, date\)/)
+  assert.match(controller, /validateReleaseReceiptDetails\(req.body\?\.receiptDetails, date, date, method\)/)
   assert.match(controller, /bank_name = \?, account_number = \?, receipt_date = \?, witness_name = \?/)
   assert.match(controller, /release_recorded_at = NOW\(\)/)
   assert.match(controller, /PROFIT_RECEIPT_MIGRATION_REQUIRED/)
@@ -82,5 +82,6 @@ test('TiDB receipt migration is non-destructive and idempotent', () => {
   }
   assert.doesNotMatch(sql,/\b(?:TRUNCATE|DELETE FROM|DROP TABLE)\b/i)
 })
+
 
 

@@ -19,7 +19,7 @@ const id = (value) => Number.isSafeInteger(Number(value)) && Number(value) > 0 ?
 const validReceipt = (row, today) => {
   const method = clean(row?.paymentMethod).toLowerCase();
   if (!METHODS.has(method)) throw problem('Select a payment method for every pending recipient.', 400);
-  const receipt = validateReleaseReceiptDetails(row?.receiptDetails, today, today);
+  const receipt = validateReleaseReceiptDetails(row?.receiptDetails, today, today, method);
   if (clean(row?.paymentReference) !== receipt.referenceNumber) throw problem('Payment and receipt references must match.', 400);
   return { paymentMethod: method, receipt };
 };
