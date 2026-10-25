@@ -1,6 +1,6 @@
 import { buildEmployeeNameSql, dateOnly } from '../controllers/System/Employees/employeeModule.shared.js';
 import { ensureAttendanceLiteSchema, getManilaDateTime } from '../controllers/System/Employees/attendanceLite.shared.js';
-import { calculateDraftPayrollMoney } from './payrollCalculation.service.js';
+import { calculateDraftPayrollMoney, evaluateAttendanceBonus } from './payrollCalculation.service.js';
 import { getPayrollAttendanceSummary } from './payrollAttendance.service.js';
 import { getEffectiveCompensationForPeriod } from './payrollCompensation.service.js';
 import { clampPayrollAttendanceThrough, payrollPeriodFromDates, resolvePayrollPeriod, payrollPayday } from './payrollPeriod.service.js';
@@ -276,8 +276,8 @@ const warningList = ({ period, attendanceThrough, attendance, compensation, payr
   if (attendance.doublePayMinutes) {
     warnings.push('Double-pay attendance is present. Its hours are preserved in the attendance breakdown, but no payroll money rule is applied because the master plan does not define a double-pay multiplier.');
   }
-  if (Number(compensation.attendance_bonus || 0) > 0) {
-    warnings.push('Attendance Bonus is configured but is not applied because the eligibility/timing rule is not defined in the approved master plan.');
+  if (Number(compensation.attendance_bonus || 0) > 0 && payrollSettings.attendance_bonus_rule === 'not_configured') {
+    warnings.push('Attendance Bonus is entered for this employee but not included yet. Your company has not approved a payment rule. Open Payroll Settings → Attendance Bonus, then recalculate this draft.');
   }
   return warnings;
 };
@@ -380,10 +380,10 @@ const upsertDraftPayroll = async (connection, payload) => {
         scheduled_regular_seconds = ?, regular_attended_seconds = ?, paid_time_off_seconds = ?, regular_holiday_seconds = ?, special_holiday_seconds = ?,
         late_seconds = ?, late_deduction = ?, absent_days = ?, absence_deduction = ?, overtime_seconds = ?,
         night_differential_seconds = ?, gross_pay = ?, net_pay = ?, undertime_seconds = 0, undertime_deduction = 0,
-        cash_advance_deduction = 0, other_adjustments = 0, attendance_bonus_eligible = 0,
-        attendance_bonus_note = 'Eligibility/timing rule pending approved Payroll Settings', payroll_status = 'draft'
+        cash_advance_deduction = 0, other_adjustments = 0, attendance_bonus_eligible = ?,
+        attendance_bonus_note = ?, payroll_status = 'draft'
       WHERE employee_payroll_id = ?
-    `, [...commonValues, existing.employee_payroll_id]);
+    `, [...commonValues, payload.attendanceBonusEligible ? 1 : 0, payload.attendanceBonusNote, existing.employee_payroll_id]);
     return Number(existing.employee_payroll_id);
   }
 
@@ -417,9 +417,9 @@ const upsertDraftPayroll = async (connection, payload) => {
       ?, ?, ?, ?, ?,
       ?, ?, ?,
       0, 0, 0, 0,
-      0, 'Eligibility/timing rule pending approved Payroll Settings', 'draft'
+      ?, ?, 'draft'
     )
-  `, [payload.periodId, payload.employeeId, ...commonValues]);
+  `, [payload.periodId, payload.employeeId, ...commonValues, payload.attendanceBonusEligible ? 1 : 0, payload.attendanceBonusNote]);
   return Number(result.insertId);
 };
 
@@ -483,6 +483,14 @@ export const calculateAndStoreDraftPayroll = async (connection, {
   const attendanceUsed = partialStart ? {
     ...attendance, rows: eligibleRows, summary: eligibleSummary,
   } : attendance;
+  const bonusEvaluation = evaluateAttendanceBonus({
+    rule: payrollSettings.attendance_bonus_rule,
+    amount: compensation.attendance_bonus,
+    attendance: attendanceUsed.summary,
+    rows: attendanceUsed.rows,
+    attendanceThrough,
+    periodEnd: normalizedPeriod.periodEnd,
+  });
   const money = calculateDraftPayrollMoney({
     monthlyBasicSalary: compensation.monthly_basic_salary,
     regularWorkingMinutes: attendance.schedule.regularWorkingMinutes,
@@ -490,6 +498,8 @@ export const calculateAndStoreDraftPayroll = async (connection, {
     periodType: normalizedPeriod.periodType,
     riceAllowance: compensation.rice_allowance,
     transportationAllowance: compensation.transportation_allowance,
+    attendanceBonusAmount: compensation.attendance_bonus,
+    attendanceBonusEligible: bonusEvaluation.eligible,
     overtimeMinutes: attendanceUsed.summary.overtimeMinutes,
     restDayOvertimeMinutes: attendanceUsed.summary.restDayOvertimeMinutes,
     regularHolidayMinutes: attendanceUsed.summary.regularHolidayMinutes,
@@ -532,6 +542,8 @@ export const calculateAndStoreDraftPayroll = async (connection, {
     riceAllowance: money.riceAllowance,
     transportationAllowance: money.transportationAllowance,
     attendanceBonus: money.attendanceBonus,
+    attendanceBonusEligible: bonusEvaluation.eligible,
+    attendanceBonusNote: bonusEvaluation.note,
     manualAdditionsTotal: money.manualAdditionsTotal,
     manualDeductionsTotal: money.manualDeductionsTotal,
     netFundRelease: money.netFundRelease,
@@ -818,6 +830,8 @@ export const listEmployeePayrollHistory = async (connection, employeeId) => {
     history,
   };
 };
+
+
 
 
 

@@ -107,7 +107,16 @@ const compensationSnapshot = (row = {}) => ({
   attendance_bonus: n(row.attendance_bonus),
 });
 
-const sameCompensation = (left, right) => JSON.stringify(compensationSnapshot(left)) === JSON.stringify(compensationSnapshot(right));
+// Payroll's rice/transport amounts are paid only in the second half and Attendance Bonus
+// may be unpaid under policy. Compare the effective compensation history revision and
+// stable profile values, not the payout amounts, to avoid false "compensation changed" alarms.
+// Approved compensation changes create a new immutable employment-history record.
+export const sameEffectiveCompensation = (left, right) => {
+  const a = compensationSnapshot(left);
+  const b = compensationSnapshot(right);
+  return ['employment_history_id', 'position', 'department', 'employment_status', 'monthly_basic']
+    .every((key) => a[key] === b[key]);
+};
 
 const ATTENDANCE_DIFF_FIELDS = [
   ['attendance_calculated_through', 'Attendance Calculated Through'],
@@ -237,7 +246,7 @@ export const getPayrollFinalizationReview = async (connection, payroll, today) =
     periodEnd: payroll.period_end,
     midPeriodChangeRule: currentPayrollSettings.mid_period_change_rule,
   });
-  const compensationChanged = !sameCompensation(payroll, effectiveCompensation);
+  const compensationChanged = !sameEffectiveCompensation(payroll, effectiveCompensation);
 
   return {
     payroll,
@@ -310,5 +319,7 @@ export const getFinalizedAttendanceChangeStatus = async (connection, payroll, to
     current: current.payload.summary,
   };
 };
+
+
 
 

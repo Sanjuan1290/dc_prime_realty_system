@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiClock, FiDollarSign, FiDownload, FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiTrendingUp, FiUsers } from 'react-icons/fi'
+import { FiClock, FiDollarSign, FiDownload, FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiUsers } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ConfirmActionModal from '../../components/Shared/ConfirmActionModal'
@@ -74,11 +74,23 @@ const Employees = () => {
 
   const openAdd = () => { setSelectedEmployee(null); setShowModal(true) }
   const openEdit = (employee) => { setSelectedEmployee(employee); setShowModal(true) }
+  const otherActions = (employee) => [
+    ...(employee.barcode_code ? [{ value: 'barcode', label: 'Download Attendance Barcode' }] : []),
+    ...(canViewEmploymentHistory ? [{ value: 'employment', label: 'Employment History' }] : []),
+    ...(canViewPayrollHistory ? [{ value: 'salary', label: 'Salary History' }] : []),
+    ...(canManageCompensation && canCreateEmploymentChange ? [{ value: 'compensation', label: 'Promote / Change Salary' }] : []),
+  ]
+  const runOtherAction = (action, employee) => {
+    if (action === 'barcode' && employee.barcode_code) downloadAttendanceBarcodePng({ value: employee.barcode_code, employeeName: employee.full_name, employeeCode: employee.employee_code })
+    if (action === 'employment' && canViewEmploymentHistory) setHistoryEmployee(employee)
+    if (action === 'salary' && canViewPayrollHistory) setSalaryHistoryEmployee(employee)
+    if (action === 'compensation' && canManageCompensation && canCreateEmploymentChange) setCompensationEmployee(employee)
+  }
 
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader title="Employees" description="Manage employees, secure Attendance Barcodes, Rest Days, and effective-dated employment/compensation history without overwriting previous records." icon={FiUsers} />
+        <PageHeader title="Employees" description="View staff records, work schedules, and salary history." icon={FiUsers} />
         <div className="flex gap-2">
           <button type="button" onClick={() => employeesQuery.refetch()} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><FiRefreshCw className={employeesQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
           {canManage ? <button type="button" onClick={openAdd} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700"><FiPlus />Add Employee</button> : null}
@@ -101,7 +113,7 @@ const Employees = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1360px] w-full text-sm">
+          <table className="min-w-[1150px] w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Employee', 'Employee Code', 'Attendance Barcode', 'Position', 'Department', 'Employment Type', 'Rest Days', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
               {employeesQuery.isLoading ? <tr><td colSpan={9} className="px-6 py-16 text-center font-semibold text-slate-500">Loading employees...</td></tr> : null}
@@ -116,25 +128,18 @@ const Employees = () => {
                 <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${employee.rest_days?.length ? 'bg-blue-50 text-blue-700 ring-blue-200' : 'bg-amber-50 text-amber-700 ring-amber-200'}`}>{restDayLabel(employee.rest_days)}</span></td>
                 <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black capitalize ring-1 ${statusTone[employee.employee_status] || statusTone.inactive}`}>{employee.employee_status}</span></td>
                 <td className="px-4 py-4">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => downloadAttendanceBarcodePng({ value: employee.barcode_code, employeeName: employee.full_name, employeeCode: employee.employee_code })}
-                      disabled={!employee.barcode_code}
-                      title={employee.barcode_code ? 'Download this employee’s Attendance Barcode as a PNG image.' : 'Attendance Barcode is not available.'}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
-                    >
-                      <FiDownload />Barcode
-                    </button>
-                    {canViewEmploymentHistory ? <button type="button" onClick={() => setHistoryEmployee(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50"><FiClock />Employment History</button> : null}
-                    {canViewPayrollHistory ? <button type="button" onClick={() => setSalaryHistoryEmployee(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 hover:bg-emerald-100"><FiDollarSign />Salary History</button> : null}
-                    {canManageCompensation && canCreateEmploymentChange ? <button type="button" onClick={() => setCompensationEmployee(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-700 hover:bg-violet-100"><FiTrendingUp />Promote / Compensation</button> : null}
-                    {canManage ? (
-                      <>
-                        <button type="button" onClick={() => openEdit(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700"><FiEdit2 />Edit</button>
-                        <button type="button" onClick={() => { setConfirmEmployee(employee); setStatusNotice(null) }} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700">{employee.employee_status === 'active' ? 'Deactivate' : 'Activate'}</button>
-                      </>
-                    ) : null}
+                  <div className="flex min-w-[250px] flex-wrap items-center gap-2">
+                    {otherActions(employee).length > 0 ? <label className="relative inline-flex items-center">
+                      <span className="sr-only">Other actions for {employee.full_name}</span>
+                      <select aria-label={`Other actions for ${employee.full_name}`} value="" onChange={(event) => runOtherAction(event.target.value, employee)} className="h-9 max-w-[146px] cursor-pointer rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200">
+                        <option value="" disabled>Other Actions ▾</option>
+                        {otherActions(employee).map((action) => <option key={action.value} value={action.value}>{action.label}</option>)}
+                      </select>
+                    </label> : null}
+                    {canManage ? <>
+                      <button type="button" onClick={() => openEdit(employee)} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-100"><FiEdit2 />Edit</button>
+                      <button type="button" onClick={() => { setConfirmEmployee(employee); setStatusNotice(null) }} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">{employee.employee_status === 'active' ? 'Deactivate' : 'Activate'}</button>
+                    </> : null}
                   </div>
                 </td>
               </tr>)}
@@ -176,5 +181,7 @@ const Employees = () => {
 }
 
 export default Employees
+
+
 
 

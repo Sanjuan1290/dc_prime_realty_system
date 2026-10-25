@@ -1,6 +1,7 @@
 const SETTINGS_ID = 1;
 export const SUPPORTED_MID_PERIOD_CHANGE_RULE = 'period_boundary_only';
 export const NEW_HIRE_PRORATION_RULES = Object.freeze(['disabled', 'scheduled_workdays']);
+export const ATTENDANCE_BONUS_RULES = Object.freeze(['not_configured', 'disabled', 'perfect_attendance_per_period']);
 const validPayday = (value, field, { firstHalf = false } = {}) => {
   const day = Number(value);
   if (!Number.isInteger(day) || day < (firstHalf ? 16 : 1) || day > 28) {
@@ -35,6 +36,7 @@ export const normalizePayrollSettingsSnapshot = (row = {}) => ({
   first_half_payday: Number(row.first_half_payday ?? 22),
   second_half_payday: Number(row.second_half_payday ?? 7),
   new_hire_proration_rule: String(row.new_hire_proration_rule || 'disabled'),
+  attendance_bonus_rule: String(row.attendance_bonus_rule || 'not_configured'),
   regular_ot_multiplier: row.regular_ot_multiplier === null || row.regular_ot_multiplier === undefined ? null : Number(row.regular_ot_multiplier),
   rest_day_ot_multiplier: row.rest_day_ot_multiplier === null || row.rest_day_ot_multiplier === undefined ? null : Number(row.rest_day_ot_multiplier),
   regular_holiday_multiplier: row.regular_holiday_multiplier === null || row.regular_holiday_multiplier === undefined ? null : Number(row.regular_holiday_multiplier),
@@ -63,6 +65,7 @@ export const ensurePayrollSettingsSchema = async (connection) => {
       first_half_payday TINYINT UNSIGNED NOT NULL DEFAULT 22,
       second_half_payday TINYINT UNSIGNED NOT NULL DEFAULT 7,
       new_hire_proration_rule VARCHAR(40) NOT NULL DEFAULT 'disabled',
+      attendance_bonus_rule VARCHAR(48) NOT NULL DEFAULT 'not_configured',
       settings_revision INT UNSIGNED NOT NULL DEFAULT 1,
       updated_by_user_id INT UNSIGNED NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -118,7 +121,10 @@ export const validatePayrollSettingsPayload = (body = {}) => {
   if (!NEW_HIRE_PRORATION_RULES.includes(hireRule)) {
     throw payrollError('Select a supported new-hire proration policy.', 'INVALID_NEW_HIRE_RULE');
   }
+  const bonusRule = String(body.attendance_bonus_rule || 'not_configured');
+  if (!ATTENDANCE_BONUS_RULES.includes(bonusRule)) throw payrollError('Select a supported Attendance Bonus rule.', 'INVALID_ATTENDANCE_BONUS_RULE');
   return {
+    attendance_bonus_rule: bonusRule,
     first_half_payday: validPayday(body.first_half_payday ?? 22, 'First-Half Payday', { firstHalf: true }),
     second_half_payday: validPayday(body.second_half_payday ?? 7, 'Second-Half Payday'),
     new_hire_proration_rule: hireRule,
@@ -149,6 +155,7 @@ export const updatePayrollSettings = async (connection, { body, updatedByUserId 
         first_half_payday = ?,
         second_half_payday = ?,
         new_hire_proration_rule = ?,
+        attendance_bonus_rule = ?,
         settings_revision = settings_revision + 1,
         updated_by_user_id = ?,
         updated_at = CURRENT_TIMESTAMP
@@ -165,12 +172,15 @@ export const updatePayrollSettings = async (connection, { body, updatedByUserId 
     next.first_half_payday,
     next.second_half_payday,
     next.new_hire_proration_rule,
+    next.attendance_bonus_rule,
     Number(updatedByUserId || 0) || null,
     SETTINGS_ID,
   ]);
   const after = await getPayrollSettings(connection);
   return { before, after };
 };
+
+
 
 
 

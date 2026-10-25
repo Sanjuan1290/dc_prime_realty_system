@@ -17,7 +17,7 @@ const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = fals
   const receipt = query.data?.data || null
 
   const filename = sanitizePdfFileName(
-    `fund-release-${receipt?.employee_name || 'employee'}-${receipt?.pay_period?.start || ''}-${receipt?.pay_period?.end || ''}`
+    `fund-release-${receipt?.employee_name || 'employee'}-${receipt?.pay_period?.start || ''}-${receipt?.pay_period?.end || ''}${receipt?.official ? '' : '-DRAFT-NOT-OFFICIAL'}`
   )
 
   const assertOfficial = () => {
@@ -27,11 +27,11 @@ const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = fals
   }
 
   const handlePrint = async () => {
-    if (!contentRef.current || !assertOfficial()) return
-    setNotice({ type: 'loading', message: 'Opening clean print window...' })
+    if (!contentRef.current || !canPrint || (!receipt?.official && (historyMode || receipt?.finalized_snapshot_missing))) return
+    setNotice({ type: 'loading', message: receipt?.official ? 'Opening receipt print window...' : 'Opening watermarked Draft preview for printing...' })
     try {
       await openElementInPdfPrintWindow(contentRef.current, { filename })
-      setNotice({ type: 'success', message: 'Print window opened.' })
+      setNotice({ type: 'success', message: receipt?.official ? 'Receipt print window opened.' : 'Draft print preview opened with PREVIEW ONLY — NOT OFFICIAL marking.' })
     } catch (error) {
       setNotice({ type: 'error', message: error?.message || 'Unable to open the print window.' })
     }
@@ -69,7 +69,7 @@ const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = fals
 
         {notice ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} /></div> : null}
         {query.isError ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type="error" message={query.error?.message || 'Unable to load the Fund Release Receipt.'} /></div> : null}
-        {receipt && !receipt.official ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type="warning" message={receipt.finalized_snapshot_missing ? 'This historical Finalized payroll does not contain an immutable finalized snapshot, so official Print / PDF Export is blocked. Create or correct the payroll through the controlled workflow instead of exporting live values.' : 'This payroll is still Draft. The receipt is Preview only and cannot be officially printed or exported until Finalization.'} /></div> : null}
+        {receipt && !receipt.official ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type="warning" message={receipt.finalized_snapshot_missing ? 'This historical Finalized payroll does not contain an immutable finalized snapshot, so official Print / PDF Export is blocked. Create or correct the payroll through the controlled workflow instead of exporting live values.' : 'This payroll is a Draft. You may print a watermarked PREVIEW ONLY copy for checking. Official receipt printing and PDF export require Finalization.'} /></div> : null}
         {receipt?.official && !canPrint && !canExport ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type="info" message="You can preview this finalized receipt, but your account does not have Print Payroll Receipt or Export Payroll Receipt permission." /></div> : null}
 
         <div className="min-h-0 flex-1 overflow-auto bg-slate-200 p-5 sm:p-7">
@@ -81,7 +81,7 @@ const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = fals
           <p className="text-xs font-semibold text-slate-500">{receipt?.source === 'finalized_snapshot' ? 'Source: immutable finalized payroll snapshot.' : 'Source: current Draft payroll calculation (Preview only).'}</p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700">Close</button>
-            {receipt?.official && canPrint ? <button type="button" onClick={handlePrint} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-900 bg-white px-5 text-sm font-black text-slate-900 hover:bg-slate-50"><FiPrinter />Print Receipt</button> : null}
+            {receipt && canPrint && (receipt.official || (!historyMode && !receipt.finalized_snapshot_missing)) ? <button type="button" onClick={handlePrint} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-900 bg-white px-5 text-sm font-black text-slate-900 hover:bg-slate-50"><FiPrinter />{receipt.official ? 'Print Receipt' : 'Print Draft Preview'}</button> : null}
             {receipt?.official && canExport ? <button type="button" onClick={handleExport} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-black text-white hover:bg-black"><FiDownload />Export PDF</button> : null}
           </div>
         </footer>
@@ -91,5 +91,7 @@ const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = fals
 }
 
 export default FundReleaseReceiptModal
+
+
 
 

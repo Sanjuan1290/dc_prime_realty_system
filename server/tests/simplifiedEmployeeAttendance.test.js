@@ -56,7 +56,8 @@ test('employee Attendance Barcode can be downloaded as a PNG from the barcode ca
   assert.match(barcode, /Download Attendance Barcode/);
   assert.match(barcode, /canvas\.toDataURL\('image\/png'\)/);
   assert.match(employees, /downloadAttendanceBarcodePng/);
-  assert.match(employees, /<FiDownload \/>Barcode/);
+  assert.match(employees, /Download Attendance Barcode/);
+  assert.match(employees, /runOtherAction/);
 });
 
 test('attendance scanner enforces time-in before time-out and supports automatic timeout', () => {
@@ -125,6 +126,8 @@ test('Super Admin receives real Employees and Attendance routes while cash advan
   assert.doesNotMatch(projects, /Add House & Lot Project/);
   assert.doesNotMatch(dashboard, /label: 'House & Lot Projects'/);
 });
+
+
 
 
 

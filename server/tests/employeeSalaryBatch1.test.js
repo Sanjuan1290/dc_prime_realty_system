@@ -67,9 +67,12 @@ test('Employees UI exposes history and promotion actions without restoring the l
   const app = read('client/src/App.jsx');
   assert.match(employees, /EmploymentHistoryModal/);
   assert.match(employees, /EmploymentChangeModal/);
-  assert.match(employees, /Promote \/ Compensation/);
+  assert.match(employees, /Promote \/ Change Salary/);
+  assert.match(employees, /Other Actions/);
   assert.match(employees, /employee\.position/);
   assert.doesNotMatch(app, /\/portal\/employee-payroll/);
 });
+
+
 
 

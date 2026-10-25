@@ -6,6 +6,7 @@ import FinalizePayrollModal from './FinalizePayrollModal'
 import FundReleaseReceiptModal from './FundReleaseReceiptModal'
 import ReleasePayrollModal from './ReleasePayrollModal'
 import CorrectPayrollModal from './CorrectPayrollModal'
+import PayrollSettingsModal from './PayrollSettingsModal'
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
 import { decimalHours, employmentLabel, formatPayrollDate, money, payrollStatusLabel, payrollStatusTone } from './payrollFormatters'
 
@@ -17,7 +18,7 @@ const dayTypeLabel = (value) => ({ regular: 'Regular', double_pay: 'Double Pay',
 const stateLabel = (row) => row.absence ? 'Absent' : row.state ? String(row.state).replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : '—'
 const settingValue = (value, suffix = '') => value === null || value === undefined ? 'Not configured' : `${Number(value)}${suffix}`
 
-const SalaryDetailModal = ({ payrollId, initialTab = 'salary', canRecalculate = false, canFinalize = false, canCorrect = false, canRelease = false, canPrintReceipt = false, canExportReceipt = false, historyMode = false, onClose, onUpdated }) => {
+const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initialTab = 'salary', canRecalculate = false, canFinalize = false, canCorrect = false, canRelease = false, canPrintReceipt = false, canExportReceipt = false, historyMode = false, onClose, onUpdated }) => {
   const queryClient = useQueryClient()
   const [tab, setTab] = useState(initialTab)
   const [alert, setAlert] = useState(null)
@@ -25,6 +26,7 @@ const SalaryDetailModal = ({ payrollId, initialTab = 'salary', canRecalculate = 
   const [showReceipt, setShowReceipt] = useState(false)
   const [showRelease, setShowRelease] = useState(false)
   const [showCorrection, setShowCorrection] = useState(false)
+  const [showPayrollSettings, setShowPayrollSettings] = useState(false)
 
   useEffect(() => setTab(initialTab), [initialTab, payrollId])
 
@@ -49,12 +51,12 @@ const SalaryDetailModal = ({ payrollId, initialTab = 'salary', canRecalculate = 
 
   const breakdown = payroll?.attendance_breakdown || []
   const attendance = useMemo(() => payroll ? [
-    ['Expected Regular Hours', decimalHours(payroll.expected_regular_minutes)],
-    ['Regular Hours Attended', decimalHours(payroll.regular_attended_minutes)],
+    ['Expected Work Hours', decimalHours(payroll.expected_regular_minutes)],
+    ['Hours Worked', decimalHours(payroll.regular_attended_minutes)],
     ['Paid Time Off', decimalHours(payroll.pto_minutes)],
     ['Regular Holiday Hours', decimalHours(payroll.regular_holiday_minutes)],
     ['Special Holiday Hours', decimalHours(payroll.special_holiday_minutes)],
-    ['Tardiness / Absences', `${Number(payroll.tardiness_absence_minutes || 0).toLocaleString('en-PH')} mins`],
+    ['Late / Absent Time', `${Number(payroll.tardiness_absence_minutes || 0).toLocaleString('en-PH')} mins`],
     ['Overtime', decimalHours(payroll.overtime_minutes)],
     ['Rest Day Overtime', decimalHours(payroll.rest_day_overtime_minutes)],
     ['Night Differential', decimalHours(payroll.night_differential_minutes)],
@@ -94,17 +96,28 @@ const SalaryDetailModal = ({ payrollId, initialTab = 'salary', canRecalculate = 
               <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-black ring-1 ${payrollStatusTone(payroll.payroll_status)}`}>{payrollStatusLabel(payroll.payroll_status)}</span>
             </section>
 
-            {(payroll.calculation_warnings || []).length ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-black uppercase tracking-wide text-amber-800">Calculation Warnings</p><ul className="mt-2 space-y-1 text-sm font-semibold leading-5 text-amber-900">{payroll.calculation_warnings.map((warning) => <li key={warning}>• {warning}</li>)}</ul></section> : null}
+            {(payroll.calculation_warnings || []).length ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4" role="status">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-amber-950">Review these payroll items</p>
+                  <p className="mt-1 text-xs text-amber-900">Check the items below. Update the settings and recalculate Draft payroll before finalizing.</p>
+                </div>
+                {payroll.calculation_warnings.some((warning) => /attendance bonus|payroll settings|premium/i.test(warning)) && canManagePayrollSettings ?
+                  <button type="button" onClick={() => setShowPayrollSettings(true)} className="rounded-lg border border-amber-400 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100">{payroll.calculation_warnings.some((warning) => /attendance bonus/i.test(warning)) ? 'Set Attendance Bonus Rule' : 'Open Payroll Settings'}</button> : null}
+              </div>
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-amber-950">{payroll.calculation_warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+              {payroll.calculation_warnings.some((warning) => /attendance bonus/i.test(warning)) && !canManagePayrollSettings ? <p className="mt-2 text-xs font-semibold text-amber-900">Ask an account with Manage Payroll Settings access to approve the bonus policy.</p> : null}
+            </section> : null}
 
             {officialStatus ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-black uppercase tracking-wide text-emerald-800">Immutable Official Payroll Snapshot</p><p className="mt-1 text-sm font-semibold leading-6 text-emerald-950">Originally finalized {payroll.finalized_at ? formatPayrollDate(payroll.finalized_at) : ''}{payroll.finalized_by_name ? ` by ${payroll.finalized_by_name}` : ''}. Formal corrections are versioned below; fund release never silently recalculates these approved values.</p></section> : null}
 
             {officialStatus && payroll.attendance_change?.changed ? <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 shrink-0 text-amber-700" /><div><p className="font-black text-amber-950">Attendance changed after this payroll was finalized.</p><p className="mt-1 text-sm font-semibold leading-5 text-amber-900">The official salary has not been silently rewritten. Authorized users can open Salary Correction to review the complete Before vs After recalculation.</p></div></div><div className="mt-3 divide-y divide-amber-200 rounded-xl border border-amber-200 bg-white px-3">{(payroll.attendance_change.differences || []).map((item) => <div key={item.field} className="flex items-center justify-between gap-4 py-2 text-xs font-bold text-slate-700"><span>{item.label}</span><span className="text-right">{String(item.before ?? '—')} → {String(item.after ?? '—')}</span></div>)}</div>{canCorrect && payroll.payroll_status !== 'released' ? <button type="button" onClick={() => setShowCorrection(true)} className="mt-3 h-9 rounded-lg bg-violet-700 px-3 text-xs font-black text-white hover:bg-violet-800">Create Salary Correction</button> : null}</section> : null}
 
             <section>
-              <h3 className="mb-3 text-sm font-black uppercase tracking-wide text-slate-500">Compensation & Rates</h3>
+              <h3 className="mb-3 text-sm font-black uppercase tracking-wide text-slate-500">Salary and Pay Rates</h3>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <Metric label="Monthly Basic" value={money(payroll.monthly_salary_snapshot)} />
-                <Metric label="Half-Month Basic" value={money(payroll.half_month_basic)} />
+                <Metric label="Monthly Basic Pay" value={money(payroll.monthly_salary_snapshot)} />
+                <Metric label="Basic Pay This Period" value={money(payroll.half_month_basic)} />
                 <Metric label="Daily Rate" value={money(payroll.daily_rate)} />
                 <Metric label="Hourly Rate" value={money(payroll.hourly_rate_snapshot)} />
                 <Metric label="Minute Rate" value={money(payroll.minute_rate)} />
@@ -114,27 +127,27 @@ const SalaryDetailModal = ({ payrollId, initialTab = 'salary', canRecalculate = 
             <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Applied Payroll Settings</h3><span className="text-xs font-bold text-slate-500">Revision {payroll.payroll_settings_snapshot?.settings_revision ?? '—'}</span></div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <Metric label="Regular OT" value={settingValue(payroll.payroll_settings_snapshot?.regular_ot_multiplier, '×')} />
-                <Metric label="Rest Day OT" value={settingValue(payroll.payroll_settings_snapshot?.rest_day_ot_multiplier, '×')} />
+                <Metric label="Overtime Rate" value={settingValue(payroll.payroll_settings_snapshot?.regular_ot_multiplier, '×')} />
+                <Metric label="Rest-Day Overtime Rate" value={settingValue(payroll.payroll_settings_snapshot?.rest_day_ot_multiplier, '×')} />
                 <Metric label="Regular Holiday" value={settingValue(payroll.payroll_settings_snapshot?.regular_holiday_multiplier, '×')} />
                 <Metric label="Special Holiday" value={settingValue(payroll.payroll_settings_snapshot?.special_holiday_multiplier, '×')} />
                 <Metric label="Regular Holiday OT" value={settingValue(payroll.payroll_settings_snapshot?.regular_holiday_ot_multiplier, '×')} hint="Stored; separate holiday OT minutes are not available yet." />
                 <Metric label="Special Holiday OT" value={settingValue(payroll.payroll_settings_snapshot?.special_holiday_ot_multiplier, '×')} hint="Stored; separate holiday OT minutes are not available yet." />
                 <Metric label="Night Differential" value={settingValue(payroll.payroll_settings_snapshot?.night_differential_percentage, '%')} />
-                <Metric label="Mid-Period Rule" value={payroll.payroll_settings_snapshot?.mid_period_change_rule === 'period_boundary_only' ? '1st / 16th boundary only' : (payroll.payroll_settings_snapshot?.mid_period_change_rule || '—')} />
+                <Metric label="Salary Change Rule" value={payroll.payroll_settings_snapshot?.mid_period_change_rule === 'period_boundary_only' ? '1st / 16th boundary only' : (payroll.payroll_settings_snapshot?.mid_period_change_rule || '—')} />
               </div>
             </section>
 
             <section>
-              <div className="mb-3 flex items-center justify-between gap-3"><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Attendance Summary</h3><button type="button" onClick={() => setTab('attendance')} className="inline-flex items-center gap-2 text-xs font-black text-blue-700 hover:text-blue-800"><FiClock />View Attendance Breakdown</button></div>
+              <div className="mb-3 flex items-center justify-between gap-3"><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Attendance for This Pay Period</h3><button type="button" onClick={() => setTab('attendance')} className="inline-flex items-center gap-2 text-xs font-black text-blue-700 hover:text-blue-800"><FiClock />View Attendance Breakdown</button></div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{attendance.map(([label, value]) => <Metric key={label} label={label} value={value} />)}</div>
               <p className="mt-3 text-xs font-semibold text-slate-500">Attendance calculated through {formatPayrollDate(payroll.attendance_calculated_through, { short: true })}. Regular working day: {Number(payroll.regular_working_minutes_snapshot || 0)} minutes.</p>
             </section>
 
             <section className="grid gap-4 lg:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200 p-4"><h3 className="border-b border-slate-200 pb-3 text-sm font-black uppercase tracking-wide text-slate-500">Earnings</h3><div className="divide-y divide-slate-100"><MoneyRow label="Half-Month Basic" value={payroll.half_month_basic} /><MoneyRow label="Overtime Pay" value={payroll.overtime_pay} /><MoneyRow label="Rest Day OT" value={payroll.rest_day_overtime_pay} /><MoneyRow label="Regular Holiday Pay" value={payroll.regular_holiday_pay} /><MoneyRow label="Special Holiday Pay" value={payroll.special_holiday_pay} /><MoneyRow label="Night Differential" value={payroll.night_differential_pay} /><MoneyRow label="Manual Additions" value={payroll.manual_additions_total} /></div></div>
+              <div className="rounded-2xl border border-slate-200 p-4"><h3 className="border-b border-slate-200 pb-3 text-sm font-black uppercase tracking-wide text-slate-500">Earnings</h3><div className="divide-y divide-slate-100"><MoneyRow label="Basic Pay This Period" value={payroll.half_month_basic} /><MoneyRow label="Overtime Pay" value={payroll.overtime_pay} /><MoneyRow label="Rest-Day Overtime Rate" value={payroll.rest_day_overtime_pay} /><MoneyRow label="Regular Holiday Pay" value={payroll.regular_holiday_pay} /><MoneyRow label="Special Holiday Pay" value={payroll.special_holiday_pay} /><MoneyRow label="Night Differential" value={payroll.night_differential_pay} /><MoneyRow label="Manual Additions" value={payroll.manual_additions_total} /></div></div>
               <div className="rounded-2xl border border-slate-200 p-4"><h3 className="border-b border-slate-200 pb-3 text-sm font-black uppercase tracking-wide text-slate-500">Allowances</h3><div className="divide-y divide-slate-100"><MoneyRow label="Rice Allowance" value={payroll.rice_allowance} /><MoneyRow label="Transportation" value={payroll.transportation_allowance} /><MoneyRow label="Attendance Bonus" value={payroll.attendance_bonus} /></div></div>
-              <div className="rounded-2xl border border-slate-200 p-4"><h3 className="border-b border-slate-200 pb-3 text-sm font-black uppercase tracking-wide text-slate-500">Deductions & Net</h3><div className="divide-y divide-slate-100"><MoneyRow label="Tardiness / Absences" value={payroll.attendance_deduction} /><MoneyRow label="Manual Deductions" value={payroll.manual_deductions_total} /><MoneyRow label="Net Fund Release" value={payroll.net_fund_release} strong /></div></div>
+              <div className="rounded-2xl border border-slate-200 p-4"><h3 className="border-b border-slate-200 pb-3 text-sm font-black uppercase tracking-wide text-slate-500">Deductions and Take-Home Pay</h3><div className="divide-y divide-slate-100"><MoneyRow label="Late or Absent Time" value={payroll.attendance_deduction} /><MoneyRow label="Manual Deductions" value={payroll.manual_deductions_total} /><MoneyRow label="Take-Home Pay" value={payroll.net_fund_release} strong /></div></div>
             </section>
 
             {(payroll.correction_history || []).length ? <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs font-black uppercase tracking-wide text-violet-700">Correction History</p><div className="mt-3 space-y-2">{payroll.correction_history.map((item) => <div key={item.employee_payroll_correction_id} className="rounded-xl border border-violet-200 bg-white p-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-black text-slate-900">Correction #{item.employee_payroll_correction_id}</p><p className="text-xs font-semibold text-slate-500">{item.created_by_name ? `By ${item.created_by_name} · ` : ''}{String(item.created_at || '').replace('T', ' ').slice(0, 16)}</p></div><p className="mt-1 text-sm font-semibold text-slate-700">{item.reason}</p><p className="mt-2 text-xs font-bold text-slate-500">Net Fund Release: {money(item.before_snapshot?.net_fund_release)} → {money(item.after_snapshot?.net_fund_release)}</p></div>)}</div></section> : null}
@@ -170,6 +183,7 @@ const SalaryDetailModal = ({ payrollId, initialTab = 'salary', canRecalculate = 
           </div>
         </footer>
       </div>
+      {showPayrollSettings ? <PayrollSettingsModal initialSection={payroll?.calculation_warnings?.some((warning) => /attendance bonus/i.test(warning)) ? 'attendance-bonus' : null} onClose={() => setShowPayrollSettings(false)} onSaved={() => { setShowPayrollSettings(false); setAlert({ type: 'success', message: payroll?.payroll_status === 'draft' ? 'Payroll Settings saved. Recalculate this Draft to apply the new policy.' : 'Payroll Settings saved. Existing finalized payroll history is unchanged.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary'] }); }} /> : null}
       {showFinalReview ? <FinalizePayrollModal payrollId={payrollId} onClose={() => setShowFinalReview(false)} onFinalized={(result) => { setAlert({ type: 'success', message: result?.message || 'Payroll finalized.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary-detail', payrollId] }); queryClient.invalidateQueries({ queryKey: ['employee-salary-receipt', payrollId] }); onUpdated?.() }} /> : null}
       {showReceipt ? <FundReleaseReceiptModal payrollId={payrollId} canPrint={canPrintReceipt} canExport={canExportReceipt} historyMode={historyMode} onClose={() => setShowReceipt(false)} /> : null}
       {showCorrection && payroll ? <CorrectPayrollModal payrollId={payrollId} onClose={() => setShowCorrection(false)} onCorrected={(result) => { setAlert({ type: 'success', message: result?.message || 'Salary Correction saved.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary-detail', payrollId] }); queryClient.invalidateQueries({ queryKey: ['employee-salary-receipt', payrollId] }); onUpdated?.() }} /> : null}
@@ -179,6 +193,8 @@ const SalaryDetailModal = ({ payrollId, initialTab = 'salary', canRecalculate = 
 }
 
 export default SalaryDetailModal
+
+
 
 
 

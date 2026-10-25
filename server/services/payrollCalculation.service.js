@@ -30,11 +30,24 @@ export const calculatePayrollRates = ({ monthlyBasicSalary, regularWorkingMinute
 export const calculateAttendanceDeduction = ({ tardinessAbsenceMinutes, hourlyRate }) =>
   round(Number(tardinessAbsenceMinutes || 0) * (Number(hourlyRate || 0) / 60), 2);
 
-export const resolvePayrollAllowances = ({ periodType, riceAllowance, transportationAllowance }) => ({
+// Attendance Bonus rules are company-controlled. Unconfigured rules never pay silently.
+export const evaluateAttendanceBonus = ({ rule = 'not_configured', amount = 0, attendance = {}, rows = [], attendanceThrough, periodEnd } = {}) => {
+  const configured = Math.max(0, Number(amount || 0));
+  if (!configured) return { eligible: false, note: 'No attendance bonus configured for this employee.' };
+  if (rule === 'disabled') return { eligible: false, note: 'Attendance bonus is disabled by company policy.' };
+  if (rule !== 'perfect_attendance_per_period') return { eligible: false, note: 'Attendance bonus has no approved rule; it is not included.' };
+  if (!periodEnd || !attendanceThrough || attendanceThrough < periodEnd) return { eligible: false, note: 'Attendance bonus waits until the pay period is complete.' };
+  if (Number(attendance.scheduledDays || 0) < 1) return { eligible: false, note: 'No scheduled working days in the period.' };
+  if (!rows.some((r) => Boolean(r.timeIn || r.time_in) && Boolean(r.timeOut || r.time_out))) return { eligible: false, note: 'No completed Attendance entries were recorded for this pay period.' };
+  if (rows.some((r) => Boolean(r.timeIn || r.time_in) && !Boolean(r.timeOut || r.time_out))) return { eligible: false, note: 'Some Attendance entries have no Time Out.' };
+  if (Number(attendance.tardinessAbsenceMinutes || 0) > 0) return { eligible: false, note: 'Attendance bonus not earned: late or absent time was recorded.' };
+  return { eligible: true, note: 'Full bonus earned for a completed pay period with no late or absent time.' };
+};
+
+export const resolvePayrollAllowances = ({ periodType, riceAllowance, transportationAllowance, attendanceBonusAmount = 0, attendanceBonusEligible = false }) => ({
   riceAllowance: periodType === 'second_half' ? round(riceAllowance, 2) : 0,
   transportationAllowance: periodType === 'second_half' ? round(transportationAllowance, 2) : 0,
-  // The master plan still does not define an attendance-bonus eligibility/timing rule.
-  attendanceBonus: 0,
+  attendanceBonus: attendanceBonusEligible ? round(attendanceBonusAmount, 2) : 0,
 });
 
 export const calculateConfiguredPayrollEarnings = ({
@@ -68,6 +81,8 @@ export const calculateDraftPayrollMoney = ({
   periodType,
   riceAllowance,
   transportationAllowance,
+  attendanceBonusAmount = 0,
+  attendanceBonusEligible = false,
   overtimeMinutes = 0,
   restDayOvertimeMinutes = 0,
   regularHolidayMinutes = 0,
@@ -85,7 +100,7 @@ export const calculateDraftPayrollMoney = ({
     tardinessAbsenceMinutes,
     hourlyRate: rates.hourlyRate,
   });
-  const allowances = resolvePayrollAllowances({ periodType, riceAllowance, transportationAllowance });
+  const allowances = resolvePayrollAllowances({ periodType, riceAllowance, transportationAllowance, attendanceBonusAmount, attendanceBonusEligible });
   const proratedAllowances = {
     riceAllowance: round(allowances.riceAllowance * prorationFraction, 2),
     transportationAllowance: round(allowances.transportationAllowance * prorationFraction, 2),
@@ -131,6 +146,8 @@ export const calculateDraftPayrollMoney = ({
     netFundRelease,
   };
 };
+
+
 
 
 

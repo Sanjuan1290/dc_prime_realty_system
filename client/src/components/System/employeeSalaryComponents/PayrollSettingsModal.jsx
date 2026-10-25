@@ -1,5 +1,5 @@
 import { formatPhilippineDateTime } from '../../../utils/formatDateTime'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiSave, FiSettings, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
@@ -17,13 +17,20 @@ const sameHolidayRate = (data) => data.regular_holiday_multiplier === data.speci
 const cleanInput = (value) => value === null || value === undefined ? '' : String(value)
 const payloadValue = (value) => String(value ?? '').trim() === '' ? null : Number(value)
 
-const PayrollSettingsModal = ({ onClose, onSaved }) => {
+const PayrollSettingsModal = ({ onClose, onSaved, initialSection = null }) => {
   const queryClient = useQueryClient()
   const settingsQuery = useQuery({
     queryKey: ['employee-salary', 'payroll-settings'],
     queryFn: () => useFetch('/employee-payroll/settings'),
   })
   const [form, setForm] = useState(null)
+  const settingsBodyRef = useRef(null)
+  useEffect(() => {
+    if (initialSection === 'attendance-bonus' && form && settingsBodyRef.current) {
+      const item = settingsBodyRef.current.querySelector('#attendance-bonus-settings')
+      if (item) settingsBodyRef.current.scrollTop = Math.max(0, item.offsetTop - settingsBodyRef.current.offsetTop - 28)
+    }
+  }, [initialSection, Boolean(form)])
 
   useEffect(() => {
     if (!settingsQuery.data?.data) return
@@ -37,6 +44,7 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
       first_half_payday: cleanInput(data.first_half_payday ?? 22),
       second_half_payday: cleanInput(data.second_half_payday ?? 7),
       new_hire_proration_rule: data.new_hire_proration_rule || 'disabled',
+      attendance_bonus_rule: data.attendance_bonus_rule || 'not_configured',
     })
   }, [settingsQuery.data])
 
@@ -51,6 +59,7 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
       first_half_payday: Number(form?.first_half_payday),
       second_half_payday: Number(form?.second_half_payday),
       new_hire_proration_rule: form?.new_hire_proration_rule || 'disabled',
+      attendance_bonus_rule: form?.attendance_bonus_rule || 'not_configured',
     }, { confirmationHandled: 'compact' }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['employee-salary'] })
@@ -74,7 +83,7 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
           <button type="button" onClick={onClose} aria-label="Close Payroll Settings" className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"><FiX /></button>
         </header>
 
-        <div className="space-y-5 overflow-y-auto p-5 sm:p-6">
+        <div ref={settingsBodyRef} className="space-y-5 overflow-y-auto p-5 sm:p-6">
           {settingsQuery.isLoading ? <StatusAlert type="loading" message="Loading payroll settings..." /> : null}
           {settingsQuery.isError ? <StatusAlert type="error" message={settingsQuery.error?.message || 'Unable to load payroll settings.'} /> : null}
           {saveMutation.isError ? <StatusAlert type="error" message={saveMutation.error?.message || 'Unable to save payroll settings.'} /> : null}
@@ -94,15 +103,33 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
               </div>
             </section>
 
-            <section>
-              <h3 className="mb-3 text-base font-black text-slate-900">New Employee's First Pay</h3>
-              <label className="block">
-                <span className="mb-2 block text-sm font-bold text-slate-800">If hired during a pay period</span>
+            <section className="rounded-2xl border border-slate-200 p-4">
+              <h3 className="text-base font-bold text-slate-900">Pay for newly hired employees</h3>
+              <p className="mt-1 text-sm text-slate-600">This applies only when an employee starts after the 1st or 16th, partway through a pay period.</p>
+              <label className="mt-3 block">
+                <span className="mb-2 block text-sm font-semibold text-slate-800">How should their first partial period be paid?</span>
                 <select value={form.new_hire_proration_rule} onChange={(event) => set('new_hire_proration_rule', event.target.value)} className={`${fieldClass} mt-0`}>
-                  <option value="disabled">Do not calculate partial pay (approval needed)</option>
-                  <option value="scheduled_workdays">Approved: Pay for scheduled workdays after hiring</option>
+                  <option value="disabled">Require approval — do not generate partial salary</option>
+                  <option value="scheduled_workdays">Use scheduled workdays since their hire date (approved)</option>
                 </select>
               </label>
+              <p className="mt-2 text-xs leading-5 text-slate-600">Example: Hired on October 10 for the October 1–15 period. When approved, the system pays only scheduled working days from October 10, following their saved Rest Days. Days before the hire date are excluded.</p>
+              <p className="mt-1 text-xs font-medium text-amber-800">This does not allow backdated or mid-period salary increases. Those follow Employment History rules.</p>
+            </section>
+
+            <section id="attendance-bonus-settings" className={`scroll-mt-4 rounded-2xl border p-4 ${initialSection === 'attendance-bonus' ? 'border-blue-300 bg-blue-50/50' : 'border-slate-200'}`}>
+              <h3 className="text-base font-bold text-slate-900">Attendance Bonus</h3>
+              <p className="mt-1 text-sm leading-6 text-slate-600">Your employee profile stores a bonus amount, but payroll needs a company-approved rule before it can pay that amount. Default: no bonus is added.</p>
+              <label className="mt-3 block">
+                <span className="mb-2 block text-sm font-semibold text-slate-800">Approved bonus policy</span>
+                <select value={form.attendance_bonus_rule} onChange={(event) => set('attendance_bonus_rule', event.target.value)} className={`${fieldClass} mt-0`}>
+                  <option value="not_configured">Not decided — bonus stays unpaid and shows a warning</option>
+                  <option value="disabled">Company does not pay an attendance bonus</option>
+                  <option value="perfect_attendance_per_period">Pay full employee bonus per completed pay period with no late or absent time</option>
+                </select>
+              </label>
+              <p className="mt-2 text-xs leading-5 text-slate-600">With the attendance rule: the full saved bonus amount is paid once per completed half-month, only when recorded Attendance has no late or absent minutes and no incomplete Time In/Out. A draft for an ongoing period does not earn it yet.</p>
+              <p className="mt-1 text-xs font-semibold text-amber-800">Only select a paying rule after your company approves this frequency and eligibility. Saving changes future draft calculations; existing finalized or released payroll remains unchanged.</p>
             </section>
 
             <section>
@@ -158,4 +185,6 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
 }
 
 export default PayrollSettingsModal
+
+
 

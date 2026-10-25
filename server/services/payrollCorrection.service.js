@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { calculateDraftPayrollMoney } from './payrollCalculation.service.js';
+import { calculateDraftPayrollMoney, evaluateAttendanceBonus } from './payrollCalculation.service.js';
 import { getPayrollAttendanceSummary } from './payrollAttendance.service.js';
 import { getEffectiveCompensationForPeriod } from './payrollCompensation.service.js';
 import { clampPayrollAttendanceThrough } from './payrollPeriod.service.js';
@@ -113,9 +113,7 @@ const correctionWarnings = ({ attendance, compensation, payrollSettings }) => {
   if ((attendance.regularHolidayMinutes || attendance.specialHolidayMinutes) && (payrollSettings.regular_holiday_ot_multiplier !== null || payrollSettings.special_holiday_ot_multiplier !== null)) {
     warnings.push('Holiday OT multipliers are stored but are not applied because Attendance does not expose separate holiday-OT minutes.');
   }
-  if (Number(compensation.attendance_bonus || 0) > 0) {
-    warnings.push('Attendance Bonus remains unpaid because its approved eligibility/timing rule has not yet been configured.');
-  }
+  if (Number(compensation.attendance_bonus || 0) > 0 && payrollSettings.attendance_bonus_rule === 'not_configured') warnings.push('Attendance Bonus has no approved rule in Payroll Settings and remains unpaid.');
   return warnings;
 };
 
@@ -138,6 +136,14 @@ const buildCurrentCorrectedSnapshot = async (connection, payroll, today) => {
     periodEnd: payroll.period_end,
     midPeriodChangeRule: payrollSettings.mid_period_change_rule,
   });
+  const bonusEvaluation = evaluateAttendanceBonus({
+    rule: payrollSettings.attendance_bonus_rule,
+    amount: compensation.attendance_bonus,
+    attendance: attendance.summary,
+    rows: attendance.rows,
+    attendanceThrough,
+    periodEnd: payroll.period_end,
+  });
   const money = calculateDraftPayrollMoney({
     monthlyBasicSalary: compensation.monthly_basic_salary,
     regularWorkingMinutes: attendance.schedule.regularWorkingMinutes,
@@ -145,6 +151,8 @@ const buildCurrentCorrectedSnapshot = async (connection, payroll, today) => {
     periodType: payroll.period_type,
     riceAllowance: compensation.rice_allowance,
     transportationAllowance: compensation.transportation_allowance,
+    attendanceBonusAmount: compensation.attendance_bonus,
+    attendanceBonusEligible: bonusEvaluation.eligible,
     overtimeMinutes: attendance.summary.overtimeMinutes,
     restDayOvertimeMinutes: attendance.summary.restDayOvertimeMinutes,
     regularHolidayMinutes: attendance.summary.regularHolidayMinutes,
@@ -330,5 +338,7 @@ export const applyPayrollCorrection = async (connection, {
     review,
   };
 };
+
+
 
 
