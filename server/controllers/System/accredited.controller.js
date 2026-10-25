@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { makeCommissionCashReference } from '../../services/commissionCashReference.js';
+import { validateReleaseReceiptDetails } from '../../services/releaseReceiptDetails.js';
 import { db } from '../../db/connect.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { getAuthenticatedUser, tableExists, todayDateOnly } from '../Lot_Projects/_shared/lotProject.shared.js';
@@ -1302,10 +1305,12 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     const sellerId = Number(req.params.sellerId || 0);
     const commissionId = Number(req.body.commissionId || 0);
     const releaseIds = [...new Set((Array.isArray(req.body.releaseIds) ? req.body.releaseIds : []).map(Number).filter(Boolean))];
-    const bankName = String(req.body.bankName || '').trim();
-    const accountNumber = String(req.body.accountNumber || '').trim();
+    const paymentMethod = String(req.body.paymentMethod || 'bank_transfer').trim().toLowerCase();
+    if (!['cash','bank_transfer','check','other'].includes(paymentMethod)) return res.status(400).json({ message: 'Select a valid payment method.' });
+    const bankName = paymentMethod === 'cash' ? 'Not applicable (Cash)' : String(req.body.bankName || '').trim();
+    const accountNumber = paymentMethod === 'cash' ? 'Not applicable' : String(req.body.accountNumber || '').trim();
     const receiptDate = String(req.body.receiptDate || '').trim();
-    const referenceNumber = String(req.body.referenceNumber || '').trim();
+    let referenceNumber = paymentMethod === 'cash' ? `PENDING-CASH-${randomUUID()}` : String(req.body.referenceNumber || '').trim();
     const witnessName = String(req.body.witnessName || '').trim();
 
     if (!sellerId) return res.status(400).json({ message: 'Seller id is required.' });
@@ -1317,6 +1322,8 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     if (receiptDate > todayDateOnly()) return res.status(400).json({ message: 'Receipt date cannot be in the future.' });
     if (!referenceNumber) return res.status(400).json({ message: 'Reference number is required.' });
     if (!witnessName) return res.status(400).json({ message: 'Witness name is required.' });
+    try { validateReleaseReceiptDetails({bankName, accountNumber, receiptDate, referenceNumber, witnessName}, null, todayDateOnly(), paymentMethod); }
+    catch (error) { return res.status(400).json({ message: error.message }); }
 
     await ensureCommissionReceiptTables(connection);
     await connection.beginTransaction();
@@ -1442,6 +1449,11 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
       ]
     );
 
+    if (paymentMethod === 'cash') {
+      referenceNumber = makeCommissionCashReference({date: todayDateOnly(), unitCode: first.lot_project_listing_unit_id, id: receiptResult.insertId, kind: 'proof'});
+      await connection.query('UPDATE lot_project_commission_receipts SET reference_number=? WHERE lot_project_commission_receipt_id=?', [referenceNumber, receiptResult.insertId]);
+    }
+
     const itemValues = releaseRows.map((row) => [
       receiptResult.insertId,
       row.lot_project_commission_release_id,
@@ -1494,6 +1506,7 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     connection.release();
   }
 };
+
 
 
 

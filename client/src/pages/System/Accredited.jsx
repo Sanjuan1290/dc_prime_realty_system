@@ -1,3 +1,4 @@
+import ReleaseReceiptFields, { validateReleaseReceipt } from '../../components/Lot_Projects/CommissionComponents/ReleaseReceiptFields';
 import NetworkProfitAcknowledgementLibrary from '../../components/Lot_Projects/CommissionComponents/NetworkProfitAcknowledgementLibrary'
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -429,6 +430,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated, canPrint = fa
     witnessName: "",
   });
   const [receiptDateTouched, setReceiptDateTouched] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('bank_transfer');
   const [localAlert, setLocalAlert] = useState(null);
   const [receiptSearch, setReceiptSearch] = useState("");
   const [activeMode, setActiveMode] = useState("receipt");
@@ -559,10 +561,11 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated, canPrint = fa
             selectedReleases,
             totalAmount: selectedAmount,
             receiptDetails: {
-              bankName: body.bankName,
-              accountNumber: body.accountNumber,
+              paymentMethod: body.paymentMethod,
+              bankName: body.paymentMethod === 'cash' ? 'Not applicable (Cash)' : body.bankName,
+              accountNumber: body.paymentMethod === 'cash' ? 'Not applicable' : body.accountNumber,
               receiptDate: body.receiptDate,
-              referenceNumber: body.referenceNumber,
+              referenceNumber: body.paymentMethod === 'cash' ? 'Generated automatically on save' : body.referenceNumber,
               witnessName: body.witnessName,
             },
           },
@@ -617,7 +620,10 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated, canPrint = fa
       return;
     }
 
+    const invalid = validateReleaseReceipt(form, latestSelectedActualReleaseDate, paymentMethod);
+    if (invalid) { setLocalAlert({type:'error',message:invalid}); return; }
     createReceiptMutation.mutate({
+      paymentMethod,
       commissionId: Number(selectedGroup.commissionId),
       releaseIds: effectiveReleaseIds,
       ...form,
@@ -759,33 +765,21 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated, canPrint = fa
                   <h3 className="text-base font-black text-slate-950">Receipt details</h3>
                   <p className="mt-1 text-sm font-semibold text-slate-500">The amount comes from the selected released stages.</p>
 
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-                    <label className="grid gap-1.5"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Bank</span><input value={form.bankName} onChange={(event) => updateForm("bankName", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" placeholder="BPI" /></label>
-                    <label className="grid gap-1.5"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Account No.</span><input value={form.accountNumber} onChange={(event) => updateForm("accountNumber", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" placeholder="Account number" /></label>
-                    <label className="grid gap-1.5">
-                      <span className="text-xs font-black uppercase tracking-wide text-slate-500">Receipt Date</span>
-                      <input
-                        type="date"
-                        value={form.receiptDate}
-                        min={latestSelectedActualReleaseDate || undefined}
-                        max={todayISO()}
-                        onChange={(event) => {
-                          setReceiptDateTouched(true);
-                          updateForm("receiptDate", event.target.value);
-                        }}
-                        className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-                      />
-                      {selectedActualReleaseDates.length === 1 ? (
-                        <span className="text-xs font-semibold leading-relaxed text-slate-500">Defaulted to the selected commission's actual release date ({selectedActualReleaseDates[0]}). Change it only if the Proof of Income was issued on another date.</span>
-                      ) : selectedActualReleaseDates.length > 1 ? (
-                        <span className="text-xs font-semibold leading-relaxed text-amber-700">Selected releases occurred on different actual release dates ({selectedActualReleaseDates.join(', ')}). This Receipt Date is the separate issue date for the combined Proof of Income and cannot be earlier than the latest selected release ({latestSelectedActualReleaseDate}).</span>
-                      ) : (
-                        <span className="text-xs font-semibold leading-relaxed text-slate-500">Receipt Date is the document issue date and cannot be in the future.</span>
-                      )}
-                    </label>
-                    <label className="grid gap-1.5"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Reference No.</span><input value={form.referenceNumber} onChange={(event) => updateForm("referenceNumber", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" placeholder="Bank reference" /></label>
-                    <label className="grid gap-1.5 sm:col-span-2 xl:col-span-1"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Witness Name</span><input value={form.witnessName} onChange={(event) => updateForm("witnessName", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" placeholder="Printed witness name" /></label>
-                  </div>
+                  <label className="mt-4 block text-xs font-black uppercase text-slate-600">Payment Method
+                    <select className="mt-1 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold" value={paymentMethod} onChange={e=>{
+                      setPaymentMethod(e.target.value);
+                      setForm(current=>({...current, bankName:'', accountNumber:'', referenceNumber:''}));
+                      setLocalAlert(null);
+                    }}>
+                      <option value="bank_transfer">Bank Transfer</option><option value="cash">Cash</option><option value="check">Check</option><option value="other">Other</option>
+                    </select>
+                  </label>
+                  <ReleaseReceiptFields value={form} onChange={next => {if(next.receiptDate !== form.receiptDate) setReceiptDateTouched(true); setForm(next)}} paymentMethod={paymentMethod}
+                    releaseDate={latestSelectedActualReleaseDate || undefined} title="Proof of Income Receipt Details"
+                    description="Record a document for commission releases already paid. This does not create another payout." />
+                  {selectedActualReleaseDates.length > 1 ? <p className="mt-2 text-xs font-semibold text-amber-700">
+                    The receipt date must be on or after {latestSelectedActualReleaseDate}, the latest selected release date.
+                  </p> : null}
 
                   <button type="button" onClick={handleGenerate} disabled={!selectedGroup || !effectiveReleaseIds.length || createReceiptMutation.isPending} className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
                     {createReceiptMutation.isPending ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiPrinter className="h-4 w-4" />}
@@ -1082,6 +1076,7 @@ const Accredited = () => {
 };
 
 export default Accredited;
+
 
 
 

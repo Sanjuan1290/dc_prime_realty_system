@@ -63,7 +63,7 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
         }, selectedRelease: { releaseStage: stage.stage, triggerPercent: stage.triggerPercent,
           releasePercent: stage.releasePercent, grossReleaseAmount: stage.amount,
           netReleaseAmount: stage.amount, deductionAmount: 0, currentStatus: stage.status,
-          paymentMethod, paymentReference },
+          paymentMethod, paymentReference: paymentMethod === 'cash' ? 'Generated automatically on save' : paymentReference },
         } } }
     ),
     onSuccess: (result) => {

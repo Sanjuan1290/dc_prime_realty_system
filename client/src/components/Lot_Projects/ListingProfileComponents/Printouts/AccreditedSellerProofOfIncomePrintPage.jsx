@@ -196,6 +196,11 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
         <p className="mt-6 text-[14px] font-medium uppercase leading-6">
           TOTAL AMOUNT: {amountInWords(totalAmount)} ({amountText}).
         </p>
+        {!receipt.isConsolidatedSummary && receipt.referenceNumber ? (
+          <p className="mt-2 text-[11px] font-semibold text-slate-600">
+            {String(receipt.bankName || '').toLowerCase().includes('not applicable (cash)') ? 'Cash Reference' : 'Payment Reference'}: {receipt.referenceNumber}
+          </p>
+        ) : null}
 
         {!receipt.isConsolidatedSummary ? (
           <>
@@ -222,7 +227,9 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
 
         {receipt.isConsolidatedSummary ? <p className="mt-10 text-[12px] font-medium">This summary combines the selected existing payments only. Refer to each original release acknowledgement for payment instructions, witness and signatures.</p> : null}
         <div className="mt-12 border-t border-dashed border-slate-300 pt-3 text-[9px] text-slate-500 print:hidden">
-          <p>Bank: {receipt.bankName || '-'} · Account No.: {receipt.accountNumber || '-'} · Reference No.: {receipt.referenceNumber || '-'}</p>
+          {String(receipt.bankName || '').toLowerCase().includes('not applicable (cash)')
+            ? <p>Cash Reference: {receipt.referenceNumber || '-'}</p>
+            : <p>Bank: {receipt.bankName || '-'} · Account No.: {receipt.accountNumber || '-'} · Reference No.: {receipt.referenceNumber || '-'}</p>}
         </div>
       </div>
     </section>
@@ -246,6 +253,7 @@ const AccreditedSellerProofOfIncomePrintPage = () => {
 }
 
 export default AccreditedSellerProofOfIncomePrintPage
+
 
 
 

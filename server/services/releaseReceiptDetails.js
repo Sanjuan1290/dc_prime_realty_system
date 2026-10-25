@@ -11,10 +11,11 @@ export const validateReleaseReceiptDetails = (input, actualReleaseDate, today, p
     bankName: isCash ? 'Not applicable (Cash)' : clean(input?.bankName),
     accountNumber: isCash ? 'Not applicable' : clean(input?.accountNumber),
     receiptDate: clean(input?.receiptDate),
-    referenceNumber: clean(input?.referenceNumber),
+    referenceNumber: isCash ? '' : clean(input?.referenceNumber),
     witnessName: clean(input?.witnessName),
   };
   for (const [name, max] of Object.entries({ bankName: 150, accountNumber: 100, referenceNumber: 120, witnessName: 255 })) {
+    if (isCash && name === 'referenceNumber') continue;
     if (!fields[name] || fields[name].length > max) {
       const error = new Error(`Receipt ${name} is required and must not exceed ${max} characters.`);
       error.statusCode = 400; throw error;

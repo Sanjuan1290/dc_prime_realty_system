@@ -1,3 +1,4 @@
+import { makeCommissionCashReference } from '../../../services/commissionCashReference.js';
 import {
   db, getProjectBySlug, getAuthenticatedUser, tableExists, todayDateOnly, getErrorMessage,
 } from '../_shared/lotProject.shared.js';
@@ -129,13 +130,13 @@ export const releaseNetworkCompanyProfit = async (req, res) => {
     const profitId = Number(req.params.profitId);
     const releaseId = Number(req.params.releaseId);
     const method = clean(req.body?.paymentMethod).toLowerCase();
-    const reference = clean(req.body?.paymentReference);
+    const suppliedReference = clean(req.body?.paymentReference);
     const date = todayDateOnly();
     const receiptDetails = validateReleaseReceiptDetails(req.body?.receiptDetails, date, date, method);
     if (!Number.isSafeInteger(profitId) || profitId <= 0 || !Number.isSafeInteger(releaseId) || releaseId <= 0) {
       return res.status(400).json({ success: false, message: 'Select a valid Company Profit release.' });
     }
-    if (!validMethods.has(method) || !reference || reference.length > 120) {
+    if (!validMethods.has(method) || (method !== 'cash' && (!suppliedReference || suppliedReference.length > 120))) {
       return res.status(400).json({ success: false, message: 'Choose a payment method and enter its reference (up to 120 characters).' });
     }
     for (const column of ['bank_name', 'account_number', 'receipt_date', 'witness_name']) {
@@ -144,7 +145,7 @@ export const releaseNetworkCompanyProfit = async (req, res) => {
       if (!Number(columnRow?.n)) return res.status(503).json({ success: false, code: 'PROFIT_RECEIPT_MIGRATION_REQUIRED',
         message: 'Apply the Company Profit receipt details migration before releasing this milestone.' });
     }
-    if (reference !== receiptDetails.referenceNumber) return res.status(400).json({ success: false, message: 'The payment reference must match the receipt reference.' });
+    if (method !== 'cash' && suppliedReference !== receiptDetails.referenceNumber) return res.status(400).json({ success: false, message: 'The payment reference must match the receipt reference.' });
     await connection.beginTransaction();
     inTransaction = true;
     const profit = await selectProfitContext(connection, profitId, project.lot_project_id, true);
@@ -163,6 +164,9 @@ export const releaseNetworkCompanyProfit = async (req, res) => {
       await connection.rollback(); inTransaction = false;
       return res.status(409).json({ success: false, message: 'This stage is already released, held, or unavailable. Refresh the record.' });
     }
+    const reference = method === 'cash'
+      ? makeCommissionCashReference({ date, unitCode: profit.unit, id: releaseId, kind: 'company' })
+      : suppliedReference;
     // Recheck source commission eligibility inside the same transaction, not just in the UI.
     const [[source]] = await connection.query(`SELECT cr.release_status
       FROM lot_project_commission_releases cr

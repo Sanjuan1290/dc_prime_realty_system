@@ -114,10 +114,14 @@ test('Proof of Income keeps receipt date separate while defaulting a common actu
   assert.match(accreditedPage, /selectedActualReleaseDates/);
   assert.match(accreditedPage, /suggestedReceiptDate = selectedActualReleaseDates\.length === 1 \? selectedActualReleaseDates\[0\] : todayISO\(\)/);
   assert.match(accreditedPage, /receiptDateTouched/);
-  assert.match(accreditedPage, /min=\{latestSelectedActualReleaseDate \|\| undefined\}/);
-  assert.match(accreditedPage, /max=\{todayISO\(\)\}/);
-  assert.match(accreditedPage, /Defaulted to the selected commission's actual release date/);
-  assert.match(accreditedPage, /Selected releases occurred on different actual release dates/);
+  // The shared receipt component now owns the date input and its range constraints.
+  const receiptFields = read('client/src/components/Lot_Projects/CommissionComponents/ReleaseReceiptFields.jsx');
+  assert.match(accreditedPage, /releaseDate=\{latestSelectedActualReleaseDate \|\| undefined\}/);
+  assert.match(accreditedPage, /<ReleaseReceiptFields value=\{form\}/);
+  assert.match(receiptFields, /min=\{releaseDate \|\| undefined\}/);
+  assert.match(receiptFields, /max=\{todayInManila\(\)\}/);
+  assert.match(accreditedPage, /selectedActualReleaseDates.length > 1/);
+  assert.match(accreditedPage, /latest selected release date/);
   assert.match(accreditedController, /if \(!parseIsoDateOnly\(receiptDate\)\)/);
   assert.match(accreditedController, /if \(receiptDate > todayDateOnly\(\)\)/);
   assert.match(accreditedController, /Receipt date cannot be in the future/);
@@ -145,5 +149,6 @@ test('cancelled-sale financial archive preserves historical release metadata', (
   assert.match(archiveSource, /r\.release_recorded_at/);
   assert.match(archiveSource, /r\.historical_release_note/);
 });
+
 
 

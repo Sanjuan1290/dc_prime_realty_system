@@ -25,10 +25,12 @@ const ProofOfIncomeDoubleCheck = ({ request, onConfirm, onCancel }) => {
       { label: 'Status', value: pick(release, 'status'), formatter: titleCase },
     ]} />)}</div> : <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">No commission release stages are selected.</p>}</DoubleCheckSection> },
     { key: 'receipt', title: 'Receipt Details', content: <DoubleCheckSection title="Receipt Details" helper="Receipt Date is the Proof of Income issue date and remains separate from each commission Actual Release Date." tone="amber"><DoubleCheckFields fields={[
-      { label: 'Bank Name', value: pick(receipt, 'bankName') },
-      { label: 'Account Number', value: pick(receipt, 'accountNumber') },
+      ...(receipt.paymentMethod === 'cash' || receipt.bankName === 'Not applicable (Cash)' ? [] : [
+        { label: 'Bank Name', value: pick(receipt, 'bankName') },
+        { label: 'Account Number', value: pick(receipt, 'accountNumber') },
+      ]),
       { label: 'Receipt Date', value: pick(receipt, 'receiptDate'), formatter: formatDate },
-      { label: 'Reference Number', value: pick(receipt, 'referenceNumber') },
+      { label: receipt.paymentMethod === 'cash' ? 'Cash Reference' : 'Reference Number', value: pick(receipt, 'referenceNumber') },
       { label: 'Witness Name', value: pick(receipt, 'witnessName'), wide: true },
     ]} /></DoubleCheckSection> },
   ]
@@ -36,5 +38,6 @@ const ProofOfIncomeDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default ProofOfIncomeDoubleCheck
+
 
 

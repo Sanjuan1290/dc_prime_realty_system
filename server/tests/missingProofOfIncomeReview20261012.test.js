@@ -33,7 +33,7 @@ test('historical missing receipt review contains seller, project, buyer, amount 
     releaseId: 30099, stage: '1st Release', releasePercent: 20,
     triggerPercent: 20, amount: 2496, releaseDate: '2026-10-11', status: 'Released',
   }])
-  assert.deepEqual(data.receiptDetails, valid.receiptDetails)
+  assert.deepEqual(data.receiptDetails, { ...valid.receiptDetails, paymentMethod: 'bank_transfer' })
   assert.equal(data.action, 'create-existing-release-receipt')
 })
 
@@ -63,3 +63,16 @@ test('Commission Details review uses the shared review-data builder and links ex
   assert.doesNotMatch(modal.slice(modal.indexOf('const saveMissingReceipt'),modal.indexOf('const changeBeneficiary')), /action: 'release_stage'/)
 })
 
+
+
+
+test('Cash legacy receipt review previews generated reference, not a missing voucher', () => {
+  const data = buildMissingProofOfIncomeReview({
+    ...valid,
+    paymentMethod: 'cash',
+    receiptDetails: {receiptDate:'2026-10-12',witnessName:'Kirsten',bankName:'',accountNumber:'',referenceNumber:''},
+  });
+  assert.equal(data.receiptDetails.bankName,'Not applicable (Cash)');
+  assert.equal(data.receiptDetails.referenceNumber,'Generated automatically on save');
+  assert.equal(data.receiptDetails.paymentMethod,'cash');
+});

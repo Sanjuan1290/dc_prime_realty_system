@@ -162,6 +162,8 @@ const ReleaseConfirmDialog = ({
   historicalAllowed,
   receiptDetails,
   onReceiptChange,
+  paymentMethod,
+  onPaymentMethodChange,
   isSaving,
   onModeChange,
   onHistoricalDateChange,
@@ -279,8 +281,13 @@ const ReleaseConfirmDialog = ({
           </div>
         ) : null}
 
+        <label className="mt-4 block text-xs font-black uppercase text-slate-600">Payment Method
+          <select className="mt-1 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold" value={paymentMethod} disabled={isSaving} onChange={e=>onPaymentMethodChange(e.target.value)}>
+            <option value="bank_transfer">Bank Transfer</option><option value="cash">Cash</option><option value="check">Check</option><option value="other">Other</option>
+          </select>
+        </label>
         <ReleaseReceiptFields value={receiptDetails} onChange={onReceiptChange} disabled={isSaving}
-          releaseDate={historicalSelected ? historicalDate : today} />
+          releaseDate={historicalSelected ? historicalDate : today} paymentMethod={paymentMethod} />
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={onCancel} disabled={isSaving} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
             Back
@@ -310,7 +317,12 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
     enabled: Boolean(projectSlug && commissionGroup?.accountId),
   })
   const companyProfits = selectCompanyProfitsForAccount(profitResponse?.data, commissionGroup?.accountId)
-  const [selectedBeneficiary, setSelectedBeneficiary] = useState(() => `seller:${sellers[0]?.commissionId || sellers[0]?.id || ''}`)
+  const [manualBeneficiary, setManualBeneficiary] = useState(null)
+  // Resolve the default from the loaded account's Company Profit data in the same render.
+  // A deliberate user selection always wins; seller is the fallback when no profit exists.
+  const selectedBeneficiary = manualBeneficiary || (isProfitLoading
+    ? '__loading__'
+    : companyProfits.length ? `company:${companyProfits[0].id}` : `seller:${sellers[0]?.commissionId || sellers[0]?.id || ''}`)
   const selectedProfit = selectedBeneficiary.startsWith('company:')
     ? companyProfits.find((profit) => `company:${profit.id}` === selectedBeneficiary)
     : null
@@ -335,10 +347,12 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
   const [historicalNote, setHistoricalNote] = useState('')
   const [agentReceiptStatus, setAgentReceiptStatus] = useState('')
   const [receiptDetails, setReceiptDetails] = useState(emptyReleaseReceipt)
+  const [paymentMethod, setPaymentMethod] = useState('bank_transfer')
   const [sellerReceiptChoice, setSellerReceiptChoice] = useState(null)
   const [sellerSignedChoice, setSellerSignedChoice] = useState(null)
   const [missingReceiptChoice, setMissingReceiptChoice] = useState(null)
   const [missingReceiptDetails, setMissingReceiptDetails] = useState(emptyReleaseReceipt)
+  const [missingPaymentMethod, setMissingPaymentMethod] = useState('bank_transfer')
   const [legacyReceiptSaving, setLegacyReceiptSaving] = useState(false)
   const [legacyReceiptError, setLegacyReceiptError] = useState('')
   const [receiptLoading, setReceiptLoading] = useState(false)
@@ -369,6 +383,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
           releasePercent: stage.releasePercent, triggerPercent: stage.triggerPercent, purpose,
         })
         setMissingReceiptDetails(emptyReleaseReceipt())
+        setMissingPaymentMethod('bank_transfer')
         setLegacyReceiptError('')
       } else {
         setNotice({ type: 'warning', title: 'Receipt not available', message: error.message || 'Could not load this release receipt.' })
@@ -378,7 +393,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
 
   const saveMissingReceipt = async () => {
     if (!missingReceiptChoice || legacyReceiptSaving || !canUploadSigned) return
-    const invalid = validateReleaseReceipt(missingReceiptDetails, String(missingReceiptChoice.actualReleaseDate || '').slice(0, 10))
+    const invalid = validateReleaseReceipt(missingReceiptDetails, String(missingReceiptChoice.actualReleaseDate || '').slice(0, 10), missingPaymentMethod)
     if (invalid) { setLegacyReceiptError(invalid); return }
     setLegacyReceiptError('')
     // Build the exact ProofOfIncomeDoubleCheck schema before opening Final Review.
@@ -386,7 +401,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
     let reviewData
     try {
       reviewData = buildMissingProofOfIncomeReview({
-        commissionGroup, commission, missingReceiptChoice, receiptDetails: missingReceiptDetails,
+        commissionGroup, commission, missingReceiptChoice, receiptDetails: missingReceiptDetails, paymentMethod: missingPaymentMethod,
       })
     } catch (error) {
       setLegacyReceiptError(error.message)
@@ -398,6 +413,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
         commissionId: missingReceiptChoice.commissionId,
         releaseIds: [missingReceiptChoice.releaseId],
         ...missingReceiptDetails,
+        paymentMethod: missingPaymentMethod,
       }, { doubleCheck: {
         type: 'proof-of-income',
         summary: `Record missing Proof of Income only · ${commission.seller} · ${missingReceiptChoice.stage}`,
@@ -413,7 +429,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
   }
 
   const changeBeneficiary = (event) => {
-    setSelectedBeneficiary(event.target.value)
+    setManualBeneficiary(event.target.value)
     setConfirmAction(null)
     setSelectedStage(null)
     setReleaseMode('live')
@@ -476,6 +492,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
       setHistoricalDate(releaseDateInfo.todayDateISO || todayManilaISO())
       setHistoricalNote('')
       setReceiptDetails(emptyReleaseReceipt())
+      setPaymentMethod('bank_transfer')
     }
 
     setSelectedStage(stage)
@@ -499,7 +516,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
 
     if (confirmAction === 'release_stage') {
       const actualDate = releaseMode === 'historical' ? historicalDate : (releaseDateInfo.todayDateISO || todayManilaISO())
-      const problem = validateReleaseReceipt(receiptDetails, actualDate)
+      const problem = validateReleaseReceipt(receiptDetails, actualDate, paymentMethod)
       if (problem) {
         setNotice({ type: 'error', title: 'Receipt Details required', message: problem })
         return
@@ -511,6 +528,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
       releaseId: selectedStage.releaseId,
       ...(confirmAction === 'release_stage' ? {
         receiptDetails,
+        paymentMethod,
         releaseMode,
         actualReleaseDate: releaseMode === 'historical'
           ? historicalDate
@@ -545,10 +563,11 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
               <select
                 value={selectedBeneficiary}
                 onChange={changeBeneficiary}
-                disabled={isSaving || sellers.length + companyProfits.length <= 1}
+                disabled={isSaving || isProfitLoading || sellers.length + companyProfits.length <= 1}
                 className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100 disabled:text-slate-500"
                 aria-label="Select company or seller commission"
               >
+                {isProfitLoading ? <option value="__loading__">Loading Company Profit...</option> : null}
                 {companyProfits.map((profit) => (
                   <option key={`company:${profit.id}`} value={`company:${profit.id}`}>
                     Company Profit · {profit.network} · {profit.payee}
@@ -571,7 +590,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
         <div className="p-3">
           {isProfitLoading ? <p className="mb-3 text-xs font-semibold text-slate-500">Loading Company Profit options for this buyer account...</p> : null}
           {isProfitError ? <p role="alert" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">Company Profit could not load: {profitError?.message || 'Refresh and try again.'} Seller commissions remain available.</p> : null}
-          {selectedProfit ? (
+          {isProfitLoading ? <p role="status" className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">Loading Company Profit and seller records...</p> : selectedProfit ? (
             <NetworkCompanyProfitPanel
               key={selectedProfit.id}
               embedded
@@ -781,6 +800,8 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
           historicalAllowed={historicalAllowed}
           receiptDetails={receiptDetails}
           onReceiptChange={setReceiptDetails}
+          paymentMethod={paymentMethod}
+          onPaymentMethodChange={next => { setPaymentMethod(next); setReceiptDetails(previous => ({...previous, bankName:'', accountNumber:'', referenceNumber:''})) }}
           isSaving={isSaving}
           onModeChange={setReleaseMode}
           onHistoricalDateChange={setHistoricalDate}
@@ -806,9 +827,15 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
               Use the actual receipt details, or cancel if an existing signed document needs reconciliation.
             </p>
             {canUploadSigned ? <>
-              <ReleaseReceiptFields value={missingReceiptDetails} onChange={setMissingReceiptDetails}
+              <label className="mt-4 block text-xs font-bold">Payment Method
+                <select value={missingPaymentMethod} onChange={e=>{setMissingPaymentMethod(e.target.value);setMissingReceiptDetails(current=>({...current,bankName:'',accountNumber:'',referenceNumber:''}))}} className="mt-1 block w-full rounded-lg border p-2">
+                  <option value="bank_transfer">Bank Transfer</option><option value="cash">Cash</option><option value="check">Check</option><option value="other">Other</option>
+                </select>
+              </label>
+              <ReleaseReceiptFields value={missingReceiptDetails} paymentMethod={missingPaymentMethod} onChange={setMissingReceiptDetails}
                 disabled={legacyReceiptSaving} releaseDate={String(missingReceiptChoice.actualReleaseDate || '').slice(0, 10)}
-                title="Receipt Details for Earlier Release" />
+                title="Receipt Details for Earlier Release"
+                description="This attaches a receipt to an earlier released milestone. No additional commission will be paid." />
               {legacyReceiptError ? <p role="alert" className="mt-2 text-sm font-bold text-red-700">{legacyReceiptError}</p> : null}
             </> : <p className="mt-3 text-sm font-semibold text-amber-800">Ask an Accredited Sellers receipt manager to record the missing receipt.</p>}
             <div className="mt-5 flex justify-end gap-2">

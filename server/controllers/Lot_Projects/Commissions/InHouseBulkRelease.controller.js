@@ -1,3 +1,4 @@
+import { makeCommissionCashReference } from '../../../services/commissionCashReference.js';
 // Batch milestone release is deliberately implemented beside (not in place of)
 // the individual workflows. All recipients are re-read and locked before writes.
 // This module delegates the financial work to the same individual release handlers
@@ -20,7 +21,7 @@ const validReceipt = (row, today) => {
   const method = clean(row?.paymentMethod).toLowerCase();
   if (!METHODS.has(method)) throw problem('Select a payment method for every pending recipient.', 400);
   const receipt = validateReleaseReceiptDetails(row?.receiptDetails, today, today, method);
-  if (clean(row?.paymentReference) !== receipt.referenceNumber) throw problem('Payment and receipt references must match.', 400);
+  if (method !== 'cash' && clean(row?.paymentReference) !== receipt.referenceNumber) throw problem('Payment and receipt references must match.', 400);
   return { paymentMethod: method, receipt };
 };
 
@@ -121,6 +122,7 @@ export const releaseAllInHouseMilestone = async (req, res) => {
       if (release.release_status === 'Released') continue;
       const {receipt,paymentMethod} = details.get(`seller:${seller.commissionId}`);
       const releaseId = id(release.lot_project_commission_release_id);
+      if (paymentMethod === 'cash') receipt.referenceNumber = makeCommissionCashReference({ date: today, unitCode: profit.unit, id: releaseId, kind: 'seller' });
       const [changed] = await connection.query(`UPDATE lot_project_commission_releases
         SET release_status='Released',actual_release_date=?,released_by_user_id=?,release_entry_mode='live',
             release_recorded_at=COALESCE(release_recorded_at,NOW()),historical_release_note=NULL
@@ -172,6 +174,7 @@ export const releaseAllInHouseMilestone = async (req, res) => {
       if (!['Eligible','Released'].includes(source?.release_status))
         throw problem('Company Profit source milestone is not eligible for release.');
       const {receipt,paymentMethod} = details.get('company');
+      if (paymentMethod === 'cash') receipt.referenceNumber = makeCommissionCashReference({ date: today, unitCode: profit.unit, id: company.id, kind: 'company' });
       const [updated] = await connection.query(`UPDATE lot_project_network_profit_releases
         SET release_status='Released',actual_release_date=?,released_by_user_id=?,
             payee_name=?,payment_method=?,payment_reference=?,bank_name=?,account_number=?,receipt_date=?,

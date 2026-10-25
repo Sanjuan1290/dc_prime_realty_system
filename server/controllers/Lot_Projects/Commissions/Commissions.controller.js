@@ -1,3 +1,4 @@
+import { makeCommissionCashReference } from '../../../services/commissionCashReference.js';
 import { validateReleaseReceiptDetails } from '../../../services/releaseReceiptDetails.js';
 import {
   db,
@@ -1072,6 +1073,9 @@ export const updateLotProjectCommission = async (req, res) => {
 
 
     const isReleaseAction = action === 'release_stage';
+    const releasePaymentMethod = String(req.body?.paymentMethod || 'bank_transfer').trim().toLowerCase();
+    if (isReleaseAction && !['cash','bank_transfer','check','other'].includes(releasePaymentMethod))
+      return res.status(400).json({ success: false, message: 'Select a valid payment method.' });
     const releaseMode = requestedReleaseMode || 'live';
     const isHistoricalRelease = isReleaseAction && releaseMode === 'historical';
     let historicalActualReleaseDate = null;
@@ -1400,7 +1404,7 @@ export const updateLotProjectCommission = async (req, res) => {
         actualReleaseDate = isHistoricalRelease ? historicalActualReleaseDate : todayDateOnly();
         historicalReleaseNote = isHistoricalRelease ? (requestedHistoricalNote || null) : null;
         // An invalid receipt must reject the release before any payment record is updated.
-        validateReleaseReceiptDetails(rawReceipt, actualReleaseDate, todayDateOnly());
+        validateReleaseReceiptDetails(rawReceipt, actualReleaseDate, todayDateOnly(), releasePaymentMethod);
         message = isHistoricalRelease
           ? `${release.release_stage} historical release recorded successfully.`
           : `${release.release_stage} released successfully.`;
@@ -1513,7 +1517,7 @@ export const updateLotProjectCommission = async (req, res) => {
       const data = await recomputeCommissionFromReleases(connection, commissionId, project.lot_project_id);
 
       if (action === 'release_stage') {
-        const receiptDetails = validateReleaseReceiptDetails(rawReceipt, actualReleaseDate, todayDateOnly());
+        const receiptDetails = validateReleaseReceiptDetails(rawReceipt, actualReleaseDate, todayDateOnly(), releasePaymentMethod);
         const [contextRows] = await connection.query(
           `
             SELECT
@@ -1551,6 +1555,9 @@ export const updateLotProjectCommission = async (req, res) => {
         if (!sellerId || !commissionContext.lot_project_client_profile_id || !commissionContext.lot_project_listing_id) {
           throw Object.assign(new Error('Commission receipt could not identify its seller or buyer account. Nothing was released.'), { statusCode: 409 });
         }
+        if (releasePaymentMethod === 'cash') receiptDetails.referenceNumber = makeCommissionCashReference({
+          date: todayDateOnly(), unitCode: commissionContext.lot_project_listing_unit_id, id: releaseId, kind: 'seller',
+        });
         // One receipt per milestone, saved IN the same transaction as the release and its audit.
         const [receiptInsert] = await connection.query(`
           INSERT INTO lot_project_commission_receipts (

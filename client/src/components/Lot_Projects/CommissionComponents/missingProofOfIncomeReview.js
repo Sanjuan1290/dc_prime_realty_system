@@ -4,7 +4,7 @@
  * seller, property, selectedReleases, totalAmount and receiptDetails.
  * This builds review-only metadata; it never creates or changes a payout.
  */
-export const buildMissingProofOfIncomeReview = ({ commissionGroup, commission, missingReceiptChoice, receiptDetails }) => {
+export const buildMissingProofOfIncomeReview = ({ commissionGroup, commission, missingReceiptChoice, receiptDetails, paymentMethod = 'bank_transfer' }) => {
   const choice = missingReceiptChoice || {}
   const group = commissionGroup || {}
   const seller = commission || {}
@@ -30,10 +30,11 @@ export const buildMissingProofOfIncomeReview = ({ commissionGroup, commission, m
 
   const actualReleaseDate = String(choice.actualReleaseDate || '').slice(0, 10)
   const receipt = {
-    bankName: String(details.bankName || '').trim(),
-    accountNumber: String(details.accountNumber || '').trim(),
+    paymentMethod,
+    bankName: paymentMethod === 'cash' ? 'Not applicable (Cash)' : String(details.bankName || '').trim(),
+    accountNumber: paymentMethod === 'cash' ? 'Not applicable' : String(details.accountNumber || '').trim(),
     receiptDate: String(details.receiptDate || '').trim(),
-    referenceNumber: String(details.referenceNumber || '').trim(),
+    referenceNumber: paymentMethod === 'cash' ? 'Generated automatically on save' : String(details.referenceNumber || '').trim(),
     witnessName: String(details.witnessName || '').trim(),
   }
   if (!actualReleaseDate || Object.values(receipt).some((value) => !value)) {
@@ -60,4 +61,5 @@ export const buildMissingProofOfIncomeReview = ({ commissionGroup, commission, m
     note: 'The commission payment was already released. This action records only its missing receipt.',
   }
 }
+
 

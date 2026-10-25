@@ -9,12 +9,12 @@ const read=(file)=>readFileSync(path.join(root,file),'utf8')
 const date='2026-10-25'
 const example={bankName:'BPI',accountNumber:'0123456789',receiptDate:date,referenceNumber:'OR-2026-10-25-001',witnessName:'Office Staff'}
 
-test('Cash receipt requires real voucher and witness but not bank or account',()=>{
+test('Cash requires witness but reference is server-generated, not user-supplied',()=>{
  const cash=validateReleaseReceiptDetails({...example,bankName:'',accountNumber:''},date,date,'cash')
  assert.equal(cash.bankName,'Not applicable (Cash)')
  assert.equal(cash.accountNumber,'Not applicable')
- assert.equal(cash.referenceNumber,example.referenceNumber)
- assert.throws(()=>validateReleaseReceiptDetails({...example,bankName:'',accountNumber:'',referenceNumber:''},date,date,'cash'),/referenceNumber/)
+ assert.equal(cash.referenceNumber,'')
+ assert.equal(validateReleaseReceiptDetails({...example,bankName:'',accountNumber:'',referenceNumber:''},date,date,'cash').referenceNumber,'')
  assert.throws(()=>validateReleaseReceiptDetails({...example,bankName:'',accountNumber:'',witnessName:''},date,date,'cash'),/witnessName/)
 })
 
@@ -38,7 +38,8 @@ test('Shared receipt component adapts labels and hides non-applicable Cash input
  const field=read('client/src/components/Lot_Projects/CommissionComponents/ReleaseReceiptFields.jsx')
  assert.match(field,/!cash && field\(bankLabel/)
  assert.match(field,/!cash && field\(accountLabel/)
- assert.match(field,/Cash Receipt \/ Voucher No\./)
+ assert.match(field,/Generated automatically after saving/)
+ assert.doesNotMatch(field,/Cash Receipt \/ Voucher No\./)
  assert.match(field,/Issuing Bank/)
  assert.match(field,/Account No\. \/ Wallet No\./)
 })
