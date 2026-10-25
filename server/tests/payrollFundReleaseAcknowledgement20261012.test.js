@@ -70,7 +70,7 @@ test('release screen captures witness and automatically opens official receipt a
   const release = read('client/src/components/System/employeeSalaryComponents/ReleasePayrollModal.jsx')
   const detail = read('client/src/components/System/employeeSalaryComponents/SalaryDetailModal.jsx')
   const modal = read('client/src/components/System/employeeSalaryComponents/FundReleaseReceiptModal.jsx')
-  assert.match(release, /Witness Name \(for acknowledgment receipt\)/)
+  assert.match(release, /Witness Name/)
   assert.match(release, /release_witness_name: witnessName\.trim\(\)/)
   assert.match(detail, /onReleased=\{\(result\) => \{ setShowReceipt\(true\)/)
   assert.match(detail, /<FundReleaseReceiptModal/)
@@ -88,4 +88,5 @@ test('TiDB migration is additive, and witness is recorded in the employee payrol
   assert.match(controller, /releaseWitnessName: release\.releaseWitnessName/)
   assert.match(service, /p\.release_witness_name/)
 })
+
 

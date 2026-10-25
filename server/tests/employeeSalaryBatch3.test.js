@@ -39,7 +39,7 @@ test('Employee Salary register exposes required filters, summary cards and payro
 test('Batch 3 salary detail includes compensation, attendance, earnings, deductions, allowances and net release', () => {
   const detail = read('client/src/components/System/employeeSalaryComponents/SalaryDetailModal.jsx');
 
-  for (const phrase of ['Salary and Pay Rates', 'Attendance for This Pay Period', 'Earnings', 'Allowances', 'Deductions and Take-Home Pay', 'Take-Home Pay']) {
+  for (const phrase of ['Salary and Pay Rates', 'Attendance for This Pay Period', 'Earnings', 'Allowances', 'Deductions and Take-Home Pay', 'Net Fund Release']) {
     assert.match(detail, new RegExp(phrase));
   }
   assert.match(detail, /Attendance Breakdown/);
@@ -73,7 +73,6 @@ test('salary register backend supports department, payroll status and employee s
   assert.match(service, /p\.employee_name_snapshot LIKE \?/);
   assert.match(service, /e\.employee_code LIKE \?/);
 });
-
 
 
 

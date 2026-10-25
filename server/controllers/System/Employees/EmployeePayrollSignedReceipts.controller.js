@@ -1,5 +1,6 @@
 import { db } from '../../../db/connect.js';
 import { writeAuditLog } from '../auditLogs.controller.js';
+import { signedReceiptErrorResponse } from '../../../services/employeePayrollReceiptErrors.service.js';
 import {
   createAuthenticatedSignedCopyUploadSignature,
   getPerceptionPointQuotaState,
@@ -14,7 +15,12 @@ export const MAX_SIGNED_PAYROLL_FILES = 5;
 const clean = (v) => String(v ?? '').trim();
 const positiveId = (v) => Number.isSafeInteger(Number(v)) && Number(v) > 0 ? Number(v) : null;
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
-const sendError = (res, error) => res.status(error.statusCode || 500).json({ success: false, message: error.statusCode ? error.message : 'Unable to process signed salary receipt.' });
+const sendError = (res, error) => {
+  const info = signedReceiptErrorResponse(error);
+  // Keep underlying database/cloud errors out of browser responses.
+  if (info.status >= 500) console.error('[Employee Salary Receipts]', { code: error?.code, errno: error?.errno, message: error?.message });
+  return res.status(info.status).json({ success: false, code: info.code, message: info.message });
+};
 
 // Folder paths use immutable IDs, not names, salary amounts, or changeable job details.
 export const payrollReceiptFolder = (employeeId, payrollId, root = process.env.CLOUDINARY_UPLOAD_FOLDER || 'dc_prime') => {
@@ -24,11 +30,11 @@ export const payrollReceiptFolder = (employeeId, payrollId, root = process.env.C
 };
 
 const queryPayroll = async (connection, payrollId, lock = false) => {
-  const [rows] = await connection.query(`SELECT employee_payroll_id, employee_id, payroll_status, finalized_snapshot FROM employee_payrolls WHERE employee_payroll_id = ? ${lock ? 'FOR UPDATE' : ''}`, [payrollId]);
+  const [rows] = await connection.query(`SELECT employee_payroll_id, employee_id, payroll_status, finalized_snapshot_json FROM employee_payrolls WHERE employee_payroll_id = ? ${lock ? 'FOR UPDATE' : ''}`, [payrollId]);
   const record = rows[0];
   if (!record) throw fail('Salary record not found.', 404);
   if (record.payroll_status !== 'released') throw fail('Signed receipts may only be attached after the salary has been marked Released.', 409);
-  if (!record.finalized_snapshot) throw fail('A finalized salary record is required before signed receipts can be uploaded.', 409);
+  if (!record.finalized_snapshot_json) throw fail('A finalized salary record is required before signed receipts can be uploaded.', 409);
   return record;
 };
 const activeFiles = async (connection, payrollId) => {
@@ -48,19 +54,21 @@ const getIds = (req) => {
 };
 
 export const listPayrollSignedReceipts = async (req, res) => {
-  const conn = await db.getConnection();
+  let conn;
   try {
+    conn = await db.getConnection();
     const payrollId = getIds(req);
     await queryPayroll(conn, payrollId);
     const rows = await activeFiles(conn, payrollId);
     return res.json({ success: true, data: { maxFiles: MAX_SIGNED_PAYROLL_FILES, files: rows.map(mapped) } });
   } catch (error) { return sendError(res, error); }
-  finally { conn.release(); }
+  finally { conn?.release(); }
 };
 
 export const signPayrollReceiptUpload = async (req, res) => {
-  const conn = await db.getConnection();
+  let conn;
   try {
+    conn = await db.getConnection();
     const payrollId = getIds(req);
     const payroll = await queryPayroll(conn, payrollId);
     const existing = await activeFiles(conn, payrollId);
@@ -79,7 +87,7 @@ export const signPayrollReceiptUpload = async (req, res) => {
     });
     return res.json({ success: true, data: signature });
   } catch (error) { return sendError(res, error); }
-  finally { conn.release(); }
+  finally { conn?.release(); }
 };
 
 export const savePayrollSignedReceipt = async (req, res) => {
@@ -113,12 +121,13 @@ export const savePayrollSignedReceipt = async (req, res) => {
     await conn.commit(); started = false;
     return res.status(201).json({ success: true, message: 'Signed receipt uploaded.', data: { id:Number(insert.insertId) } });
   } catch (error) { if (started) await conn.rollback().catch(()=>{}); return sendError(res,error); }
-  finally { conn.release(); }
+  finally { conn?.release(); }
 };
 
 export const getPayrollSignedReceiptContent = async (req, res) => {
-  const conn = await db.getConnection();
+  let conn;
   try {
+    conn = await db.getConnection();
     const payrollId = getIds(req);
     await queryPayroll(conn, payrollId);
     const fileId = positiveId(req.params.fileId);
@@ -128,7 +137,7 @@ export const getPayrollSignedReceiptContent = async (req, res) => {
     if (file.malware_scan_status !== 'approved') throw fail('This signed receipt cannot be opened until its security scan is approved.', 423);
     return await sendAuthenticatedAssetContent(res, { publicId:file.cloudinary_public_id, format:file.cloudinary_format, resourceType:file.cloudinary_resource_type, fileName:file.original_file_name, fileMimeType:file.mime_type });
   } catch (error) { return sendError(res,error); }
-  finally { conn.release(); }
+  finally { conn?.release(); }
 };
 
 export const archivePayrollSignedReceipt = async (req, res) => {

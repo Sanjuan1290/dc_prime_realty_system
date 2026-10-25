@@ -49,7 +49,7 @@ const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = fals
   }
 
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-sm sm:p-4">
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-sm sm:p-4">
       <style>{`
         @page { size: A4 portrait; margin: 0 !important; }
         @media print {

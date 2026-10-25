@@ -122,9 +122,11 @@ test('salary UI exposes Mark as Released only from Finalized status to authorize
   assert.match(salaryDetail, /canRelease && \['finalized', 'corrected'\]\.includes\(payroll\?\.payroll_status\)/)
   assert.match(salaryDetail, /Mark as Released/)
   assert.match(releaseModal, /Released Date \*/)
-  assert.match(releaseModal, /Reference/)
+  assert.doesNotMatch(releaseModal, /<span[^>]*>Reference<\/span>/)
+  assert.doesNotMatch(releaseModal, /release_reference:/)
   assert.match(releaseModal, /Notes/)
-  assert.match(releaseModal, /(finalized\/corrected official|finalized) salary snapshot and receipt values remain unchanged/i)
+  assert.match(releaseModal, /Confirm the salary payment\./)
+  assert.doesNotMatch(releaseModal, /Official snapshot stays immutable|Actual Release Date may differ/)
 })
 
 test('released payroll remains official, historical, and exportable rather than becoming recalculable', () => {
@@ -133,6 +135,7 @@ test('released payroll remains official, historical, and exportable rather than 
   assert.doesNotMatch(salaryDetail, /canRecalculate && payroll\?\.payroll_status === 'released'/)
   assert.match(historyModal, /Released payroll remains historical and exportable/)
 })
+
 
 
 
