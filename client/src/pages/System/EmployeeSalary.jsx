@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiActivity, FiClock, FiDollarSign, FiDownload, FiFileText, FiLock, FiPlus, FiRefreshCw, FiSearch, FiSettings, FiMoreHorizontal, FiX } from 'react-icons/fi'
+import { FiActivity, FiClock, FiDollarSign, FiDownload, FiFileText, FiLock, FiPlus, FiRefreshCw, FiSearch, FiSettings, FiMoreHorizontal, FiCheckCircle, FiUpload, FiRotateCcw } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
+import ActionPanelModal, { ActionPanelButton } from '../../components/Shared/ActionPanelModal'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import GeneratePayrollModal from '../../components/System/employeeSalaryComponents/GeneratePayrollModal'
 import SalaryDetailModal from '../../components/System/employeeSalaryComponents/SalaryDetailModal'
@@ -170,7 +171,7 @@ const EmployeeSalary = () => {
                 <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${payrollStatusTone(row.payroll_status)}`}>{payrollStatusLabel(row.payroll_status)}</span>{row.calculation_warnings?.length ? <p className="mt-2 max-w-[220px] text-xs font-semibold leading-4 text-amber-700">{row.calculation_warnings.length} calculation warning(s)</p> : null}</td>
                 <td className="px-4 py-4"><div className="flex items-center gap-2">
                   <button type="button" onClick={() => openPayroll(row.employee_payroll_id, 'salary')} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 hover:bg-blue-100"><FiFileText />View Salary</button>
-                  <button type="button" onClick={() => setActionsPayroll(row)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"><FiMoreHorizontal />Other Actions</button>
+                  <button type="button" onClick={() => setActionsPayroll(row)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:border-blue-300 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 transition-colors motion-reduce:transition-none"><FiMoreHorizontal />Other Actions</button>
                 </div></td>
               </tr>)}
             </tbody>
@@ -178,20 +179,19 @@ const EmployeeSalary = () => {
         </div>
       </section>
 
-      {actionsPayroll ? <div role="presentation" className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setActionsPayroll(null) }}>
-        <section role="dialog" aria-modal="true" aria-label={`Payroll actions for ${actionsPayroll.employee_name_snapshot}`} className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
-          <header className="flex items-start justify-between border-b border-slate-200 p-5"><div><h2 className="text-lg font-black text-slate-900">Salary Actions</h2><p className="mt-1 text-sm text-slate-500">{actionsPayroll.employee_name_snapshot} · {payrollStatusLabel(actionsPayroll.payroll_status)}</p></div><button type="button" aria-label="Close salary actions" onClick={() => setActionsPayroll(null)} className="rounded-lg p-2 hover:bg-slate-100"><FiX /></button></header>
-          <div className="grid gap-2 p-5 sm:grid-cols-2">
-            <button type="button" onClick={() => { openPayroll(actionsPayroll.employee_payroll_id, 'attendance'); setActionsPayroll(null) }} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold">Attendance Details</button>
-            {canRecalculate && actionsPayroll.payroll_status === 'draft' ? <button type="button" onClick={() => { recalcMutation.mutate(actionsPayroll.employee_payroll_id); setActionsPayroll(null) }} disabled={recalcMutation.isPending} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold">Recalculate Draft</button> : null}
-            {canFinalize && actionsPayroll.payroll_status === 'draft' ? <button type="button" onClick={() => { openPayroll(actionsPayroll.employee_payroll_id, 'salary'); setActionsPayroll(null) }} className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left text-sm font-semibold text-emerald-800">Final Review</button> : null}
-            {actionsPayroll.payroll_status === 'released' && canPrintReceipt ? <button type="button" onClick={() => { setSignedPayroll(actionsPayroll); setActionsPayroll(null) }} className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-left text-sm font-semibold text-blue-800">Signed Receipt Files</button> : null}
-            <button type="button" onClick={() => { setSelectedReceiptPayrollId(actionsPayroll.employee_payroll_id); setActionsPayroll(null) }} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold">Preview Receipt</button>
-            {canViewPayrollHistory ? <button type="button" onClick={() => { setHistoryEmployee({ employee_id: actionsPayroll.employee_id, employee_code: actionsPayroll.employee_code, full_name: actionsPayroll.employee_name_snapshot }); setActionsPayroll(null) }} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold"><FiClock />History</button> : null}
-          </div>
-          <footer className="border-t border-slate-200 p-4 text-right"><button type="button" onClick={() => setActionsPayroll(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">Close</button></footer>
-        </section>
-      </div> : null}
+      {actionsPayroll ? <ActionPanelModal
+        title="Salary Actions"
+        subtitle={`${actionsPayroll.employee_name_snapshot} · ${payrollStatusLabel(actionsPayroll.payroll_status)}`}
+        ariaLabel={`Payroll actions for ${actionsPayroll.employee_name_snapshot}`}
+        onClose={() => setActionsPayroll(null)}
+      >
+        <ActionPanelButton icon={FiActivity} title="Attendance Details" description="Review hours and deductions" tone="blue" onClick={() => { openPayroll(actionsPayroll.employee_payroll_id, 'attendance'); setActionsPayroll(null) }} />
+        {canRecalculate && actionsPayroll.payroll_status === 'draft' ? <ActionPanelButton icon={FiRotateCcw} title="Recalculate Draft" description="Update pay from saved attendance" tone="amber" disabled={recalcMutation.isPending} onClick={() => { recalcMutation.mutate(actionsPayroll.employee_payroll_id); setActionsPayroll(null) }} /> : null}
+        {canFinalize && actionsPayroll.payroll_status === 'draft' ? <ActionPanelButton icon={FiCheckCircle} title="Final Review" description="Check pay before finalizing" tone="green" onClick={() => { openPayroll(actionsPayroll.employee_payroll_id, 'salary'); setActionsPayroll(null) }} /> : null}
+        {actionsPayroll.payroll_status === 'released' && canPrintReceipt ? <ActionPanelButton icon={FiUpload} title="Signed Receipt Files" description="Upload or view signed copies" tone="violet" onClick={() => { setSignedPayroll(actionsPayroll); setActionsPayroll(null) }} /> : null}
+        <ActionPanelButton icon={FiFileText} title="Preview Receipt" description="View the pay acknowledgment" tone="blue" onClick={() => { setSelectedReceiptPayrollId(actionsPayroll.employee_payroll_id); setActionsPayroll(null) }} />
+        {canViewPayrollHistory ? <ActionPanelButton icon={FiClock} title="Salary History" description="See previous pay periods" tone="slate" onClick={() => { setHistoryEmployee({ employee_id: actionsPayroll.employee_id, employee_code: actionsPayroll.employee_code, full_name: actionsPayroll.employee_name_snapshot }); setActionsPayroll(null) }} /> : null}
+      </ActionPanelModal> : null}
       {signedPayroll ? <SignedSalaryReceiptsModal payrollId={signedPayroll.employee_payroll_id} employeeName={signedPayroll.employee_name_snapshot} canUpload={canRelease} onClose={() => setSignedPayroll(null)} /> : null}
       {showPayrollSummaryExport ? <PayrollSummaryExportModal month={month} periodType={periodType} periodLabel={period?.periodLabel} onClose={() => setShowPayrollSummaryExport(false)} /> : null}
       {showPayrollSettings ? <PayrollSettingsModal onClose={() => setShowPayrollSettings(false)} onSaved={(result) => { setAlert({ type: 'success', message: result?.message || 'Payroll Settings updated.' }); registerQuery.refetch() }} /> : null}
