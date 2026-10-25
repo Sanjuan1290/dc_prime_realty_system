@@ -1,6 +1,6 @@
 import {previewNetworkMemberBulkEdit,confirmNetworkMemberBulkEdit,previewManagerRestoration,requestManagerRestorationCode,confirmManagerRestoration} from '../../controllers/System/networkMemberChange.controller.js';
 import express from 'express';
-import { previewManagerReplacement, requestManagerReplacementCode, confirmManagerReplacement, getManagerReplacementHistory } from '../../controllers/System/sellerManagerReplacement.controller.js';
+import { previewManagerReplacement, requestManagerReplacementCode, confirmManagerReplacement, getManagerReplacementHistory, deactivateEmptyManager } from '../../controllers/System/sellerManagerReplacement.controller.js';
 import { getSellerSetupAudit, getSellerTeamCompleteness } from '../../controllers/System/sellerSetupAudit.controller.js';
 import {
   createGroup,
@@ -35,6 +35,12 @@ router.get('/:groupId/managers/replacements/:replacementId/restore/preview',requ
 router.post('/:groupId/managers/replacements/:replacementId/restore/code',requireExactRole('super_admin','system_admin'),requirePermission(PERMISSIONS.SYSTEM_SELLER_MANAGER_RESTORE),requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE),requestManagerRestorationCode);
 router.post('/:groupId/managers/replacements/:replacementId/restore/confirm',requireExactRole('super_admin','system_admin'),requirePermission(PERMISSIONS.SYSTEM_SELLER_MANAGER_RESTORE),requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE),confirmManagerRestoration);
 router.get('/:groupId/managers/replacements', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getManagerReplacementHistory);
+// Restricted to empty DM/SD/UM accounts; this is NOT general account deactivation.
+router.post('/:groupId/managers/:userId/deactivate-empty',
+  requireExactRole('super_admin','system_admin','marketing_staff','marketing_head'),
+  requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE),
+  requirePermission(PERMISSIONS.SYSTEM_USERS_EDIT),
+  deactivateEmptyManager);
 router.get('/:groupId/managers/:userId/replace/preview', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), previewManagerReplacement);
 router.post('/:groupId/managers/:userId/replace/code', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), requestManagerReplacementCode);
 router.post('/:groupId/managers/:userId/replace/confirm', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), confirmManagerReplacement);
@@ -77,6 +83,7 @@ router.patch('/toggle-status/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_G
 router.delete('/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), deleteGroup);
 
 export default router;
+
 
 
 

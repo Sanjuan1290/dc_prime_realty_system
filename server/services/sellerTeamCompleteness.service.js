@@ -6,7 +6,7 @@ const roleAbove = Object.freeze({ sales_agent: 'unit_manager', unit_manager: 'sa
 const idOf = (seller) => Number(seller?.user_id || 0);
 const isActive = (seller) => seller?.user_status === 'active' && seller?.accredited_seller_status === 'active';
 
-export const buildSellerTeamCompleteness = (members = []) => {
+export const buildSellerTeamCompleteness = (members = [], { headUserId = null } = {}) => {
   const real = members.filter((member) => Number(member.is_system_dummy || 0) !== 1);
   const lookup = new Map(real.map((seller) => [idOf(seller), seller]));
   const reports = new Map();
@@ -59,6 +59,13 @@ export const buildSellerTeamCompleteness = (members = []) => {
   const records = real.map((seller) => ({
     userId: idOf(seller), accreditedSellerId: Number(seller.accredited_seller_id || 0),
     role: seller.role, ...check(seller),
+    // UI hint only. The mutation rechecks all linked sellers in a DB transaction.
+    // Include inactive direct reports: they still have a reporting relationship.
+    canDeactivateWithoutReplacement: Boolean(roleBelow[seller.role]) && isActive(seller)
+      // The designated Network Head cannot be deactivated, even with no team.
+      && !(seller.role === 'division_manager' && Number(headUserId || 0) === idOf(seller))
+      // Count inactive direct reports too: they remain linked to this manager.
+      && !real.some((member) => Number(member.accredited_seller_reports_under_user_id || 0) === idOf(seller)),
   }));
   // Summary represents managerial teams. Sales Agents are tracked separately.
   const managers = records.filter((row) => roleBelow[row.role]);
@@ -71,3 +78,4 @@ export const buildSellerTeamCompleteness = (members = []) => {
   };
   return { summary, records };
 };
+

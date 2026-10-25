@@ -122,12 +122,9 @@ const ReviewFormComparison = ({ beforeValue, afterValue, events = [], revision =
         </div>
         <div className="grid gap-3 sm:grid-cols-2"><div className={mobileSide==='after'?'hidden sm:block':'block'}>{renderSide('before')}</div><div className={mobileSide==='before'?'hidden sm:block':'block'}>{renderSide('after')}</div></div>
       </>}
-      {sections.some(group=>group.fields.some(field=>!comparable(field.key))) ? <p className="flex items-center gap-2 text-xs font-semibold text-amber-800"><FiAlertCircle/> Some fields were not recorded in an older review. They have not been filled in from live data.</p> : null}
+      {sections.some(group=>group.fields.some(field=>!comparable(field.key))) ? <p className="flex items-center gap-2 text-xs font-semibold text-amber-800"><FiAlertCircle/> Some fields were not recorded on one side of this review. They have not been filled in from live data.</p> : null}
     </div>
   </section>
 }
 
 export default ReviewFormComparison
-
-
-

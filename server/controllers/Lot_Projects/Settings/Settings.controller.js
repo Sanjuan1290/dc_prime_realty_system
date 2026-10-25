@@ -506,7 +506,13 @@ export const updateLotProjectSettings = async (req, res) => {
       ]
     );
 
-    const after = { ...settingsPayload, lotProjectId: project.lot_project_id };
+    // Capture the committed shape from the same row and mapper as Before.
+    // A raw form payload omits the setting ID/timestamps and represents release
+    // days as numbers rather than the strings returned by mapSettings.
+    // Keep this read inside the transaction so review and audit snapshots
+    // describe exactly the record being saved.
+    const afterRow = await getOrCreateSettingsRow(connection, project);
+    const after = mapSettings(afterRow, project);
     let review = null;
     if (auditCase) {
       review = await advanceAuditCaseToRecheck(connection, {
@@ -579,6 +585,3 @@ export const updateLotProjectSettings = async (req, res) => {
     connection.release();
   }
 };
-
-
-

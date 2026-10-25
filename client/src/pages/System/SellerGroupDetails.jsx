@@ -32,6 +32,7 @@ import StatusAlert from '../../components/Shared/StatusAlert'
 import EditGroupModal from '../../components/System/sellerGroupComponents/EditGroupModal'
 import SellerSetupCheck from '../../components/System/sellerGroupComponents/SellerSetupCheck'
 import ReplaceManagerModal from '../../components/System/sellerGroupComponents/ReplaceManagerModal'
+import DeactivateEmptyManagerModal from '../../components/System/sellerGroupComponents/DeactivateEmptyManagerModal'
 import ManagerReplacementHistory from '../../components/System/sellerGroupComponents/ManagerReplacementHistory'
 import NetworkMemberImportModal from '../../components/System/sellerGroupComponents/NetworkMemberImportModal'
 import NetworkMemberImportHistoryModal from '../../components/System/sellerGroupComponents/NetworkMemberImportHistoryModal'
@@ -249,6 +250,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const [sellerStatusModal, setSellerStatusModal] = useState(null)
   const [sellerStatusTarget, setSellerStatusTarget] = useState(null)
   const [replaceManager, setReplaceManager] = useState(null)
+  const [emptyManagerTarget, setEmptyManagerTarget] = useState(null)
   const [showReplacementHistory, setShowReplacementHistory] = useState(false)
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
   const [range, setRange] = useState(defaultRange)
@@ -274,6 +276,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const canExportMembers = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW)
   const canCheckSellerSetup = ['super_admin','system_admin'].includes(actor?.role) && canExportMembers
   const canChangeSellerStatus = ['super_admin','system_admin'].includes(actor?.role)
+  const canDeactivateEmptyManager = ['super_admin','system_admin','marketing_staff','marketing_head'].includes(actor?.role)
+    && canEditSeller && canEditNetwork
 
   const exportMembers = async () => {
     setIsExportingMembers(true)
@@ -1100,7 +1104,16 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                             <FiEdit2 />
                             Edit Seller
                           </button> : null}
-                          {canChangeSellerStatus && ['division_manager','sales_director','unit_manager'].includes(member.role) && member.user_status === 'active' && member.accredited_seller_status === 'active' && (
+                          {canDeactivateEmptyManager && ['division_manager','sales_director','unit_manager'].includes(member.role)
+                            && teamByUserId.get(Number(member.user_id))?.canDeactivateWithoutReplacement && (
+                            <button type="button" onClick={() => setEmptyManagerTarget(member)}
+                              className="ml-2 inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 hover:bg-red-50">
+                              Deactivate Account
+                            </button>
+                          )}
+                          {canChangeSellerStatus && ['division_manager','sales_director','unit_manager'].includes(member.role)
+                            && member.user_status === 'active' && member.accredited_seller_status === 'active'
+                            && !teamByUserId.get(Number(member.user_id))?.canDeactivateWithoutReplacement && (
                             <button type="button" onClick={() => setReplaceManager(member)} className="ml-2 inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50"><FiRepeat/> Replace Manager</button>
                           )}
                           {canChangeSellerStatus && !(['division_manager','sales_director','unit_manager'].includes(member.role) && member.user_status === 'active' && member.accredited_seller_status === 'active') && (
@@ -1270,6 +1283,9 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         <ManagerReplacementHistory groupId={Number(group.id || groupId)} networkName={group.name} onClose={() => setShowReplacementHistory(false)} canRestore={hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_MANAGER_RESTORE) && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_DEACTIVATE)} onSaved={(message) => {setAlert({type:'success',message});queryClient.invalidateQueries();}} />
       ) : null}
 
+      {emptyManagerTarget ? <DeactivateEmptyManagerModal groupId={Number(group.id||groupId)} manager={emptyManagerTarget}
+        networkHeadAssigned={Boolean(hierarchyHead && hierarchyHead.role === 'division_manager' && hierarchyHead.user_status === 'active' && hierarchyHead.accredited_seller_status === 'active')}
+        onClose={()=>setEmptyManagerTarget(null)} onSaved={(message)=>{setAlert({type:'success',message});refresh()}} /> : null}
       {replaceManager ? <ReplaceManagerModal groupId={Number(group.id||groupId)} manager={replaceManager} onClose={()=>setReplaceManager(null)} onSaved={(message)=>{setReplaceManager(null);setAlert({type:'success',message});refresh()}}/> : null}
       {sellerStatusModal === 'deactivate' && sellerStatusTarget ? (
         <DeactivateSystemUserModal user={sellerStatusTarget} onClose={() => {setSellerStatusModal(null);setSellerStatusTarget(null)}} onSaved={(message)=>{setAlert({type:'success',message});refresh()}} />
@@ -1334,6 +1350,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 }
 
 export default SellerGroupDetails
+
 
 
 

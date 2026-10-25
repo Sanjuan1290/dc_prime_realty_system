@@ -115,3 +115,80 @@ export const getManagerReplacementHistory = (req,res)=>transaction(req,res,async
 });
 
 
+
+
+
+/**
+ * Deactivate an empty In-House DM, SD, or UM without replacing the manager.
+ * Strictly for accidental/unused accounts; a designated Network Head or a
+ * manager with ANY assigned sellers must use the existing corrective workflow.
+ * No sellers, buyer records, commissions or historical transactions are deleted.
+ */
+export const deactivateEmptyManager = (req,res)=>transaction(req,res,async connection=>{
+  const {groupId,outgoingUserId}=parse(req);
+  const explanation=reason(req);
+  if (explanation.length < 5) return res.status(400).json({message:'Enter a deactivation reason (at least 5 characters).'});
+  if (req.body?.confirmDeactivation !== true) return res.status(400).json({message:'Confirm account deactivation before saving.'});
+  await connection.beginTransaction();
+  // Lock the exact Network and its seller rows to catch stale UI hints.
+  const plan=await getManagerReplacementPlan(connection,{groupId,outgoingUserId,lock:true});
+  if (!['division_manager','sales_director','unit_manager'].includes(plan.role)) {
+    throw Object.assign(new Error('Only an In-House Division Manager, Sales Director, or Unit Manager can use this action.'),{statusCode:409});
+  }
+  if (plan.replacesNetworkHead) {
+    throw Object.assign(new Error('This Division Manager is the designated Network Head. Reassign the Network Head before deactivating this account.'),{statusCode:409});
+  }
+  if (plan.directReports.length || plan.totalAffected) {
+    throw Object.assign(new Error('This manager has assigned sellers. Use Replace Manager to transfer the team before deactivation.'),{statusCode:409});
+  }
+  // Query across ALL Networks, and include inactive/dummy sellers. An empty
+  // visible team must not hide a legacy or cross-network dependency.
+  const [[dependent]]=await connection.query(
+    'SELECT COUNT(*) AS total FROM accredited_sellers WHERE accredited_seller_reports_under_user_id=?',
+    [outgoingUserId]);
+  const [[legacyLinks]]=await connection.query(
+    'SELECT COUNT(*) AS total FROM accredited_seller_managed_sellers WHERE manager_accredited_seller_id=?',
+    [plan.outgoing.sellerId]);
+  if (Number(dependent?.total||0) || Number(legacyLinks?.total||0)) {
+    throw Object.assign(new Error('This manager still has linked sellers, including inactive records. Reassign them before deactivation.'),{statusCode:409});
+  }
+  // Recheck the head pointer independently of the plan, before any writes.
+  const [[head]]=await connection.query(
+    'SELECT seller_group_head_user_id FROM seller_groups WHERE seller_group_id=? FOR UPDATE',
+    [groupId]);
+  if (Number(head?.seller_group_head_user_id || 0)===outgoingUserId) {
+    throw Object.assign(new Error('Reassign the designated Network Head before deactivating this Division Manager.'),{statusCode:409});
+  }
+  const [accountChange]=await connection.query(`UPDATE users SET
+    status='inactive',can_login=0,deactivated_at=NOW(),deactivated_by_user_id=?,
+    deactivation_reason=?,auth_version=COALESCE(auth_version,0)+1
+    WHERE id=? AND status='active'`,[req.authUser.id,explanation,outgoingUserId]);
+  const [sellerChange]=await connection.query(
+    `UPDATE accredited_sellers SET accredited_seller_status='inactive'
+     WHERE accredited_seller_id=? AND accredited_seller_status='active'`,[plan.outgoing.sellerId]);
+  if (accountChange.affectedRows !== 1 || sellerChange.affectedRows !== 1) {
+    throw Object.assign(new Error('Account status changed while confirming. No changes were saved.'),{statusCode:409});
+  }
+  const beforeSnapshot={userId:outgoingUserId,role:plan.role,userStatus:'active',sellerStatus:'active',directReports:0};
+  const afterSnapshot={...beforeSnapshot,userStatus:'inactive',sellerStatus:'inactive',deactivationReason:explanation};
+  const review=await createOperationalReview(connection,{
+    actor:req.authUser,actionKey:'seller.status',department:'marketing',
+    entityType:'accredited_seller',entityId:String(plan.outgoing.sellerId),entityLabel:plan.outgoing.name,
+    beforeSnapshot,afterSnapshot,
+  });
+  const roleLabel={division_manager:'Division Manager',sales_director:'Sales Director',unit_manager:'Unit Manager'}[plan.role];
+  await writeAuditLog(connection,req,{
+    action:'update',module:'Accreditation',entityType:'accredited_seller',
+    entityId:String(plan.outgoing.sellerId),entityLabel:plan.outgoing.name,
+    title:`Deactivated empty ${roleLabel}`,
+    description:`${plan.outgoing.name} deactivated with no linked sellers.`,
+    metadata:{groupId,fromUserId:outgoingUserId,role:plan.role,directReports:0,
+      reason:explanation,verificationMethod:'explicit_confirmation',
+      reviewId:review?.reviewId??null,reviewNumber:review?.reviewNumber??null},
+  });
+  await connection.commit();
+  return res.json({success:true,
+    message:`${roleLabel} deactivated. Other teams and historical transactions were unchanged.`,
+    data:{userId:outgoingUserId,role:plan.role,reviewId:review?.reviewId??null},
+  });
+});
