@@ -53,7 +53,8 @@ test('Employees and Employee Salary pages expose per-employee Salary History onl
   assert.match(employees, /Salary History/);
   assert.match(employees, /<SalaryHistoryModal/);
   assert.match(salary, /PAYROLL_HISTORY_VIEW/);
-  assert.match(salary, /<FiClock \/>History/);
+  assert.match(salary, /canViewPayrollHistory\s*\?\s*<ActionPanelButton[^>]*icon=\{FiClock\}[^>]*title="Salary History"/);
+  assert.match(salary, /setHistoryEmployee\(\{\s*employee_id: actionsPayroll\.employee_id/);
   assert.match(salary, /<SalaryHistoryModal/);
 });
 

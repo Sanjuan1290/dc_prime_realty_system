@@ -49,15 +49,17 @@ test('employee module keeps secure Attendance Barcodes separate while creating t
   assert.match(controller, /createInitialEmploymentHistory/);
 });
 
-test('employee Attendance Barcode can be downloaded as a PNG from the barcode card and Employees table', () => {
+test('employee Attendance Barcode can be downloaded as a PNG from the barcode card and Employee Actions', () => {
   const barcode = read('client/src/components/System/employeeComponents/Code128Barcode.jsx');
   const employees = read('client/src/pages/System/Employees.jsx');
   assert.match(barcode, /downloadAttendanceBarcodePng/);
   assert.match(barcode, /Download Attendance Barcode/);
   assert.match(barcode, /canvas\.toDataURL\('image\/png'\)/);
   assert.match(employees, /downloadAttendanceBarcodePng/);
-  assert.match(employees, /Download Attendance Barcode/);
-  assert.match(employees, /runOtherAction/);
+  // Barcode moved to the permission-aware Employee Actions panel.
+  assert.match(employees, /employee\.barcode_code\s*\?\s*\[\{\s*value:\s*'barcode'[^\n]*icon:\s*FiDownload/);
+  assert.match(employees, /if \(action === 'barcode' && employee\.barcode_code\)\s*downloadAttendanceBarcodePng\(/);
+  assert.match(employees, /otherActions\(actionsEmployee\)\.map\(\(action\) => <ActionPanelButton/);
 });
 
 test('attendance scanner enforces time-in before time-out and supports automatic timeout', () => {
@@ -126,7 +128,6 @@ test('Super Admin receives real Employees and Attendance routes while cash advan
   assert.doesNotMatch(projects, /Add House & Lot Project/);
   assert.doesNotMatch(dashboard, /label: 'House & Lot Projects'/);
 });
-
 
 
 

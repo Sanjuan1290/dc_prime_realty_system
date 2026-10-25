@@ -40,12 +40,26 @@ test('direct browser mutations are limited to signed external upload URLs', () =
     const pattern = /\bfetch\(([^,\n]+),\s*\{[\s\S]{0,500}?method:\s*['\"](POST|PUT|PATCH|DELETE)['\"]/g
     for (const match of source.matchAll(pattern)) mutations.push({ rel, target: match[1].trim(), method: match[2] })
   }
-  assert.equal(mutations.length, 3)
-  for (const mutation of mutations) {
-    assert.match(mutation.rel, /UploadDocumentModal\.jsx|PaymentProofModal\.jsx|SignedCopyUploadModal\.jsx/)
-    assert.equal(mutation.target, 'signed.uploadUrl')
-    assert.equal(mutation.method, 'POST')
-  }
+  // Direct mutations are permitted only for approved, server-signed Cloudinary uploads.
+  // New upload features require an explicit entry here; a raw API mutation must fail.
+  const approvedUploadModals = new Set([
+    'client/src/components/Shared/SignedCopyUploadModal.jsx',
+    'client/src/components/System/employeeSalaryComponents/SignedSalaryReceiptsModal.jsx',
+    'client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/PaymentProofModal.jsx',
+    'client/src/components/Lot_Projects/ListingProfileComponents/Documents/UploadDocumentModal.jsx',
+  ])
+  const isApprovedUpload = ({ rel, target, method }) =>
+    approvedUploadModals.has(rel) &&
+    target === 'signed.uploadUrl' &&
+    method === 'POST'
+  const unauthorizedMutations = mutations.filter((mutation) => !isApprovedUpload(mutation))
+  assert.deepEqual(unauthorizedMutations, [], 'Found an unapproved direct browser mutation')
+  assert.ok(mutations.some((mutation) => mutation.rel.endsWith('/SignedSalaryReceiptsModal.jsx') && isApprovedUpload(mutation)), 'Signed salary uploads must use the approved, server-signed upload URL')
+  // This guard must still reject direct API writes and unsigned upload targets.
+  assert.equal(isApprovedUpload({ rel: 'client/src/pages/System/Employees.jsx', target: 'signed.uploadUrl', method: 'POST' }), false)
+  assert.equal(isApprovedUpload({ rel: 'client/src/components/System/employeeSalaryComponents/SignedSalaryReceiptsModal.jsx', target: '/api/payrolls', method: 'POST' }), false)
+  assert.equal(isApprovedUpload({ rel: 'client/src/components/System/employeeSalaryComponents/SignedSalaryReceiptsModal.jsx', target: 'signed.uploadUrl', method: 'DELETE' }), false)
 })
+
 
 
