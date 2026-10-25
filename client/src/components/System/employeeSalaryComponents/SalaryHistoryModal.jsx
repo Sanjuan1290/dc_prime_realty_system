@@ -57,7 +57,7 @@ const SalaryHistoryModal = ({ employee, canCorrect = false, canRelease = false, 
 
             <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
               <p className="text-xs font-black uppercase tracking-wide text-blue-700">Promotion-Safe History</p>
-              <p className="mt-1 text-sm font-semibold leading-6 text-blue-900">Finalized rows use their immutable finalized payroll snapshot. A later promotion, salary increase, department transfer, or Attendance correction does not rewrite these historical values or receipts.</p>
+              <p className="mt-1 text-sm font-semibold leading-6 text-blue-900">Each pay period keeps its approved salary details. Later salary or attendance changes do not alter past receipts.</p>
             </section>
 
             <div className="overflow-x-auto rounded-2xl border border-slate-200">
@@ -73,7 +73,7 @@ const SalaryHistoryModal = ({ employee, canCorrect = false, canRelease = false, 
                     <td className="px-4 py-4 font-semibold text-slate-700">{money(payrollAdditionTotal(row))}</td>
                     <td className="px-4 py-4 text-base font-black text-emerald-700">{money(row.net_fund_release)}</td>
                     <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${payrollStatusTone(row.payroll_status)}`}>{payrollStatusLabel(row.payroll_status)}</span>{row.finalized_at ? <p className="mt-2 text-xs font-semibold text-slate-500">Finalized {String(row.finalized_at).replace('T', ' ').slice(0, 16)}</p> : null}{row.payroll_status === 'released' ? <><p className="mt-1 text-xs font-black text-emerald-700">Released {formatPayrollDate(row.released_date || row.release_date, { short: true })}</p>{row.released_by_name ? <p className="mt-1 text-xs font-semibold text-slate-500">By {row.released_by_name}</p> : null}{row.release_reference ? <p className="mt-1 text-xs font-semibold text-slate-500">Ref: {row.release_reference}</p> : null}</> : null}</td>
-                    <td className="px-4 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-black ${row.snapshot_source === 'finalized_snapshot' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{row.snapshot_source === 'finalized_snapshot' ? 'Immutable Snapshot' : 'Stored Payroll Record'}</span></td>
+                    <td className="px-4 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-black ${row.snapshot_source === 'finalized_snapshot' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{row.snapshot_source === 'finalized_snapshot' ? 'Finalized Salary' : 'Saved Salary Record'}</span></td>
                     <td className="px-4 py-4"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedPayrollId(row.employee_payroll_id)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 hover:bg-blue-100"><FiFileText />View Salary</button><button type="button" onClick={() => setSelectedReceiptId(row.employee_payroll_id)} className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">{row.official_receipt_available ? 'Receipt / Export' : 'Preview Receipt'}</button></div></td>
                   </tr>)}
                 </tbody>
@@ -95,5 +95,6 @@ const SalaryHistoryModal = ({ employee, canCorrect = false, canRelease = false, 
 }
 
 export default SalaryHistoryModal
+
 
 

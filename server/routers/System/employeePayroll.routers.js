@@ -19,6 +19,7 @@ import {
   releaseEmployeePayroll,
   recalculateDraftPayroll,
 } from '../../controllers/System/Employees/EmployeePayroll.controller.js';
+import { listPayrollSignedReceipts, signPayrollReceiptUpload, savePayrollSignedReceipt, getPayrollSignedReceiptContent, archivePayrollSignedReceipt } from '../../controllers/System/Employees/EmployeePayrollSignedReceipts.controller.js';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 
@@ -42,8 +43,14 @@ router.get('/drafts/:employeePayrollId/final-review', requirePermission(PERMISSI
 router.post('/drafts/:employeePayrollId/finalize', requirePermission(PERMISSIONS.PAYROLL_FINALIZE), finalizeEmployeePayroll);
 router.get('/payrolls/:employeePayrollId/correction-review', requirePermission(PERMISSIONS.PAYROLL_CORRECT_FINALIZED), getPayrollCorrectionReview);
 router.post('/payrolls/:employeePayrollId/corrections', requirePermission(PERMISSIONS.PAYROLL_CORRECT_FINALIZED), correctFinalizedEmployeePayroll);
+router.get('/payrolls/:employeePayrollId/signed-receipts', requirePermission(PERMISSIONS.PAYROLL_RECEIPT_PRINT), listPayrollSignedReceipts);
+router.post('/payrolls/:employeePayrollId/signed-receipts/upload-signature', requirePermission(PERMISSIONS.PAYROLL_RELEASE), signPayrollReceiptUpload);
+router.post('/payrolls/:employeePayrollId/signed-receipts', requirePermission(PERMISSIONS.PAYROLL_RELEASE), savePayrollSignedReceipt);
+router.get('/payrolls/:employeePayrollId/signed-receipts/:fileId/content', requirePermission(PERMISSIONS.PAYROLL_RECEIPT_PRINT), getPayrollSignedReceiptContent);
+router.post('/payrolls/:employeePayrollId/signed-receipts/:fileId/archive', requirePermission(PERMISSIONS.PAYROLL_RELEASE), archivePayrollSignedReceipt);
 router.post('/payrolls/:employeePayrollId/release', requirePermission(PERMISSIONS.PAYROLL_RELEASE), releaseEmployeePayroll);
 
 export default router;
+
 
 

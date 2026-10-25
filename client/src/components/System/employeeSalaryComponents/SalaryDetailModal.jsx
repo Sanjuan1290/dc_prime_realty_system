@@ -7,6 +7,7 @@ import FundReleaseReceiptModal from './FundReleaseReceiptModal'
 import ReleasePayrollModal from './ReleasePayrollModal'
 import CorrectPayrollModal from './CorrectPayrollModal'
 import PayrollSettingsModal from './PayrollSettingsModal'
+import SignedSalaryReceiptsModal from './SignedSalaryReceiptsModal'
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
 import { decimalHours, employmentLabel, formatPayrollDate, money, payrollStatusLabel, payrollStatusTone } from './payrollFormatters'
 
@@ -27,6 +28,7 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
   const [showRelease, setShowRelease] = useState(false)
   const [showCorrection, setShowCorrection] = useState(false)
   const [showPayrollSettings, setShowPayrollSettings] = useState(false)
+  const [showSignedReceipts, setShowSignedReceipts] = useState(false)
 
   useEffect(() => setTab(initialTab), [initialTab, payrollId])
 
@@ -109,7 +111,7 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
               {payroll.calculation_warnings.some((warning) => /attendance bonus/i.test(warning)) && !canManagePayrollSettings ? <p className="mt-2 text-xs font-semibold text-amber-900">Ask an account with Manage Payroll Settings access to approve the bonus policy.</p> : null}
             </section> : null}
 
-            {officialStatus ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-black uppercase tracking-wide text-emerald-800">Immutable Official Payroll Snapshot</p><p className="mt-1 text-sm font-semibold leading-6 text-emerald-950">Originally finalized {payroll.finalized_at ? formatPayrollDate(payroll.finalized_at) : ''}{payroll.finalized_by_name ? ` by ${payroll.finalized_by_name}` : ''}. Formal corrections are versioned below; fund release never silently recalculates these approved values.</p></section> : null}
+            {officialStatus ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-sm font-bold text-emerald-900">{payroll.payroll_status === 'released' ? 'Salary Released' : 'Salary Finalized'}</p><p className="mt-1 text-sm text-emerald-900">Finalized {payroll.finalized_at ? formatPayrollDate(payroll.finalized_at) : '—'}{payroll.finalized_by_name ? ` by ${payroll.finalized_by_name}` : ''}</p></section> : null}
 
             {officialStatus && payroll.attendance_change?.changed ? <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 shrink-0 text-amber-700" /><div><p className="font-black text-amber-950">Attendance changed after this payroll was finalized.</p><p className="mt-1 text-sm font-semibold leading-5 text-amber-900">The official salary has not been silently rewritten. Authorized users can open Salary Correction to review the complete Before vs After recalculation.</p></div></div><div className="mt-3 divide-y divide-amber-200 rounded-xl border border-amber-200 bg-white px-3">{(payroll.attendance_change.differences || []).map((item) => <div key={item.field} className="flex items-center justify-between gap-4 py-2 text-xs font-bold text-slate-700"><span>{item.label}</span><span className="text-right">{String(item.before ?? '—')} → {String(item.after ?? '—')}</span></div>)}</div>{canCorrect && payroll.payroll_status !== 'released' ? <button type="button" onClick={() => setShowCorrection(true)} className="mt-3 h-9 rounded-lg bg-violet-700 px-3 text-xs font-black text-white hover:bg-violet-800">Create Salary Correction</button> : null}</section> : null}
 
@@ -131,8 +133,8 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
                 <Metric label="Rest-Day Overtime Rate" value={settingValue(payroll.payroll_settings_snapshot?.rest_day_ot_multiplier, '×')} />
                 <Metric label="Regular Holiday" value={settingValue(payroll.payroll_settings_snapshot?.regular_holiday_multiplier, '×')} />
                 <Metric label="Special Holiday" value={settingValue(payroll.payroll_settings_snapshot?.special_holiday_multiplier, '×')} />
-                <Metric label="Regular Holiday OT" value={settingValue(payroll.payroll_settings_snapshot?.regular_holiday_ot_multiplier, '×')} hint="Stored; separate holiday OT minutes are not available yet." />
-                <Metric label="Special Holiday OT" value={settingValue(payroll.payroll_settings_snapshot?.special_holiday_ot_multiplier, '×')} hint="Stored; separate holiday OT minutes are not available yet." />
+                <Metric label="Overtime on Regular Holidays" value={settingValue(payroll.payroll_settings_snapshot?.regular_holiday_ot_multiplier, '×')} hint="This rate is saved for reference. The system does not calculate holiday overtime separately yet." />
+                <Metric label="Overtime on Special Holidays" value={settingValue(payroll.payroll_settings_snapshot?.special_holiday_ot_multiplier, '×')} hint="This rate is saved for reference. The system does not calculate holiday overtime separately yet." />
                 <Metric label="Night Differential" value={settingValue(payroll.payroll_settings_snapshot?.night_differential_percentage, '%')} />
                 <Metric label="Salary Change Rule" value={payroll.payroll_settings_snapshot?.mid_period_change_rule === 'period_boundary_only' ? '1st / 16th boundary only' : (payroll.payroll_settings_snapshot?.mid_period_change_rule || '—')} />
               </div>
@@ -153,12 +155,12 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
             {(payroll.correction_history || []).length ? <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs font-black uppercase tracking-wide text-violet-700">Correction History</p><div className="mt-3 space-y-2">{payroll.correction_history.map((item) => <div key={item.employee_payroll_correction_id} className="rounded-xl border border-violet-200 bg-white p-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-black text-slate-900">Correction #{item.employee_payroll_correction_id}</p><p className="text-xs font-semibold text-slate-500">{item.created_by_name ? `By ${item.created_by_name} · ` : ''}{String(item.created_at || '').replace('T', ' ').slice(0, 16)}</p></div><p className="mt-1 text-sm font-semibold text-slate-700">{item.reason}</p><p className="mt-2 text-xs font-bold text-slate-500">Net Fund Release: {money(item.before_snapshot?.net_fund_release)} → {money(item.after_snapshot?.net_fund_release)}</p></div>)}</div></section> : null}
 
             {payroll.payroll_status === 'draft' ? <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4"><p className="text-xs font-black uppercase tracking-wide text-blue-700">Draft Payroll</p><p className="mt-1 text-sm font-semibold leading-6 text-slate-700">Recalculate when Attendance, applicable compensation, or Payroll Settings change, then use Proceed to Final Review. You can preview the Fund Release Receipt while Draft, but official Print / PDF Export stays locked until Finalization.</p></section> : null}
-            {officialStatus ? <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-black uppercase tracking-wide text-slate-600">Official Receipt</p><p className="mt-1 text-sm font-semibold leading-6 text-slate-700">Preview, Print and PDF Export use the current immutable official payroll snapshot, including any formally approved correction.</p></section> : null}
-            {payroll.payroll_status === 'released' ? <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4"><div className="flex items-start gap-3"><FiCheckCircle className="mt-0.5 shrink-0 text-emerald-700" /><div><p className="font-black text-emerald-950">Fund Release Recorded</p><p className="mt-1 text-sm font-semibold leading-6 text-emerald-900">Released {payroll.released_date ? formatPayrollDate(payroll.released_date) : '—'}{payroll.released_by_name ? ` by ${payroll.released_by_name}` : ''}. The finalized payroll snapshot remains unchanged.</p>{payroll.release_reference ? <p className="mt-1 text-sm font-bold text-emerald-900">Reference: {payroll.release_reference}</p> : null}{payroll.release_notes ? <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-emerald-900">Notes: {payroll.release_notes}</p> : null}</div></div></section> : null}
+            {officialStatus ? <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-black uppercase tracking-wide text-slate-600">Official Receipt</p><p className="mt-1 text-sm font-semibold leading-6 text-slate-700">You can preview, print, or save the approved salary receipt. Approved salary corrections appear on this receipt.</p></section> : null}
+            {payroll.payroll_status === 'released' ? <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4"><div className="flex items-start gap-3"><FiCheckCircle className="mt-0.5 shrink-0 text-emerald-700" /><div><p className="font-black text-emerald-950">Fund Release Recorded</p><p className="mt-1 text-sm font-semibold leading-6 text-emerald-900">Released {payroll.released_date ? formatPayrollDate(payroll.released_date) : '—'}{payroll.released_by_name ? ` by ${payroll.released_by_name}` : ''}. The approved salary amounts are kept in the receipt.</p>{payroll.release_reference ? <p className="mt-1 text-sm font-bold text-emerald-900">Reference: {payroll.release_reference}</p> : null}{payroll.release_notes ? <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-emerald-900">Notes: {payroll.release_notes}</p> : null}</div></div></section> : null}
           </div> : null}
 
           {!query.isLoading && payroll && tab === 'attendance' ? <div className="space-y-4">
-            <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4"><p className="text-sm font-black text-blue-900">Attendance source for {payroll.period_label}</p><p className="mt-1 text-xs font-semibold leading-5 text-blue-800">{officialStatus ? 'These are the date-level Attendance facts frozen with the finalized payroll snapshot. Later Attendance corrections do not rewrite them.' : 'These are the date-level facts saved with this Draft calculation. Recalculate Draft payroll to consume corrected Attendance data.'}</p></section>
+            <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4"><p className="text-sm font-black text-blue-900">Attendance source for {payroll.period_label}</p><p className="mt-1 text-xs font-semibold leading-5 text-blue-800">{officialStatus ? 'These attendance records were used to finalize this salary. Later attendance changes do not change this pay period.' : 'These attendance records were used for the draft. Recalculate the draft after fixing attendance.'}</p></section>
             <div className="overflow-x-auto rounded-2xl border border-slate-200">
               <table className="min-w-[1200px] w-full text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Date', 'Day Type', 'Status', 'Time In', 'Time Out', 'Regular Hrs', 'Late Mins', 'OT Hrs', 'Rest Day OT', 'Regular Holiday', 'Special Holiday'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
@@ -172,9 +174,10 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="text-xs font-semibold text-slate-500">Calculation version: {payroll?.calculation_version || '—'}</p>
+          <p className="text-xs font-semibold text-slate-500">Salary details for this pay period</p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700">Close</button>
+            {payroll?.payroll_status === 'released' && canPrintReceipt ? <button type="button" onClick={() => setShowSignedReceipts(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-5 text-sm font-semibold text-blue-800">Signed Receipts (up to 5)</button> : null}
             {payroll ? <button type="button" onClick={() => setShowReceipt(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-800 hover:bg-slate-50"><FiFileText />{officialStatus ? 'Acknowledgement Receipt' : 'Preview Receipt'}</button> : null}
             {canRecalculate && payroll?.payroll_status === 'draft' ? <button type="button" onClick={() => recalcMutation.mutate()} disabled={recalcMutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50"><FiRefreshCw className={recalcMutation.isPending ? 'animate-spin' : ''} />{recalcMutation.isPending ? 'Recalculating...' : 'Recalculate Draft'}</button> : null}
             {canFinalize && payroll?.payroll_status === 'draft' ? <button type="button" onClick={() => setShowFinalReview(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white hover:bg-emerald-700"><FiLock />Proceed to Final Review</button> : null}
@@ -183,6 +186,7 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
           </div>
         </footer>
       </div>
+      {showSignedReceipts && payroll ? <SignedSalaryReceiptsModal payrollId={payrollId} employeeName={payroll.employee_name_snapshot} canUpload={canRelease} onClose={() => setShowSignedReceipts(false)} /> : null}
       {showPayrollSettings ? <PayrollSettingsModal initialSection={payroll?.calculation_warnings?.some((warning) => /attendance bonus/i.test(warning)) ? 'attendance-bonus' : null} onClose={() => setShowPayrollSettings(false)} onSaved={() => { setShowPayrollSettings(false); setAlert({ type: 'success', message: payroll?.payroll_status === 'draft' ? 'Payroll Settings saved. Recalculate this Draft to apply the new policy.' : 'Payroll Settings saved. Existing finalized payroll history is unchanged.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary'] }); }} /> : null}
       {showFinalReview ? <FinalizePayrollModal payrollId={payrollId} onClose={() => setShowFinalReview(false)} onFinalized={(result) => { setAlert({ type: 'success', message: result?.message || 'Payroll finalized.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary-detail', payrollId] }); queryClient.invalidateQueries({ queryKey: ['employee-salary-receipt', payrollId] }); onUpdated?.() }} /> : null}
       {showReceipt ? <FundReleaseReceiptModal payrollId={payrollId} canPrint={canPrintReceipt} canExport={canExportReceipt} historyMode={historyMode} onClose={() => setShowReceipt(false)} /> : null}
@@ -193,7 +197,6 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
 }
 
 export default SalaryDetailModal
-
 
 
 

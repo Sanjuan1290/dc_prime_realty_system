@@ -1,0 +1,32 @@
+-- Additive signed Fund Release receipt storage; run after the payroll migrations.
+-- No existing payroll amounts or receipt snapshots are changed.
+CREATE TABLE IF NOT EXISTS employee_payroll_signed_receipts (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  employee_payroll_id INT UNSIGNED NOT NULL,
+  employee_id INT UNSIGNED NOT NULL,
+  original_file_name VARCHAR(255) NOT NULL,
+  stored_file_name VARCHAR(255) NOT NULL,
+  mime_type VARCHAR(100) NOT NULL,
+  file_size_bytes BIGINT UNSIGNED NOT NULL,
+  cloudinary_asset_id VARCHAR(255) NULL,
+  cloudinary_public_id VARCHAR(500) NOT NULL,
+  cloudinary_resource_type VARCHAR(30) NOT NULL,
+  cloudinary_delivery_type VARCHAR(50) NOT NULL DEFAULT 'authenticated',
+  cloudinary_asset_folder VARCHAR(500) NOT NULL,
+  cloudinary_format VARCHAR(30) NULL,
+  malware_scan_status VARCHAR(30) NOT NULL DEFAULT 'pending',
+  malware_scan_provider VARCHAR(80) NULL,
+  malware_scan_reason VARCHAR(180) NULL,
+  malware_scanned_at DATETIME NULL,
+  status ENUM('active','archived') NOT NULL DEFAULT 'active',
+  uploaded_by_user_id INT UNSIGNED NULL,
+  archived_by_user_id INT UNSIGNED NULL,
+  archived_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_employee_payroll_signed_cloudinary (cloudinary_public_id),
+  KEY idx_employee_payroll_signed_active (employee_payroll_id,status),
+  KEY idx_employee_payroll_signed_scan (malware_scan_status),
+  CONSTRAINT fk_employee_payroll_signed_payroll FOREIGN KEY (employee_payroll_id) REFERENCES employee_payrolls (employee_payroll_id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_employee_payroll_signed_employee FOREIGN KEY (employee_id) REFERENCES employees (employee_id) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

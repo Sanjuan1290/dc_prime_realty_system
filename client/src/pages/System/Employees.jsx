@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiClock, FiDollarSign, FiDownload, FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiUsers } from 'react-icons/fi'
+import { FiClock, FiDollarSign, FiDownload, FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiUsers, FiMoreHorizontal, FiX } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ConfirmActionModal from '../../components/Shared/ConfirmActionModal'
@@ -45,6 +45,7 @@ const Employees = () => {
   const [compensationEmployee, setCompensationEmployee] = useState(null)
   const [historyEmployee, setHistoryEmployee] = useState(null)
   const [salaryHistoryEmployee, setSalaryHistoryEmployee] = useState(null)
+  const [actionsEmployee, setActionsEmployee] = useState(null)
 
   const queryString = useMemo(() => new URLSearchParams({
     page: String(page), limit: String(limit),
@@ -81,6 +82,7 @@ const Employees = () => {
     ...(canManageCompensation && canCreateEmploymentChange ? [{ value: 'compensation', label: 'Promote / Change Salary' }] : []),
   ]
   const runOtherAction = (action, employee) => {
+    setActionsEmployee(null)
     if (action === 'barcode' && employee.barcode_code) downloadAttendanceBarcodePng({ value: employee.barcode_code, employeeName: employee.full_name, employeeCode: employee.employee_code })
     if (action === 'employment' && canViewEmploymentHistory) setHistoryEmployee(employee)
     if (action === 'salary' && canViewPayrollHistory) setSalaryHistoryEmployee(employee)
@@ -129,13 +131,7 @@ const Employees = () => {
                 <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black capitalize ring-1 ${statusTone[employee.employee_status] || statusTone.inactive}`}>{employee.employee_status}</span></td>
                 <td className="px-4 py-4">
                   <div className="flex min-w-[250px] flex-wrap items-center gap-2">
-                    {otherActions(employee).length > 0 ? <label className="relative inline-flex items-center">
-                      <span className="sr-only">Other actions for {employee.full_name}</span>
-                      <select aria-label={`Other actions for ${employee.full_name}`} value="" onChange={(event) => runOtherAction(event.target.value, employee)} className="h-9 max-w-[146px] cursor-pointer rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200">
-                        <option value="" disabled>Other Actions ▾</option>
-                        {otherActions(employee).map((action) => <option key={action.value} value={action.value}>{action.label}</option>)}
-                      </select>
-                    </label> : null}
+                    {otherActions(employee).length > 0 ? <button type="button" onClick={() => setActionsEmployee(employee)} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"><FiMoreHorizontal />Other Actions</button> : null}
                     {canManage ? <>
                       <button type="button" onClick={() => openEdit(employee)} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-100"><FiEdit2 />Edit</button>
                       <button type="button" onClick={() => { setConfirmEmployee(employee); setStatusNotice(null) }} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">{employee.employee_status === 'active' ? 'Deactivate' : 'Activate'}</button>
@@ -153,6 +149,13 @@ const Employees = () => {
         </div>
       </section>
 
+      {actionsEmployee ? <div role="presentation" className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setActionsEmployee(null) }}>
+        <section role="dialog" aria-modal="true" aria-label={`Employee actions for ${actionsEmployee.full_name}`} className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <header className="flex items-start justify-between border-b border-slate-200 p-5"><div><h2 className="text-lg font-black text-slate-900">Employee Actions</h2><p className="mt-1 text-sm text-slate-500">{actionsEmployee.full_name}</p></div><button type="button" aria-label="Close employee actions" onClick={() => setActionsEmployee(null)} className="rounded-lg p-2 hover:bg-slate-100"><FiX /></button></header>
+          <div className="grid gap-2 p-5 sm:grid-cols-2">{otherActions(actionsEmployee).map(action => <button key={action.value} type="button" onClick={() => runOtherAction(action.value, actionsEmployee)} className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-left text-sm font-semibold text-slate-800 hover:border-blue-300 hover:bg-blue-50">{action.label}</button>)}</div>
+          <footer className="border-t border-slate-200 p-4 text-right"><button type="button" onClick={() => setActionsEmployee(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">Close</button></footer>
+        </section>
+      </div> : null}
       {showModal ? <EmployeeModal employee={selectedEmployee} departmentConfigs={departmentConfigs} departments={departments} onClose={() => setShowModal(false)} onSaved={(message) => setAlert({ type: 'success', message })} /> : null}
       {compensationEmployee ? <EmploymentChangeModal employee={compensationEmployee} departmentConfigs={departmentConfigs} departments={departments} onClose={() => setCompensationEmployee(null)} onSaved={(message) => setAlert({ type: 'success', message })} /> : null}
       {historyEmployee ? <EmploymentHistoryModal employee={historyEmployee} onClose={() => setHistoryEmployee(null)} /> : null}
@@ -181,7 +184,6 @@ const Employees = () => {
 }
 
 export default Employees
-
 
 
 

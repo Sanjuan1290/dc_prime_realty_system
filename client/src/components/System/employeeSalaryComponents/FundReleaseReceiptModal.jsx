@@ -62,14 +62,14 @@ const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = fals
           <div>
             <div className="flex items-center gap-2 text-blue-700"><FiFileText /><span className="text-xs font-black uppercase tracking-[0.16em]">Fund Release Receipt</span></div>
             <h2 className="mt-1 text-xl font-black text-slate-950">Acknowledgement Receipt for Fund Release</h2>
-            <p className="mt-1 text-sm font-semibold text-slate-500">The preview, print view, and PDF export all use this same receipt component and payroll snapshot.</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Preview, print, or save the receipt for this pay period.</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><FiX /></button>
         </header>
 
         {notice ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} /></div> : null}
         {query.isError ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type="error" message={query.error?.message || 'Unable to load the Fund Release Receipt.'} /></div> : null}
-        {receipt && !receipt.official ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type="warning" message={receipt.finalized_snapshot_missing ? 'This historical Finalized payroll does not contain an immutable finalized snapshot, so official Print / PDF Export is blocked. Create or correct the payroll through the controlled workflow instead of exporting live values.' : 'This payroll is a Draft. You may print a watermarked PREVIEW ONLY copy for checking. Official receipt printing and PDF export require Finalization.'} /></div> : null}
+        {receipt && !receipt.official ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type="warning" message={receipt.finalized_snapshot_missing ? 'This older salary record is missing the details needed for an official receipt. Contact an authorized payroll manager.' : 'This payroll is a Draft. You may print a watermarked PREVIEW ONLY copy for checking. Official receipt printing and PDF export require Finalization.'} /></div> : null}
         {receipt?.official && !canPrint && !canExport ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type="info" message="You can preview this finalized receipt, but your account does not have Print Payroll Receipt or Export Payroll Receipt permission." /></div> : null}
 
         <div className="min-h-0 flex-1 overflow-auto bg-slate-200 p-5 sm:p-7">
@@ -78,7 +78,7 @@ const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = fals
         </div>
 
         <footer className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="text-xs font-semibold text-slate-500">{receipt?.source === 'finalized_snapshot' ? 'Source: immutable finalized payroll snapshot.' : 'Source: current Draft payroll calculation (Preview only).'}</p>
+          <p className="text-xs font-semibold text-slate-500">{receipt?.source === 'finalized_snapshot' ? 'Based on the approved salary record.' : 'Draft preview — not an official receipt.'}</p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700">Close</button>
             {receipt && canPrint && (receipt.official || (!historyMode && !receipt.finalized_snapshot_missing)) ? <button type="button" onClick={handlePrint} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-900 bg-white px-5 text-sm font-black text-slate-900 hover:bg-slate-50"><FiPrinter />{receipt.official ? 'Print Receipt' : 'Print Draft Preview'}</button> : null}
@@ -91,7 +91,6 @@ const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = fals
 }
 
 export default FundReleaseReceiptModal
-
 
 
 

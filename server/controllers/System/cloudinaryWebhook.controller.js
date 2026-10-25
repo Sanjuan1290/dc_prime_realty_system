@@ -206,6 +206,18 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
       networkCompanyProfitFilesUpdated = Number(result.affectedRows || 0);
     }
 
+    let payrollSignedFilesUpdated = 0;
+    if (await tableExists(connection, 'employee_payroll_signed_receipts')) {
+      const [result] = await connection.query(`
+        UPDATE employee_payroll_signed_receipts
+        SET malware_scan_status = ?, malware_scan_provider = 'perception_point',
+            malware_scan_reason = ?, malware_scanned_at = NOW()
+        WHERE cloudinary_public_id = ?`,
+        [scanState.status, scanState.reason, publicId]
+      );
+      payrollSignedFilesUpdated = Number(result.affectedRows || 0);
+    }
+
     await updateClientDocumentSnapshots(connection, publicId, scanState);
     await writeAuditLog(connection, req, {
       action: 'system',
@@ -223,6 +235,7 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
           buyerDocumentFiles: Number(clientFileUpdate.affectedRows || 0),
           paymentProofs: Number(paymentProofUpdate.affectedRows || 0),
           commissionReceiptFiles: commissionReceiptFilesUpdated,
+          employeePayrollSignedFiles: payrollSignedFilesUpdated,
           networkCompanyProfitFiles: networkCompanyProfitFilesUpdated,
           paymentAcknowledgementFiles: acknowledgementFilesUpdated,
         },
@@ -239,4 +252,5 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
     connection.release();
   }
 };
+
 

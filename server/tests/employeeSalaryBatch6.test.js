@@ -37,7 +37,7 @@ test('Employee Salary History UI supports old payroll viewing and historical rec
   const receipt = read('client/src/components/System/employeeSalaryComponents/FundReleaseReceiptModal.jsx');
   assert.match(history, /Employee Salary History/);
   assert.match(history, /Promotion-Safe History/);
-  assert.match(history, /Immutable Snapshot/);
+  assert.match(history, /Finalized Salary/);
   assert.match(history, /View Salary/);
   assert.match(history, /Receipt \/ Export/);
   assert.match(history, /<SalaryDetailModal[^>]*historyMode/);
@@ -65,5 +65,6 @@ test('Batch 6 migration grants payroll-history defaults to Admin and Accounting 
   assert.doesNotMatch(migration, /UPDATE employee_payrolls/i);
   assert.doesNotMatch(migration, /DELETE FROM employee_payrolls/i);
 });
+
 
 
