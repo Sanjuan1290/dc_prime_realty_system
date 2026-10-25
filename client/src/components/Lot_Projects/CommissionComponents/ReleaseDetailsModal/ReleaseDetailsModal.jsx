@@ -22,6 +22,7 @@ const todayManilaISO = () => new Intl.DateTimeFormat('en-CA', {
 const statusLabel = (status) => ({
   Pending: 'Not Eligible',
   Eligible: 'Eligible',
+  'Awaiting Release Date': 'Awaiting Release Date',
   'Earned on Cancellation': 'Earned on Cancellation',
   'Forfeited on Cancellation': 'Forfeited on Cancellation',
   'Partially Released': 'Partial',
@@ -40,6 +41,7 @@ const InfoCard = ({ label, value }) => (
 const StatusPill = ({ status }) => {
   const styles = {
     Eligible: 'border-blue-200 bg-blue-50 text-blue-700',
+    'Awaiting Release Date': 'border-amber-200 bg-amber-50 text-amber-700',
     'Earned on Cancellation': 'border-violet-200 bg-violet-50 text-violet-700',
     'Forfeited on Cancellation': 'border-slate-300 bg-slate-100 text-slate-600',
     Pending: 'border-amber-200 bg-amber-50 text-amber-700',
@@ -576,6 +578,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
               profitRecord={selectedProfit}
               projectSlug={projectSlug}
               canRelease={canRelease}
+              sellers={sellers.filter(seller => Number(seller.sellerGroupId) === Number(selectedProfit.networkId))}
             />
           ) : selectedBeneficiary.startsWith('company:') ? (
             <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">This Company Profit record is no longer available for this buyer account. Select a seller or refresh the page.</p>
@@ -655,7 +658,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
                         <td className="px-4 py-3 font-semibold text-slate-700">{money(stage.grossAmount)}</td>
                         <td className="px-4 py-3 font-black text-slate-900">{money(stage.netAmount)}</td>
                         <td className="px-4 py-3">
-                          <StatusPill status={stage.status} />
+                          <StatusPill status={stage.displayStatus || (stage.status === 'Eligible' && !stage.isReleaseDate && !historicalAllowed ? 'Awaiting Release Date' : stage.status)} />
                           {isReleased && stage.actualReleaseDate ? <p className="mt-1.5 text-[10px] font-bold text-slate-500">{stage.actualReleaseDate}</p> : null}
                           {isReleased && stage.releaseEntryMode === 'historical' ? <span className="mt-1 inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-700">Historical</span> : null}
                           {receiptBlocked ? <p className="mt-1.5 max-w-[170px] text-[10px] font-black leading-4 text-amber-700">Held until previous External Realty agent receipt is Submitted.</p> : null}
@@ -847,6 +850,8 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
 }
 
 export default ReleaseDetailsModal
+
+
 
 
 

@@ -5,6 +5,7 @@ import {
 } from '../../controllers/Lot_Projects/Commissions/NetworkCompanyProfitFiles.controller.js';
 
 import { getCommissionReleaseReceipt } from '../../controllers/Lot_Projects/Commissions/CommissionReleaseReceipt.controller.js';
+import { releaseAllInHouseMilestone } from '../../controllers/Lot_Projects/Commissions/InHouseBulkRelease.controller.js';
 import { getNetworkCompanyProfit, releaseNetworkCompanyProfit } from '../../controllers/Lot_Projects/Commissions/NetworkCompanyProfit.controller.js';
 import {
   authenticateUser,
@@ -210,6 +211,7 @@ router.get('/lot-projects/:projectSlug/payment-logs', requirePermission(PERMISSI
 router.get('/lot-projects/:projectSlug/commissions', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getLotProjectCommissions);
 router.get('/lot-projects/:projectSlug/network-company-profit', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getNetworkCompanyProfit);
 router.post('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId', requirePermission(PERMISSIONS.LOT_COMMISSIONS_RELEASE), releaseNetworkCompanyProfit);
+router.post('/lot-projects/:projectSlug/network-company-profit/:profitId/release-all', requirePermission(PERMISSIONS.LOT_COMMISSIONS_RELEASE), releaseAllInHouseMilestone);
 router.get('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId/signed-copy', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getNetworkProfitSignedCopy);
 router.post('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId/signed-copy/upload-signature', requirePermission(PERMISSIONS.LOT_COMMISSIONS_RELEASE), createNetworkProfitSignedUploadSignature);
 router.post('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId/signed-copy', requirePermission(PERMISSIONS.LOT_COMMISSIONS_RELEASE), saveNetworkProfitSignedCopy);
@@ -309,6 +311,8 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
+
+
 
 
 

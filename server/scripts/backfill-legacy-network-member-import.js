@@ -5,7 +5,6 @@
 // This script NEVER performs an undo or deletes a member.
 import { db } from '../db/connect.js';
 import { IMPORT_USER_COLUMNS, IMPORT_SELLER_COLUMNS, snapshotImportFields } from '../controllers/System/networkMemberUndo.service.js';
-
 const reviewId = Number(process.env.LEGACY_IMPORT_REVIEW_ID || 0);
 if (!Number.isSafeInteger(reviewId) || reviewId < 1) {
   throw new Error('Set LEGACY_IMPORT_REVIEW_ID to the exact historical import Operational Review ID.');

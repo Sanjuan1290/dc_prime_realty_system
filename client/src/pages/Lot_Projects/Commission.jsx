@@ -252,6 +252,14 @@ const Commission = () => {
   const records = useMemo(() => data?.data || [], [data?.data])
   const project = data?.project || {}
   const groupedRecords = useMemo(() => groupCommissionRecords(records), [records])
+  // A bulk release updates several commission rows at once. Refresh the open
+  // buyer-account details from the canonical query result, not a stale copy.
+  useEffect(() => {
+    setSelected(current => {
+      if (!current) return current
+      return groupedRecords.find(group => group.id === current.id) || current
+    })
+  }, [groupedRecords])
   const reviewedGroup = reviewView && reviewEntityType === 'lot_project_commission' && reviewCommissionId
     ? groupedRecords.find((group) => group.sellers.some((seller) => Number(seller.commissionId || seller.id) === reviewCommissionId)) : null
   useEffect(() => {
@@ -527,6 +535,8 @@ const Commission = () => {
 }
 
 export default Commission
+
+
 
 
 

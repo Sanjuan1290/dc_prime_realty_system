@@ -360,6 +360,11 @@ const mapReleaseRow = (row = {}, paymentPercent = 0, releaseDateInfo = {}, commi
     deductionAmount: toNumber(row.deduction_amount),
     netAmount: toNumber(row.net_release_amount),
     status,
+    displayStatus: status === 'Eligible' && releaseDateInfo.isReleaseDate === false
+      && !buildAccountContext({ account: commission }).isHistoricalEntry
+      ? 'Awaiting Release Date' : status,
+    awaitingReleaseDate: status === 'Eligible' && releaseDateInfo.isReleaseDate === false
+      && !buildAccountContext({ account: commission }).isHistoricalEntry,
     scheduledReleaseDate: row.scheduled_release_date,
     actualReleaseDate: row.actual_release_date,
     releasedByUserId: row.released_by_user_id,
@@ -480,6 +485,7 @@ const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
     sellerEmail: row.seller_email || '',
     sellerContactNo: row.seller_contact_no || '',
     sellerGroup: row.seller_group_name_snapshot || row.seller_group_name || '-',
+    sellerGroupId: Number(row.current_seller_group_id || 0) || null,
     sellerGroupType: row.seller_group_type || (String(row.commission_role || '').toLowerCase() === 'external_group' ? 'external' : 'in_house'),
     isExternalGroup: isExternalCommissionRow(row),
     reportsUnder: row.reports_under || '-',
@@ -895,6 +901,7 @@ export const getLotProjectCommissions = async (req, res) => {
           mainSellerUser.role AS main_seller_role,
           NULLIF(TRIM(CONCAT_WS(' ', mainSellerUser.first_name, mainSellerUser.middle_name, mainSellerUser.last_name)), '') AS main_seller_name,
           sg.seller_group_name,
+          acs.seller_group_id AS current_seller_group_id,
           sg.seller_group_type,
           acs.accredited_seller_accreditation_date,
           NULLIF(TRIM(CONCAT_WS(' ', reports.first_name, reports.middle_name, reports.last_name)), '') AS reports_under
@@ -967,6 +974,70 @@ export const getLotProjectCommissions = async (req, res) => {
   } finally {
     connection.release();
   }
+};
+
+
+// Shared live eligibility and reconciliation for the account-wide In-House batch.
+// Keep the query aligned with the individual stage handler's financial expressions.
+export const loadLiveSellerReleaseForBatch = async (connection, { stage, commissionId, accountId, projectId }) => {
+  const [rows] = await connection.query(`
+          SELECT
+            r.*,
+            c.lot_project_id,
+            c.lot_project_listing_id,
+            c.commission_role,
+            c.lot_project_account_id,
+            c.lot_project_client_profile_id,
+            c.accredited_seller_id,
+            c.sale_owner_accredited_seller_id,
+            c.commission_rate_type,
+            c.payment_percent,
+            l.lot_project_listing_unit_id,
+            cp.buyer_full_name,
+            cp.soa_starting_date,
+            COALESCE(cp.soa_is_historical_entry, 0) AS soa_is_historical_entry,
+            ${actualRemainingBalanceSql} AS actual_remaining_balance,
+            ${unpaidScheduledDueSql} AS unpaid_scheduled_due,
+            ${getRequiredDocumentCountSql('l')} AS required_document_count,
+            ${getCompletedRequiredDocumentCountSql('l', 'c')} AS completed_required_document_count,
+            ${computedPaymentPercentSql} AS computed_payment_percent
+          FROM lot_project_commission_releases r
+          INNER JOIN lot_project_commissions c
+            ON c.lot_project_commission_id = r.lot_project_commission_id
+          INNER JOIN lot_project_listings l
+            ON l.lot_project_listing_id = c.lot_project_listing_id
+          LEFT JOIN lot_project_client_profiles cp
+            ON cp.lot_project_client_profile_id = c.lot_project_client_profile_id
+          LEFT JOIN (
+            SELECT
+              lot_project_client_profile_id,
+              SUM(lot_project_payment_amount) AS total_paid,
+              SUM(CASE WHEN lot_project_payment_type IN ('downpayment', 'down_payment') THEN lot_project_payment_amount ELSE 0 END) AS downpayment_paid
+            FROM lot_project_payments
+            WHERE lot_project_payment_status = 'Verified'
+            GROUP BY lot_project_client_profile_id
+          ) payment_summary ON payment_summary.lot_project_client_profile_id = c.lot_project_client_profile_id
+          ${scheduleSummaryJoin}
+          WHERE r.release_stage = ?
+            AND r.lot_project_commission_id = ?
+            AND c.lot_project_account_id = ?
+            AND c.lot_project_id = ?
+          LIMIT 1
+          FOR UPDATE
+        `, [stage, commissionId, accountId, projectId]);
+  const release = rows[0] || null;
+  if (!release) return null;
+  const paymentPercent = getPaymentPercent(release);
+  return {
+    release,
+    paymentPercent,
+    computedStatus: normalizeReleaseStatus(release, paymentPercent, { retentionReady: isRetentionReady(release) }),
+    isHistorical: buildAccountContext({ account: release }).isHistoricalEntry,
+  };
+};
+export const finishBatchSellerRelease = async (connection, release, commissionId, projectId) => {
+  await syncReleaseStatuses(connection, [release]);
+  return recomputeCommissionFromReleases(connection, commissionId, projectId);
 };
 
 export const updateLotProjectCommission = async (req, res) => {
@@ -1723,6 +1794,8 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
+
+
 
 
 

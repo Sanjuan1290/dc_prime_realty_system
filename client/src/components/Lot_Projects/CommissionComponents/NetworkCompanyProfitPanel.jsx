@@ -6,6 +6,8 @@ import SignedCopyUploadModal from '../../Shared/SignedCopyUploadModal'
 import ReleaseReceiptFields, { emptyReleaseReceipt, validateReleaseReceipt } from './ReleaseReceiptFields'
 import StatusAlert from '../../Shared/StatusAlert'
 import CommissionReceiptPreview from './CommissionReceiptPreview'
+import ReleaseAllCommissionsModal, { getReleaseAllRecipients, releaseAllBlockedReason } from './ReleaseAllCommissionsModal'
+import BulkAcknowledgmentPreview from './BulkAcknowledgmentPreview'
 
 const money = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(amount || 0))
 const readableMethod = (value) => ({ bank_transfer: 'Bank Transfer', cash: 'Cash', check: 'Check', other: 'Other' }[value] || value || '-')
@@ -28,7 +30,7 @@ export const NetworkProfitAcknowledgement = ({ profit, stage, onClose }) => {
         triggerPercent: stage.triggerPercent }] }} />
 }
 
-export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = false, embedded = false, profitRecord = null }) {
+export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = false, embedded = false, profitRecord = null, sellers = [] }) {
   const queryClient = useQueryClient()
   const [releaseChoice, setReleaseChoice] = useState(null)
   const [method, setMethod] = useState('bank_transfer')
@@ -36,6 +38,9 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
   const [receiptError, setReceiptError] = useState('')
   const [signedChoice, setSignedChoice] = useState(null)
   const [printChoice, setPrintChoice] = useState(null)
+  const [releaseAllChoice, setReleaseAllChoice] = useState(null)
+  const [batchPrint, setBatchPrint] = useState(null)
+  const [batchPrinting, setBatchPrinting] = useState(false)
   const [notice, setNotice] = useState(null)
   const queryKey = useMemo(() => ['network-company-profit', projectSlug], [projectSlug])
   const { data, isLoading, isError, error } = useQuery({
@@ -72,6 +77,38 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
     },
     onError: (err) => setNotice({ type: 'error', message: err.message || 'Company Profit release failed. Nothing was released.' }),
   })
+  const printAll = async (profit, stage) => {
+    if (batchPrinting) return
+    setBatchPrinting(true)
+    setNotice(null)
+    try {
+      const receipts=[]
+      if (stage.status === 'Released') {
+        receipts.push({key:`company:${stage.id}`,
+          seller:{full_name:stage.payeeName || profit.payee,payee_name:stage.payeeName || profit.payee,role:'network_company_profit'},
+          receipt:{receiptDate:stage.receiptDate || stage.actualReleaseDate,bankName:stage.bankName,
+            accountNumber:stage.accountNumber,referenceNumber:stage.paymentReference,witnessName:stage.witnessName,
+            unitId:profit.unit,buyerName:profit.buyer,grossCommission:profit.totalProfit,
+            commissionRate:profit.companyProfitRate,commissionRole:'network_company_profit',totalAmount:stage.amount,
+            releasePercent:stage.releasePercent,cumulativeTargetPercent:stage.triggerPercent,
+            releases:[{stage:stage.stage,releasePercent:stage.releasePercent,triggerPercent:stage.triggerPercent}]}})
+      }
+      for (const seller of sellers) {
+        const saved=(seller.releaseMilestones || []).find(item=>item.stage===stage.stage)
+        if (saved?.status!=='Released') continue
+        const response=await useFetch(`/projects/lot-projects/${projectSlug}/commissions/${seller.commissionId||seller.id}/releases/${saved.releaseId}/receipt`)
+        const receipt=response?.data?.receipt
+        if (!receipt?.receiptId) throw new Error(`${seller.seller}: receipt not found. Print individually after linking the missing receipt.`)
+        receipts.push({key:`seller:${seller.commissionId||seller.id}`,
+          seller:{full_name:seller.seller,role:seller.rawRole,seller_group_name:seller.sellerGroup,
+            seller_group_type:seller.sellerGroupType},receipt})
+      }
+      if (!receipts.length) throw new Error('No released acknowledgments are available for this milestone.')
+      setBatchPrint({receipts,stage:stage.stage,unit:profit.unit})
+    } catch (error) {
+      setNotice({type:'error',message:error?.message || 'Could not prepare all receipts.'})
+    } finally {setBatchPrinting(false)}
+  }
   return <section className={embedded ? "bg-white" : "overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"}>
     <div className={embedded ? 'pb-3' : 'border-b border-slate-200 p-5'}>
       <h2 className={embedded ? 'text-sm font-black text-slate-950' : 'text-lg font-black text-slate-950'}>Network Company Profit Information</h2>
@@ -124,6 +161,19 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
+                      {embedded && sellers.length && canRelease &&
+                        getReleaseAllRecipients(profitRecord,sellers,stage.stage).some(r=>r.stage?.status!=='Released') ?
+                        <button type="button" disabled={Boolean(releaseAllBlockedReason(getReleaseAllRecipients(profitRecord,sellers,stage.stage),profitRecord.releaseDateInfo?.isReleaseDate))}
+                          title={releaseAllBlockedReason(getReleaseAllRecipients(profitRecord,sellers,stage.stage),profitRecord.releaseDateInfo?.isReleaseDate) || undefined}
+                          onClick={()=>setReleaseAllChoice(stage)}
+                          className="rounded-lg bg-emerald-700 px-3 py-1.5 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">
+                          Release All
+                        </button> : null}
+                      {embedded && sellers.length && (stage.status==='Released' || sellers.some(s=>(s.releaseMilestones||[]).some(m=>m.stage===stage.stage && m.status==='Released'))) ?
+                        <button type="button" disabled={batchPrinting} onClick={()=>printAll(profitRecord,stage)}
+                          className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 font-black text-blue-800 disabled:opacity-40">
+                          <FiPrinter className="mr-1 inline"/>Print All Acknowledgments
+                        </button> : null}
                       {stage.status === 'Released' ? <>
                         <button type="button" onClick={() => setPrintChoice({ profit: profitRecord, stage })} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-black"><FiPrinter className="mr-1 inline"/>Print Acknowledgment</button>
                         <button type="button" onClick={() => setSignedChoice({ profit: profitRecord, stage })} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-black"><FiFileText className="mr-1 inline"/>Signed Copy</button>
@@ -178,6 +228,11 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
           }} className="rounded-lg bg-blue-700 px-4 py-2 font-bold text-white disabled:opacity-40">{mutation.isPending ? 'Saving...' : 'Review & Release'}</button></div>
       </div>
     </div> : null}
+    {releaseAllChoice && profitRecord ? <ReleaseAllCommissionsModal
+      key={`${profitRecord.id}:${releaseAllChoice.stage}`} profit={profitRecord} sellers={sellers}
+      stage={releaseAllChoice} projectSlug={projectSlug} onClose={()=>setReleaseAllChoice(null)}
+      onSuccess={result=>setNotice({type:'success',message:result.message||'Commission batch recorded.'})}/> : null}
+    {batchPrint ? <BulkAcknowledgmentPreview {...batchPrint} onClose={()=>setBatchPrint(null)}/> : null}
     {printChoice ? <NetworkProfitAcknowledgement {...printChoice} onClose={() => setPrintChoice(null)}/> : null}
     {signedChoice ? <SignedCopyUploadModal title="Network Company Profit Acknowledgment"
       description="View or upload the signed acknowledgment for this specific Network Profit release. Only security-approved files can be opened."
@@ -187,5 +242,7 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
       onClose={() => setSignedChoice(null)} /> : null}
   </section>
 }
+
+
 
 
