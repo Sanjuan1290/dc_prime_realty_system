@@ -35,11 +35,11 @@ router.get('/:groupId/managers/replacements/:replacementId/restore/preview',requ
 router.post('/:groupId/managers/replacements/:replacementId/restore/code',requireExactRole('super_admin','system_admin'),requirePermission(PERMISSIONS.SYSTEM_SELLER_MANAGER_RESTORE),requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE),requestManagerRestorationCode);
 router.post('/:groupId/managers/replacements/:replacementId/restore/confirm',requireExactRole('super_admin','system_admin'),requirePermission(PERMISSIONS.SYSTEM_SELLER_MANAGER_RESTORE),requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE),confirmManagerRestoration);
 router.get('/:groupId/managers/replacements', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getManagerReplacementHistory);
-// Restricted to empty DM/SD/UM accounts; this is NOT general account deactivation.
+// Dedicated, configurable Accredited Sellers & Networks permission.
+// This endpoint ONLY deactivates an empty DM/SD/UM. It cannot deactivate other
+// user roles or override the reporting/Network Head checks in the controller.
 router.post('/:groupId/managers/:userId/deactivate-empty',
-  requireExactRole('super_admin','system_admin','marketing_staff','marketing_head'),
-  requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE),
-  requirePermission(PERMISSIONS.SYSTEM_USERS_EDIT),
+  requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_DEACTIVATE_EMPTY_MANAGER),
   deactivateEmptyManager);
 router.get('/:groupId/managers/:userId/replace/preview', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), previewManagerReplacement);
 router.post('/:groupId/managers/:userId/replace/code', requireExactRole('super_admin','system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), requestManagerReplacementCode);
@@ -83,6 +83,8 @@ router.patch('/toggle-status/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_G
 router.delete('/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), deleteGroup);
 
 export default router;
+
+
 
 
 

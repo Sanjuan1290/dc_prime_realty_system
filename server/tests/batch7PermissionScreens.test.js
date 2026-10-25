@@ -38,7 +38,7 @@ test('permission metadata classifies types and governed permissions', async () =
   const meta = await read('client/src/utils/permissionMeta.js');
   assert.match(meta, /PERMISSIONS\.LOT_CANCELLATIONS_SETTLE/);
   assert.match(meta, /replace\(\/\\s\*\\\(Governed\\\)\\s\*\/g/);
-  assert.match(meta, /marketing: \['Seller Groups'/);
+  assert.match(meta, /marketing: \['Accredited Sellers & Networks'/);
 });
 
 test('Role & Access Control explains role defaults, cross-department grants, owner full access, and unsaved changes', async () => {
@@ -51,5 +51,7 @@ test('Role & Access Control explains role defaults, cross-department grants, own
   assert.match(roleAccess, /Discard and switch/);
   assert.match(roleAccess, /sticky bottom-0/);
 });
+
+
 
 

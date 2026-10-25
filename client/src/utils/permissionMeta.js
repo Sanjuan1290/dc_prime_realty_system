@@ -44,8 +44,8 @@ export const cleanPermissionLabel = (label = '') => String(label).replace(/\s*\(
 
 // Sections each department works in most. Shown first for that role.
 export const DEPARTMENT_PRIORITY_GROUPS = Object.freeze({
-  marketing: ['Seller Groups', 'Accredited Sellers', 'Reports', 'Dashboard', 'Documents'],
-  sales: ['Listings / Units', 'Reservations', 'Buyer / Profile', 'Project Dashboard & Reports', 'Accredited Sellers', 'Reports'],
+  marketing: ['Accredited Sellers & Networks', 'Reports', 'Dashboard', 'Documents'],
+  sales: ['Listings / Units', 'Reservations', 'Buyer / Profile', 'Project Dashboard & Reports', 'Accredited Sellers & Networks', 'Reports'],
   accounting: ['Payments', 'Commissions', 'Employee Salary', 'Buyer / Profile', 'Reports'],
   operations: ['Projects', 'Listings / Units', 'Reservations', 'Project Settings', 'Documents', 'Document Templates', 'Employees', 'Attendance'],
 })
@@ -81,5 +81,7 @@ export const getAccessTier = (key = '') => {
   if (type === 'Delete' || isSensitivePermission(key)) return 'full'
   return 'edit'
 }
+
+
 
 

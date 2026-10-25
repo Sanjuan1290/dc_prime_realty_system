@@ -48,8 +48,19 @@ const permissionCatalog = [
     ['Apply Audit-Approved Correction', PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY],
     ['Emergency Override', PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE],
   ] },
-  { group: 'Accredited Sellers', kind: 'OPERATE', items: [['View', PERMISSIONS.SYSTEM_ACCREDITED_VIEW], ['Print', PERMISSIONS.SYSTEM_ACCREDITED_PRINT], ['Upload Proof of Income', PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF]] },
-  { group: 'Seller Groups', kind: 'OPERATE', items: [['View', PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW], ['Manage', PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE]] },
+  // One management surface: sellers are network members, while Networks hold
+  // membership/reporting/project settings. Keep existing keys and DB entities.
+  // Editing seller profile details continues to use SYSTEM_USERS_EDIT (in Users).
+  { group: 'Accredited Sellers & Networks', kind: 'OPERATE', items: [
+    ['View Accredited Sellers', PERMISSIONS.SYSTEM_ACCREDITED_VIEW],
+    ['View Networks', PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW],
+    ['Manage Networks and Members', PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE],
+    ['Bulk Edit Network Members (Admin)', PERMISSIONS.SYSTEM_SELLER_GROUPS_BULK_EDIT],
+    ['Restore Manager Replacement (Admin)', PERMISSIONS.SYSTEM_SELLER_MANAGER_RESTORE],
+    ['Deactivate Empty Managers (DM / SD / UM)', PERMISSIONS.SYSTEM_SELLER_GROUPS_DEACTIVATE_EMPTY_MANAGER],
+    ['Print Seller Records', PERMISSIONS.SYSTEM_ACCREDITED_PRINT],
+    ['Upload Proof of Income', PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF],
+  ] },
   { group: 'Employees', kind: 'OPERATE', items: [['View', PERMISSIONS.EMPLOYEES_VIEW], ['Manage Employee Profile', PERMISSIONS.EMPLOYEES_MANAGE], ['Manage Compensation', PERMISSIONS.EMPLOYEE_COMPENSATION_MANAGE], ['Create Employment Change', PERMISSIONS.EMPLOYMENT_CHANGE_CREATE], ['View Employment History', PERMISSIONS.EMPLOYMENT_HISTORY_VIEW]] },
   { group: 'Employee Salary', kind: 'OPERATE', items: [['View Employee Salary', PERMISSIONS.EMPLOYEE_SALARY_VIEW], ['Generate Payroll', PERMISSIONS.PAYROLL_GENERATE], ['Recalculate Draft Payroll', PERMISSIONS.PAYROLL_RECALCULATE_DRAFT], ['Finalize Payroll', PERMISSIONS.PAYROLL_FINALIZE], ['Correct Finalized Payroll', PERMISSIONS.PAYROLL_CORRECT_FINALIZED], ['Mark Payroll as Released', PERMISSIONS.PAYROLL_RELEASE], ['View Payroll History', PERMISSIONS.PAYROLL_HISTORY_VIEW], ['Print Payroll Receipt', PERMISSIONS.PAYROLL_RECEIPT_PRINT], ['Export Payroll Receipt', PERMISSIONS.PAYROLL_RECEIPT_EXPORT], ['Export Payroll Summary', PERMISSIONS.PAYROLL_SUMMARY_EXPORT], ['Manage Payroll Settings', PERMISSIONS.PAYROLL_SETTINGS_MANAGE]] },
   { group: 'Attendance', kind: 'OPERATE', items: [['View', PERMISSIONS.ATTENDANCE_VIEW], ['Manage', PERMISSIONS.ATTENDANCE_MANAGE]] },
@@ -229,6 +240,8 @@ export const applyRoleDefaultsToUser = async (req, res) => {
     return res.status(error?.statusCode || 500).json({ code: error?.code, message: error?.message || 'Failed to apply role defaults.' });
   } finally { connection.release(); }
 };
+
+
 
 
 

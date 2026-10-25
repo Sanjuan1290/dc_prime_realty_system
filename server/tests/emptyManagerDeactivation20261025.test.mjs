@@ -56,12 +56,12 @@ test('Endpoint and visible actions require explicit role and permission checks',
   const route=read('server/routers/System/sellerGroup.routers.js')
   const ui=read('client/src/pages/System/SellerGroupDetails.jsx')
   const modal=read('client/src/components/System/sellerGroupComponents/DeactivateEmptyManagerModal.jsx')
-  assert.match(route,/deactivate-empty'[\s\S]*?requireExactRole\('super_admin','system_admin','marketing_staff','marketing_head'\)/)
-  assert.match(route,/deactivate-empty'[\s\S]*?requirePermission\(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE\)/)
-  assert.match(route,/deactivate-empty'[\s\S]*?requirePermission\(PERMISSIONS.SYSTEM_USERS_EDIT\)/)
+  assert.match(route,/deactivate-empty'[\s\S]*?requirePermission\(PERMISSIONS.SYSTEM_SELLER_GROUPS_DEACTIVATE_EMPTY_MANAGER\)/)
+  assert.doesNotMatch(route,/deactivate-empty'[\s\S]*?requireExactRole\('super_admin','system_admin','marketing_staff','marketing_head'\)/)
   assert.match(ui,/canDeactivateEmptyManager && \['division_manager','sales_director','unit_manager'\]/)
-  assert.match(ui,/canEditSeller && canEditNetwork/)
+  assert.match(ui,/hasPermission\(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_DEACTIVATE_EMPTY_MANAGER\)/)
   assert.match(modal,/confirmDeactivation: true/)
+  assert.match(modal,/confirmationHandled: 'compact'/)
 })
 
 function harness({role='unit_manager',isHead=false,reports=0,deps=0,links=0,accountRows=1,sellerRows=1,headId=99}={}) {
@@ -141,3 +141,5 @@ test('Backend never changes historical business records or deletes seller accoun
   assert.match(action,/createOperationalReview\(connection/)
   assert.match(action,/writeAuditLog\(connection/)
 })
+
+

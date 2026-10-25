@@ -11,7 +11,7 @@ const DeactivateEmptyManagerModal = ({ groupId, manager, networkHeadAssigned, on
   const mutation = useMutation({
     mutationFn: () => useFetchPost(`/seller-groups/${groupId}/managers/${manager.user_id}/deactivate-empty`, {
       reason: reason.trim(), confirmDeactivation: true,
-    }, { confirmationHandled: 'technical' }),
+    }, { confirmationHandled: 'compact' }),
     onSuccess: result => { onSaved?.(result?.message || 'Manager deactivated.'); onClose?.() },
     onError: error => setAlert({ type: 'error', message: error.message }),
   })
@@ -45,3 +45,5 @@ const DeactivateEmptyManagerModal = ({ groupId, manager, networkHeadAssigned, on
   </div>
 }
 export default DeactivateEmptyManagerModal
+
+

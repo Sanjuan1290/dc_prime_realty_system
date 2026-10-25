@@ -276,8 +276,9 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const canExportMembers = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW)
   const canCheckSellerSetup = ['super_admin','system_admin'].includes(actor?.role) && canExportMembers
   const canChangeSellerStatus = ['super_admin','system_admin'].includes(actor?.role)
-  const canDeactivateEmptyManager = ['super_admin','system_admin','marketing_staff','marketing_head'].includes(actor?.role)
-    && canEditSeller && canEditNetwork
+  // Independently controlled in Roles & Access. Does not grant general
+  // account deactivation, seller edit, or manager replacement privileges.
+  const canDeactivateEmptyManager = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_DEACTIVATE_EMPTY_MANAGER)
 
   const exportMembers = async () => {
     setIsExportingMembers(true)
@@ -1350,6 +1351,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 }
 
 export default SellerGroupDetails
+
+
 
 
 
