@@ -30,11 +30,11 @@ test('standard paydays are 22nd in same month and 7th in following month across 
   assert.throws(() => payrollPayday({ month: '2028-02', periodType: 'first_half', firstHalfDay: 7 }), /first-half payday/);
 });
 
-test('settings default to 7/22 and disabled proration, reject unsupported configuration', () => {
+test('settings default to 7/22 and enabled first-period proration, reject unsupported configuration', () => {
   const settings = normalizePayrollSettingsSnapshot({});
   assert.equal(settings.first_half_payday, 22);
   assert.equal(settings.second_half_payday, 7);
-  assert.equal(settings.new_hire_proration_rule, 'disabled');
+  assert.equal(settings.new_hire_proration_rule, 'scheduled_workdays');
   assert.equal(validatePayrollSettingsPayload({ new_hire_proration_rule: 'scheduled_workdays' }).new_hire_proration_rule, 'scheduled_workdays');
   assert.throws(() => validatePayrollSettingsPayload({ first_half_payday: 7 }), /First-Half Payday/);
   assert.throws(() => validatePayrollSettingsPayload({ second_half_payday: 31 }), /Second-Half Payday/);

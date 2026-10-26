@@ -1,3 +1,4 @@
+import { findUnsupportedHolidayOvertime } from './payrollHolidayOvertimeGuard.service.js';
 import { createHash } from 'node:crypto';
 import { getPayrollAttendanceSummary } from './payrollAttendance.service.js';
 import { getEffectiveCompensationForPeriod } from './payrollCompensation.service.js';
@@ -248,9 +249,12 @@ export const getPayrollFinalizationReview = async (connection, payroll, today) =
   });
   const compensationChanged = !sameEffectiveCompensation(payroll, effectiveCompensation);
 
+  const holidayOvertimeDays = findUnsupportedHolidayOvertime(payroll.attendance_breakdown || []);
   return {
     payroll,
-    can_finalize: !attendanceChanged && !compensationChanged && !payrollSettingsChanged,
+    can_finalize: !attendanceChanged && !compensationChanged && !payrollSettingsChanged && holidayOvertimeDays.length === 0,
+    holiday_overtime_requires_review: holidayOvertimeDays.length > 0,
+    holiday_overtime_days: holidayOvertimeDays,
     attendance_changed_since_draft: attendanceChanged,
     compensation_changed_since_draft: compensationChanged,
     payroll_settings_changed_since_draft: payrollSettingsChanged,
@@ -270,6 +274,9 @@ export const getPayrollFinalizationReview = async (connection, payroll, today) =
 export const finalizePayroll = async (connection, { payroll, finalizedByUserId, today }) => {
   const review = await getPayrollFinalizationReview(connection, payroll, today);
   if (!review.can_finalize) {
+    if (review.holiday_overtime_requires_review) {
+      throw payrollError('Holiday overtime needs review. Separate holiday overtime pay is not available yet, so this Draft cannot be finalized.', 'PAYROLL_HOLIDAY_OVERTIME_REVIEW_REQUIRED', 409, review);
+    }
     throw payrollError(
       'This Draft changed since its last calculation. Recalculate the Draft and review it again before Finalization.',
       'PAYROLL_FINAL_REVIEW_STALE',
@@ -319,6 +326,7 @@ export const getFinalizedAttendanceChangeStatus = async (connection, payroll, to
     current: current.payload.summary,
   };
 };
+
 
 
 

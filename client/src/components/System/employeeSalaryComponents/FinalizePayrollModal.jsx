@@ -64,7 +64,8 @@ const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
           {finalizeMutation.isError ? <div className="mb-4"><StatusAlert type="error" message={finalizeMutation.error?.message || 'Unable to finalize payroll.'} /></div> : null}
 
           {review && !canFinalize ? <section className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-4">
-            <div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 shrink-0 text-amber-700" /><div><p className="font-black text-amber-950">Draft changed since its last calculation</p><p className="mt-1 text-sm font-semibold leading-5 text-amber-900">Recalculate the Draft and reopen Final Review before finalizing. Finalization will not silently approve stale Attendance, compensation, or Payroll Settings.</p></div></div>
+            <div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 shrink-0 text-amber-700" /><div><p className="font-black text-amber-950">{review.holiday_overtime_requires_review ? 'Holiday overtime needs review' : 'Draft changed since its last calculation'}</p><p className="mt-1 text-sm font-semibold leading-5 text-amber-900">{review.holiday_overtime_requires_review ? 'Holiday overtime is not calculated separately yet. Review the dates below before finalizing the salary.' : 'Recalculate the Draft and reopen Final Review before finalizing. Attendance, compensation, and Payroll Settings must match the Draft.'}</p></div></div>
+            {review.holiday_overtime_requires_review ? <p className="mt-3 rounded-xl bg-white p-3 text-sm font-semibold text-amber-900">{review.holiday_overtime_days.map((day) => `${day.date}: ${day.holiday_type}, ${day.extra_minutes} extra minutes`).join(' · ')}</p> : null}
             {review.attendance_changed_since_draft && review.attendance_differences?.length ? <div className="mt-3 rounded-xl border border-amber-200 bg-white p-3"><p className="text-xs font-black uppercase tracking-wide text-amber-800">Attendance Differences</p><div className="mt-2 divide-y divide-slate-100">{review.attendance_differences.map((item) => <ReviewRow key={item.field} label={item.label} value={`${item.before ?? '—'} → ${item.after ?? '—'}`} />)}</div></div> : null}
             {review.compensation_changed_since_draft ? <p className="mt-3 text-sm font-bold text-amber-900">The effective employment/compensation record also differs from this Draft.</p> : null}
             {review.payroll_settings_changed_since_draft ? <p className="mt-3 text-sm font-bold text-amber-900">Payroll Settings changed after this Draft was calculated. Recalculate so the latest approved multipliers are captured before Finalization.</p> : null}
@@ -91,14 +92,12 @@ const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
             <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Payroll Settings Snapshot</h3><span className="text-xs font-bold text-slate-500">Revision {payroll.payroll_settings_snapshot?.settings_revision ?? '—'}</span></div>
               <div className="mt-2 grid gap-x-6 lg:grid-cols-2">
-                <ReviewRow label="Regular OT Multiplier" value={settingValue(payroll.payroll_settings_snapshot?.regular_ot_multiplier, '×')} />
-                <ReviewRow label="Rest Day OT Multiplier" value={settingValue(payroll.payroll_settings_snapshot?.rest_day_ot_multiplier, '×')} />
-                <ReviewRow label="Regular Holiday Multiplier" value={settingValue(payroll.payroll_settings_snapshot?.regular_holiday_multiplier, '×')} />
-                <ReviewRow label="Special Holiday Multiplier" value={settingValue(payroll.payroll_settings_snapshot?.special_holiday_multiplier, '×')} />
-                <ReviewRow label="Regular Holiday OT Multiplier" value={settingValue(payroll.payroll_settings_snapshot?.regular_holiday_ot_multiplier, '×')} />
-                <ReviewRow label="Special Holiday OT Multiplier" value={settingValue(payroll.payroll_settings_snapshot?.special_holiday_ot_multiplier, '×')} />
-                <ReviewRow label="Night Differential" value={settingValue(payroll.payroll_settings_snapshot?.night_differential_percentage, '%')} />
-                <ReviewRow label="Mid-Period Salary Change" value={payroll.payroll_settings_snapshot?.mid_period_change_rule === 'period_boundary_only' ? '1st / 16th boundary only' : (payroll.payroll_settings_snapshot?.mid_period_change_rule || '—')} />
+                <ReviewRow label="Regular Overtime" value={settingValue(payroll.payroll_settings_snapshot?.regular_ot_multiplier, '×')} />
+                <ReviewRow label="Rest Day Overtime" value={settingValue(payroll.payroll_settings_snapshot?.rest_day_ot_multiplier, '×')} />
+                <ReviewRow label="Holiday Pay Rate" value={payroll.payroll_settings_snapshot?.regular_holiday_multiplier === payroll.payroll_settings_snapshot?.special_holiday_multiplier
+                  ? settingValue(payroll.payroll_settings_snapshot?.regular_holiday_multiplier, '×')
+                  : `Regular: ${settingValue(payroll.payroll_settings_snapshot?.regular_holiday_multiplier, '×')} / Special: ${settingValue(payroll.payroll_settings_snapshot?.special_holiday_multiplier, '×')}`} />
+                <ReviewRow label="Night Shift Extra Pay" value={settingValue(payroll.payroll_settings_snapshot?.night_differential_percentage, '%')} />
               </div>
             </section>
 
@@ -122,5 +121,6 @@ const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
 }
 
 export default FinalizePayrollModal
+
 
 

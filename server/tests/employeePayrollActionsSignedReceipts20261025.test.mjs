@@ -27,8 +27,9 @@ test('Employees and Salary use action-button modals rather than an actions dropd
 test('salary labels are plain-language and original finalization date remains visible',()=>{
   assert.doesNotMatch(detail,/Immutable Official Payroll Snapshot/)
   assert.match(detail,/Finalized \{payroll.finalized_at/)
-  assert.match(detail,/Overtime on Regular Holidays/)
-  assert.match(detail,/Overtime on Special Holidays/)
+  assert.doesNotMatch(detail,/label="Overtime on Regular Holidays"/)
+  assert.doesNotMatch(detail,/label="Overtime on Special Holidays"/)
+  assert.match(detail,/label="Holiday Pay Rate"/)
   assert.doesNotMatch(detail,/Stored; separate holiday OT minutes are not available yet/)
 })
 test('printed receipt preserves original printed form headings, grid, totals and signing fields',()=>{
@@ -69,3 +70,4 @@ test('API protects access and upload separately and browser uses reviewed mutati
   assert.match(modal,/Print/)
   assert.match(modal,/Download/)
 })
+

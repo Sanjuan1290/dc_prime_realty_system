@@ -35,8 +35,8 @@ export const normalizePayrollSettingsSnapshot = (row = {}) => ({
   settings_revision: Number(row.settings_revision || 1),
   first_half_payday: Number(row.first_half_payday ?? 22),
   second_half_payday: Number(row.second_half_payday ?? 7),
-  new_hire_proration_rule: String(row.new_hire_proration_rule || 'disabled'),
-  attendance_bonus_rule: String(row.attendance_bonus_rule || 'not_configured'),
+  new_hire_proration_rule: String(row.new_hire_proration_rule || 'scheduled_workdays'),
+  attendance_bonus_rule: String(row.attendance_bonus_rule || 'perfect_attendance_per_period'),
   regular_ot_multiplier: row.regular_ot_multiplier === null || row.regular_ot_multiplier === undefined ? null : Number(row.regular_ot_multiplier),
   rest_day_ot_multiplier: row.rest_day_ot_multiplier === null || row.rest_day_ot_multiplier === undefined ? null : Number(row.rest_day_ot_multiplier),
   regular_holiday_multiplier: row.regular_holiday_multiplier === null || row.regular_holiday_multiplier === undefined ? null : Number(row.regular_holiday_multiplier),
@@ -64,8 +64,8 @@ export const ensurePayrollSettingsSchema = async (connection) => {
       mid_period_change_rule VARCHAR(40) NOT NULL DEFAULT 'period_boundary_only',
       first_half_payday TINYINT UNSIGNED NOT NULL DEFAULT 22,
       second_half_payday TINYINT UNSIGNED NOT NULL DEFAULT 7,
-      new_hire_proration_rule VARCHAR(40) NOT NULL DEFAULT 'disabled',
-      attendance_bonus_rule VARCHAR(48) NOT NULL DEFAULT 'not_configured',
+      new_hire_proration_rule VARCHAR(40) NOT NULL DEFAULT 'scheduled_workdays',
+      attendance_bonus_rule VARCHAR(48) NOT NULL DEFAULT 'perfect_attendance_per_period',
       settings_revision INT UNSIGNED NOT NULL DEFAULT 1,
       updated_by_user_id INT UNSIGNED NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -117,11 +117,11 @@ export const validatePayrollSettingsPayload = (body = {}) => {
       409
     );
   }
-  const hireRule = String(body.new_hire_proration_rule || 'disabled');
+  const hireRule = String(body.new_hire_proration_rule || 'scheduled_workdays');
   if (!NEW_HIRE_PRORATION_RULES.includes(hireRule)) {
     throw payrollError('Select a supported new-hire proration policy.', 'INVALID_NEW_HIRE_RULE');
   }
-  const bonusRule = String(body.attendance_bonus_rule || 'not_configured');
+  const bonusRule = String(body.attendance_bonus_rule || 'perfect_attendance_per_period');
   if (!ATTENDANCE_BONUS_RULES.includes(bonusRule)) throw payrollError('Select a supported Attendance Bonus rule.', 'INVALID_ATTENDANCE_BONUS_RULE');
   return {
     attendance_bonus_rule: bonusRule,
@@ -179,6 +179,7 @@ export const updatePayrollSettings = async (connection, { body, updatedByUserId 
   const after = await getPayrollSettings(connection);
   return { before, after };
 };
+
 
 
 

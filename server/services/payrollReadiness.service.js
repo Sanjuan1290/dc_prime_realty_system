@@ -1,3 +1,4 @@
+import { findUnsupportedHolidayOvertime, holidayOvertimeWarning } from './payrollHolidayOvertimeGuard.service.js';
 /** Read-only preflight for Employee Salary. No payroll or Attendance rows are written. */
 import { getEffectiveCompensationForPeriod } from './payrollCompensation.service.js';
 import { getPayrollAttendanceSummary } from './payrollAttendance.service.js';
@@ -125,6 +126,8 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
   if (premiumMissing.length) warnings.push(`Payroll Settings not configured for recorded premium hours: ${[...new Set(premiumMissing)].join(', ')}. Draft premium pay may be ₱0.00.`);
   if (recordedDays === 0 && attendance?.rows?.length) warnings.push('No Time In/Out entries were found in this period. Unrecorded scheduled days may be treated as absences.');
   if (incompleteDays) warnings.push(`${incompleteDays} Attendance day(s) have Time In but no Time Out. Verify automatic/manual timeout first.`);
+  const holidayIssue = holidayOvertimeWarning(findUnsupportedHolidayOvertime(attendance?.rows || []));
+  if (holidayIssue) warnings.push(holidayIssue);
 
   return {
     can_generate: issues.length === 0,
@@ -135,4 +138,5 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
     attendance: { recorded_days: recordedDays, incomplete_days: incompleteDays, checked_days: attendance?.rows?.length || 0, rest_days: restDays },
   };
 };
+
 

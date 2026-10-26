@@ -1,3 +1,4 @@
+import { findUnsupportedHolidayOvertime, holidayOvertimeWarning } from './payrollHolidayOvertimeGuard.service.js';
 import { buildEmployeeNameSql, dateOnly } from '../controllers/System/Employees/employeeModule.shared.js';
 import { ensureAttendanceLiteSchema, getManilaDateTime } from '../controllers/System/Employees/attendanceLite.shared.js';
 import { calculateDraftPayrollMoney, evaluateAttendanceBonus, PAYROLL_PAID_WORK_MINUTES } from './payrollCalculation.service.js';
@@ -256,7 +257,7 @@ const getEmployee = async (connection, employeeId) => {
   return rows[0];
 };
 
-const warningList = ({ period, attendanceThrough, attendance, compensation, payrollSettings }) => {
+const warningList = ({ period, attendanceThrough, attendance, attendanceRows = [], compensation, payrollSettings }) => {
   const warnings = [];
   if (attendanceThrough < period.periodEnd) {
     warnings.push(`Draft attendance is provisional through ${attendanceThrough}. Recalculate after later attendance is recorded.`);
@@ -270,9 +271,8 @@ const warningList = ({ period, attendanceThrough, attendance, compensation, payr
   if (missing.length) {
     warnings.push(`Payroll Settings are incomplete for recorded premium hours: ${[...new Set(missing)].join(', ')}. Unconfigured money rules remain ₱0.00 until the Draft is recalculated after settings are completed.`);
   }
-  if ((attendance.regularHolidayMinutes || attendance.specialHolidayMinutes) && (payrollSettings.regular_holiday_ot_multiplier !== null || payrollSettings.special_holiday_ot_multiplier !== null)) {
-    warnings.push('Holiday OT multipliers are stored in Payroll Settings but are not applied yet because Attendance does not expose separate Regular-Holiday-OT or Special-Holiday-OT minutes.');
-  }
+  const holidayIssue = holidayOvertimeWarning(findUnsupportedHolidayOvertime(attendanceRows));
+  if (holidayIssue) warnings.push(holidayIssue);
   if (attendance.doublePayMinutes) {
     warnings.push('Double-pay attendance is present. Its hours are preserved in the attendance breakdown, but no payroll money rule is applied because the master plan does not define a double-pay multiplier.');
   }
@@ -513,6 +513,7 @@ export const calculateAndStoreDraftPayroll = async (connection, {
     period: normalizedPeriod,
     attendanceThrough,
     attendance: attendanceUsed.summary,
+    attendanceRows: attendanceUsed.rows,
     compensation,
     payrollSettings,
   });

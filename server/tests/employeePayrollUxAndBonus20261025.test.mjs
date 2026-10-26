@@ -15,8 +15,8 @@ const complete = (override = {}) => ({
   rows: [{timeIn:'09:00',timeOut:'20:00'}], ...override,
 });
 
-test('Attendance Bonus remains unpaid by default and no previous salary changes', () => {
-  assert.equal(normalizePayrollSettingsSnapshot({}).attendance_bonus_rule, 'not_configured');
+test('Attendance Bonus has an enabled default but still requires eligible attendance', () => {
+  assert.equal(normalizePayrollSettingsSnapshot({}).attendance_bonus_rule, 'perfect_attendance_per_period');
   assert.equal(evaluateAttendanceBonus(complete({rule:'not_configured'})).eligible, false);
   assert.equal(evaluateAttendanceBonus(complete({rule:'disabled'})).eligible, false);
   assert.equal(calculateDraftPayrollMoney({ monthlyBasicSalary:15000,regularWorkingMinutes:600,tardinessAbsenceMinutes:0,periodType:'first_half',attendanceBonusAmount:500 }).attendanceBonus,0);
@@ -86,8 +86,8 @@ test('Salary warning links Payroll Settings and requires permission; first-hire 
   assert.match(detail,/canManagePayrollSettings \?/);
   assert.match(detail,/Set Attendance Bonus Rule/);
   assert.match(settings,/id="attendance-bonus-settings"/);
-  assert.match(settings,/saved Rest Days/);
-  assert.match(settings,/first partial period/);
+  assert.match(settings,/scheduled workdays from their hire date/);
+  assert.match(settings,/Pay for newly hired employees/);
 });
 test('Receipt can print a marked Draft preview with print permission, but PDF export stays official-only',()=>{
   const src=source('client/src/components/System/employeeSalaryComponents/FundReleaseReceiptModal.jsx');

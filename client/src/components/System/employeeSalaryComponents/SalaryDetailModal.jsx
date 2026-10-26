@@ -132,14 +132,12 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
             <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Applied Payroll Settings</h3><span className="text-xs font-bold text-slate-500">Revision {payroll.payroll_settings_snapshot?.settings_revision ?? '—'}</span></div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <Metric label="Overtime Rate" value={settingValue(payroll.payroll_settings_snapshot?.regular_ot_multiplier, '×')} />
-                <Metric label="Rest-Day Overtime Rate" value={settingValue(payroll.payroll_settings_snapshot?.rest_day_ot_multiplier, '×')} />
-                <Metric label="Regular Holiday" value={settingValue(payroll.payroll_settings_snapshot?.regular_holiday_multiplier, '×')} />
-                <Metric label="Special Holiday" value={settingValue(payroll.payroll_settings_snapshot?.special_holiday_multiplier, '×')} />
-                <Metric label="Overtime on Regular Holidays" value={settingValue(payroll.payroll_settings_snapshot?.regular_holiday_ot_multiplier, '×')} hint="This rate is saved for reference. The system does not calculate holiday overtime separately yet." />
-                <Metric label="Overtime on Special Holidays" value={settingValue(payroll.payroll_settings_snapshot?.special_holiday_ot_multiplier, '×')} hint="This rate is saved for reference. The system does not calculate holiday overtime separately yet." />
-                <Metric label="Night Differential" value={settingValue(payroll.payroll_settings_snapshot?.night_differential_percentage, '%')} />
-                <Metric label="Salary Change Rule" value={payroll.payroll_settings_snapshot?.mid_period_change_rule === 'period_boundary_only' ? '1st / 16th boundary only' : (payroll.payroll_settings_snapshot?.mid_period_change_rule || '—')} />
+                <Metric label="Regular Overtime" value={settingValue(payroll.payroll_settings_snapshot?.regular_ot_multiplier, '×')} />
+                <Metric label="Rest Day Overtime" value={settingValue(payroll.payroll_settings_snapshot?.rest_day_ot_multiplier, '×')} />
+                <Metric label="Holiday Pay Rate" value={payroll.payroll_settings_snapshot?.regular_holiday_multiplier === payroll.payroll_settings_snapshot?.special_holiday_multiplier
+                  ? settingValue(payroll.payroll_settings_snapshot?.regular_holiday_multiplier, '×')
+                  : `Regular: ${settingValue(payroll.payroll_settings_snapshot?.regular_holiday_multiplier, '×')} / Special: ${settingValue(payroll.payroll_settings_snapshot?.special_holiday_multiplier, '×')}`} />
+                <Metric label="Night Shift Extra Pay" value={settingValue(payroll.payroll_settings_snapshot?.night_differential_percentage, '%')} />
               </div>
             </section>
 
