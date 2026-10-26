@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
 import { FiAlertTriangle, FiCheckCircle, FiLock, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
@@ -16,7 +15,6 @@ const ReviewRow = ({ label, value, strong = false }) => (
 
 const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
   const queryClient = useQueryClient()
-  const [attendanceReviewed, setAttendanceReviewed] = useState(false)
   const reviewQuery = useQuery({
     queryKey: ['employee-salary', 'final-review', payrollId],
     queryFn: () => useFetch(`/employee-payroll/drafts/${payrollId}/final-review`),
@@ -26,14 +24,10 @@ const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
   const review = reviewQuery.data?.data || null
   const payroll = review?.payroll || null
   const canFinalize = Boolean(review?.can_finalize)
-  const missingDates = (review?.attendance_review_days || []).filter((day) => day.issue === 'missing').map((day) => day.date)
   const incompleteDates = (review?.attendance_review_days || []).filter((day) => day.issue === 'incomplete').map((day) => day.date)
 
   const finalizeMutation = useMutation({
-    mutationFn: () => useFetchPost(`/employee-payroll/drafts/${payrollId}/finalize`, {
-      attendance_review_confirmed: missingDates.length > 0 && attendanceReviewed,
-      reviewed_missing_dates: missingDates,
-    }, { confirmationHandled: 'compact' }),
+    mutationFn: () => useFetchPost(`/employee-payroll/drafts/${payrollId}/finalize`, {}, { confirmationHandled: 'compact' }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['employee-salary'] })
       onFinalized?.(result)
@@ -80,18 +74,10 @@ const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
 
           {review?.attendance_review_days?.length ? <section className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-4">
             <div className="flex gap-3"><FiAlertTriangle className="mt-0.5 shrink-0 text-amber-700" /><div>
-              <p className="font-black text-amber-950">Attendance needs checking</p>
-              <p className="mt-1 text-sm font-semibold text-amber-900">Ask Operations to add or correct verified attendance for off-site work, then recalculate this Draft. Never invent Time In or Time Out.</p>
+              <p className="font-black text-amber-950">Incomplete attendance</p>
+              <p className="mt-1 text-sm font-semibold text-amber-900">Ask Operations to correct incomplete Time In/Out, then recalculate the Draft. Entirely missing punches already count as absences.</p>
             </div></div>
             {incompleteDates.length ? <p className="mt-3 rounded-xl bg-white p-3 text-sm font-semibold text-red-800">Incomplete Time In/Out: {incompleteDates.join(', ')}. Operations must fix these before finalization.</p> : null}
-            {missingDates.length ? <div className="mt-3 rounded-xl border border-amber-200 bg-white p-3">
-              <p className="text-sm font-bold text-amber-950">No attendance recorded: {missingDates.join(', ')}</p>
-              <p className="mt-1 text-xs font-medium text-slate-600">These days currently count as absences in this Draft. Confirm genuine absences with Operations before approval.</p>
-              <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm font-semibold text-slate-800">
-                <input type="checkbox" checked={attendanceReviewed} onChange={(event) => setAttendanceReviewed(event.target.checked)} className="mt-0.5 h-4 w-4 accent-blue-600" />
-                I checked these dates with Operations. Any remaining missing days are confirmed absences, and I approve the displayed deductions.
-              </label>
-            </div> : null}
           </section> : null}
 
           {payroll ? <div className="space-y-5">
@@ -136,7 +122,7 @@ const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
           <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700">Cancel</button>
-          <button type="button" onClick={() => finalizeMutation.mutate()} disabled={!canFinalize || (missingDates.length > 0 && !attendanceReviewed) || finalizeMutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><FiLock />{finalizeMutation.isPending ? 'Finalizing...' : 'Finalize Salary'}</button>
+          <button type="button" onClick={() => finalizeMutation.mutate()} disabled={!canFinalize || finalizeMutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><FiLock />{finalizeMutation.isPending ? 'Finalizing...' : 'Finalize Salary'}</button>
         </footer>
       </div>
     </div>
@@ -144,6 +130,7 @@ const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
 }
 
 export default FinalizePayrollModal
+
 
 
 

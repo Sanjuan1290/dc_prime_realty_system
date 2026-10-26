@@ -10,7 +10,6 @@ import {
   FiCheck,
   FiClock,
   FiExternalLink,
-  FiActivity,
   FiRefreshCw,
   FiSearch,
   FiShield,
@@ -562,7 +561,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
           {isActingAuditor && review.status === 'pending_auditor_recheck' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white">Verify Correction & Close</button><button type="button" onClick={() => setAction('recheck-reject')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Correction Still Wrong</button></> : null}
           {review?.recordUnavailableReason && !recordLink ? <p role="status" className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">{review.recordUnavailableReason}</p> : null}
           {!recordLink && !isExtraPreview && !review?.recordUnavailableReason ? <p role="status" className="w-full text-xs font-semibold text-slate-500">The current record is unavailable. Saved Before &amp; After details remain above.</p> : null}
-          {hasPermission(actor, PERMISSIONS.AUDIT_LOGS_VIEW) ? <button type="button" onClick={() => navigate(`/portal/${actor.role}/audit-logs?reviewId=${reviewId}`)} className="h-10 rounded-xl border border-slate-300 px-4 font-bold text-slate-700"><FiActivity className="mr-2 inline" />View Activity</button> : null}
+          <button type="button" onClick={() => document.getElementById('review-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="h-10 rounded-xl border border-slate-300 px-4 font-bold text-slate-700"><FiClock className="mr-2 inline" />View Review History</button>
           {isExtraPreview ? <button type="button" onClick={() => setShowExtraPreview(true)} className="h-10 rounded-xl border border-blue-300 px-4 font-black text-blue-700"><FiExternalLink className="mr-2 inline" />View Record</button> : recordLink ? <button type="button" onClick={() => navigate(recordLink)} className="h-10 rounded-xl border border-slate-300 px-4 font-black text-slate-700"><FiExternalLink className="mr-2 inline" />View Record</button> : null}
           </div>
         </section>
@@ -712,3 +711,4 @@ const ReviewCenter = () => {
 }
 
 export default ReviewCenter
+

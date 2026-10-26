@@ -21,9 +21,8 @@ export const validateAttendanceFinalReview = ({ review, attendanceReviewConfirme
       code: 'PAYROLL_ATTENDANCE_INCOMPLETE', statusCode: 409, data: review,
     });
   }
-  if (review.attendance_review_required && (attendanceReviewConfirmed !== true || !sameReviewedDates(review.attendance_review_days || [], reviewedMissingDates))) {
-    throw Object.assign(new Error('Confirm the listed missing attendance dates with Operations before finalizing salary. Add verified work hours in Attendance and recalculate the Draft first.'), {
-      code: 'PAYROLL_ATTENDANCE_REVIEW_REQUIRED', statusCode: 409, data: review,
-    });
-  }
+  // Entirely missing Time In and Time Out on a scheduled workday are already
+  // counted as absence in the payroll calculation. Do not ask for a second
+  // approval. A single missing punch still blocks finalization above.
 };
+

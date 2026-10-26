@@ -51,13 +51,9 @@ test('date lists contain only real unresolved days and are stable', () => {
   ]);
   assert.deepEqual(getPayrollAttendanceReviewDays(undefined), []);
 });
-test('approval must reference the exact missing dates', () => {
-  const review = { attendance_review_required: true, attendance_review_days: [{ date: '2026-10-14', issue: 'missing' }, { date: '2026-10-15', issue: 'incomplete' }] };
-  assert.equal(sameReviewedDates(review.attendance_review_days, ['2026-10-14']), true);
-  for (const dates of [[], ['2026-10-15'], ['2026-10-14', '2026-10-14'], null]) assert.equal(sameReviewedDates(review.attendance_review_days, dates), false);
-  assert.throws(() => validateAttendanceFinalReview({ review, attendanceReviewConfirmed: false, reviewedMissingDates: ['2026-10-14'] }), { code: 'PAYROLL_ATTENDANCE_REVIEW_REQUIRED' });
-  assert.throws(() => validateAttendanceFinalReview({ review, attendanceReviewConfirmed: true, reviewedMissingDates: ['2026-10-15'] }), { code: 'PAYROLL_ATTENDANCE_REVIEW_REQUIRED' });
-  validateAttendanceFinalReview({ review, attendanceReviewConfirmed: true, reviewedMissingDates: ['2026-10-14'] });
+test('fully missing punches already deduct as absence without a manual confirmation step', () => {
+  const review = { attendance_review_required: true, incomplete_punches_require_correction: false, attendance_review_days: [{ date: '2026-10-14', issue: 'missing' }] };
+  validateAttendanceFinalReview({ review, attendanceReviewConfirmed: false, reviewedMissingDates: [] });
 });
 test('incomplete time punches block even when accounting checks the box', () => {
   assert.throws(() => validateAttendanceFinalReview({ review: { incomplete_punches_require_correction: true }, attendanceReviewConfirmed: true, reviewedMissingDates: [] }), { code: 'PAYROLL_ATTENDANCE_INCOMPLETE' });
@@ -87,8 +83,9 @@ test('recheck happens on the server and is permission gated', () => {
   assert.match(controller, /attendanceReviewConfirmed: req\.body\?\.attendance_review_confirmed === true/);
   assert.match(controller, /reviewedMissingDates: req\.body\?\.reviewed_missing_dates/);
   assert.match(router, /post\('\/drafts\/:employeePayrollId\/finalize', requirePermission\(PERMISSIONS\.PAYROLL_FINALIZE\)/);
-  assert.match(ui, /attendance_review_confirmed/);
-  assert.match(ui, /Attendance needs checking/);
+  assert.doesNotMatch(ui, /attendance_review_confirmed/);
+  assert.doesNotMatch(ui, /Confirm genuine absences with Operations/);
+  assert.match(ui, /Incomplete attendance/);
 });
 test('new 8-hour payroll basis is also used for Final Review and preflight, not previous 10-hour clock', () => {
   const finalization = read('server/services/payrollFinalization.service.js');
@@ -96,5 +93,6 @@ test('new 8-hour payroll basis is also used for Final Review and preflight, not 
   assert.match(finalization, /paidWorkMinutesOverride: \/\^employee-salary-260days-8hours-/);
   assert.match(readiness, /paidWorkMinutesOverride: PAYROLL_PAID_WORK_MINUTES/);
 });
+
 
 

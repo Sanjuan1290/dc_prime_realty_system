@@ -266,8 +266,8 @@ export const getPayrollFinalizationReview = async (connection, payroll, today) =
   return {
     payroll,
     can_finalize: !attendanceChanged && !compensationChanged && !payrollSettingsChanged && holidayOvertimeDays.length === 0 && incompletePunchDays.length === 0,
-    attendance_review_required: attendanceReviewDays.some((day) => day.issue === 'missing'),
-    attendance_review_days: attendanceReviewDays,
+    attendance_review_required: false,
+    attendance_review_days: incompletePunchDays,
     incomplete_punches_require_correction: incompletePunchDays.length > 0,
     holiday_overtime_requires_review: holidayOvertimeDays.length > 0,
     holiday_overtime_days: holidayOvertimeDays,
@@ -347,6 +347,7 @@ export const getFinalizedAttendanceChangeStatus = async (connection, payroll, to
     current: current.payload.summary,
   };
 };
+
 
 
 

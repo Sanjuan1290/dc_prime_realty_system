@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { FiAlertCircle, FiColumns, FiList, FiLock } from 'react-icons/fi'
 import {
-  formatSnapshotValue, humanizeKey, isPlainObject, parseSnapshotValue, sameValue,
+  formatSnapshotValue, humanizeKey, isEmptyValue, isPlainObject, parseSnapshotValue, sameValue,
 } from '../../utils/reviewSnapshotFormat'
 import ReviewSnapshotDiff from './ReviewSnapshotDiff'
 import { REVIEW_FORM_TEMPLATES } from '../../utils/reviewFormTemplates'
@@ -45,11 +45,15 @@ const HistoricalField = ({ field, side, changed, opts, before, after, hide }) =>
 
 export const buildReviewFormSections = ({ before, after, entityType, labels = {}, isHiddenField }) => {
   const template = REVIEW_FORM_TEMPLATES[entityType] || { title: 'Record Details', sections: [] }
-  const availableKeys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((key)=>!neverShow(key,isHiddenField))
+  // Keep only fields actually saved with meaningful data on either side.
+  // Zero and false are retained; a value removed in After remains visible.
+  const availableKeys = [...new Set([...Object.keys(before), ...Object.keys(after)])]
+    .filter((key)=>!neverShow(key,isHiddenField) && (!isEmptyValue(before[key]) || !isEmptyValue(after[key])))
+  const available = new Set(availableKeys)
   const used = new Set()
   const sections = template.sections.map(([name, fields])=>({
     name,
-    fields: fields.filter(key => !neverShow(key,isHiddenField)).map(key=>{ used.add(key); return {key,label:labels[key]||humanizeKey(key)} }),
+    fields: fields.filter(key => available.has(key)).map(key=>{ used.add(key); return {key,label:labels[key]||humanizeKey(key)} }),
   })).filter(group=>group.fields.length)
   const remaining = availableKeys.filter(key=>!used.has(key)).map(key=>({key,label:labels[key]||humanizeKey(key)}))
   if (remaining.length) sections.push({name:template.sections.length ? 'Other Saved Details' : 'Record Details',fields:remaining})
@@ -128,3 +132,4 @@ const ReviewFormComparison = ({ beforeValue, afterValue, events = [], revision =
 }
 
 export default ReviewFormComparison
+
