@@ -40,6 +40,36 @@ export const saveOpeningBalance=(req,res)=>withTransaction(req,res,async connect
   await audit(connection,req,'Opening Balance Set',1,{start,opening,includesPropertyCollections:req.body?.includes_property_collections!==false});
   return {start_date:start,opening_balance:Number(opening)};
 });
+/** Authorized corrections keep original transactions untouched, require a reason, and
+ * record before/after settings in the existing Audit Logs. */
+export const correctOpeningBalance=(req,res)=>withTransaction(req,res,async connection=>{
+  const [rows]=await connection.query('SELECT start_date,opening_balance,includes_property_collections FROM company_finance_settings WHERE id=1 FOR UPDATE');
+  if(!rows[0]||rows[0].opening_balance===null||!rows[0].start_date)throw bad('Set the starting balance first.','FINANCE_SETUP_REQUIRED',409);
+  const before={
+    start_date:dateOnly(rows[0].start_date instanceof Date?rows[0].start_date.toISOString().slice(0,10):String(rows[0].start_date).slice(0,10)),
+    opening_balance:Number(rows[0].opening_balance),
+    includes_property_collections:Number(rows[0].includes_property_collections)===1,
+  };
+  const start=dateOnly(req.body?.start_date);
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  if(start>today)throw bad('Starting date cannot be in the future.');
+  const raw=String(req.body?.opening_balance??'').trim();
+  if(!/^\d+(?:\.\d{1,2})?$/.test(raw)||!Number.isFinite(Number(raw))||Number(raw)>99999999999999.99)throw bad('Enter a valid opening balance.');
+  if(typeof req.body?.includes_property_collections!=='boolean')throw bad('Choose whether property collections are included.');
+  const reason=String(req.body?.reason||'').trim();
+  if(reason.length<10||reason.length>500)throw bad('Explain the correction in at least 10 characters.');
+  if(req.body?.confirmed!==true)throw bad('Confirm that the new opening balance does not include payments that will now be counted again.');
+  const [earlierManual]=await connection.query(`SELECT COUNT(*) AS count FROM company_finance_transactions
+    WHERE status='posted' AND transaction_date < ?`,[start]);
+  if(Number(earlierManual[0]?.count)>0)throw bad('Starting date cannot exclude saved manual transactions. Choose an earlier date.','FINANCE_DATE_CONFLICT',409);
+  const after={start_date:start,opening_balance:Number(raw),includes_property_collections:req.body.includes_property_collections};
+  if(before.start_date===after.start_date&&before.opening_balance===after.opening_balance&&before.includes_property_collections===after.includes_property_collections)throw bad('No changes to save.');
+  await connection.query(`UPDATE company_finance_settings
+    SET start_date=?,opening_balance=?,includes_property_collections=?,set_by_user_id=?,set_at=CURRENT_TIMESTAMP WHERE id=1`,
+    [after.start_date,after.opening_balance.toFixed(2),after.includes_property_collections?1:0,req.authUser.id]);
+  await audit(connection,req,'Finance Starting Balance Corrected',1,{before,after,reason});
+  return after;
+});
 export const createCategory=(req,res)=>withTransaction(req,res,async connection=>{
   const kind=req.body?.kind;const name=String(req.body?.name||'').trim();
   if(!['income','expense'].includes(kind)||name.length<2||name.length>90)throw bad('Choose a type and enter a category name (2–90 characters).');

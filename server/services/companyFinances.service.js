@@ -101,12 +101,53 @@ export const computeCashSummary = ({openingBalance, startDate, from, to, activit
   };
 };
 
+/** Report totals are constrained by the ledger start, but reconciliation diagnostics must
+ * inspect the ENTIRE requested date range or an October 25 collection can disappear
+ * behind an October 26 setup date with no explanation. */
+export const summarizeSourceExclusions = ({rows, start, from, to, includeProperty}) => {
+  const inRange=rows.filter(row=>row.txn_date>=from&&row.txn_date<=to);
+  const before=inRange.filter(row=>row.txn_date<start);
+  const excludedProperty=inRange.filter(row=>row.source==='property'&&!includeProperty&&row.txn_date>=start);
+  const total=(items)=>pesos(items.reduce((sum,row)=>sum+cents(row.amount),0));
+  return {
+    before_start: {
+      count:before.length,
+      money_in:total(before.filter(row=>row.kind==='income')),
+      money_out:total(before.filter(row=>row.kind==='expense')),
+      property_collections:total(before.filter(row=>row.source==='property')),
+      salary_paid:total(before.filter(row=>row.source==='salary')),
+      commissions_paid:total(before.filter(row=>['commission','commission_archive','network_payout'].includes(row.source))),
+    },
+    property_excluded_by_setting:total(excludedProperty),
+    property_excluded_count:excludedProperty.length,
+  };
+};
+
+export const summarizeCashSources = ({transactions}) => {
+  const total=(filter)=>pesos(transactions.filter(filter).reduce((sum,row)=>sum+cents(row.amount),0));
+  return {
+    property_collections: total(r=>r.source==='property'),
+    other_income: total(r=>r.kind==='income'&&r.source!=='property'),
+    salary_paid: total(r=>r.source==='salary'),
+    commissions_paid: total(r=>r.source==='commission'||r.source==='commission_archive'),
+    network_payouts: total(r=>r.source==='network_payout'),
+    refunds_paid: total(r=>r.source==='refund'),
+    other_expenses: total(r=>r.kind==='expense'&&!['salary','commission','commission_archive','network_payout','refund'].includes(r.source)),
+  };
+};
+
 export const loadFinanceSummary = async (connection, {from,to}) => {
   const settings = await getFinanceSettings(connection);
   if (!settings?.start_date || settings.opening_balance===null) return {configured:false,reason:'Set the opening balance and starting date to see available cash.'};
-  const start = String(settings.start_date).slice(0,10), end=dateOnly(to), startQuery=from || start;
-  const [rows] = await connection.query(FINANCE_ACTIVITY_SQL,[start,end]);
-  const summary = computeCashSummary({openingBalance:settings.opening_balance,startDate:start,from:startQuery,to:end,activities:rows,includeProperty:Boolean(settings.includes_property_collections)});
+  const start = String(settings.start_date).slice(0,10), end=dateOnly(to), requestedFrom=dateOnly(from||start);
+  if(requestedFrom>end) throw fail('From date cannot be after To date.');
+  // Query earlier requested activity for *disclosure only*; never silently count it
+  // a second time when the saved opening balance may already include it.
+  const [rows] = await connection.query(FINANCE_ACTIVITY_SQL,[requestedFrom<start?requestedFrom:start,end]);
+  const includeProperty=Number(settings.includes_property_collections)===1;
+  const summary = computeCashSummary({openingBalance:settings.opening_balance,startDate:start,from:requestedFrom,to:end,activities:rows,includeProperty});
+  const exclusions=summarizeSourceExclusions({rows,start,from:requestedFrom,to:end,includeProperty});
+  const sources=summarizeCashSources({transactions:summary.transactions});
   const [checks] = await connection.query(`SELECT
     (SELECT COUNT(*) FROM lot_project_cancelled_sale_archives WHERE archived_at >= ? AND archived_at < DATE_ADD(?,INTERVAL 1 DAY)) AS cancelled_archives,
     (SELECT COUNT(*) FROM lot_project_payments WHERE lot_project_payment_method='Check' AND lot_project_payment_status='Verified' AND lot_project_payment_date BETWEEN ? AND ?) AS unconfirmed_checks,
@@ -115,11 +156,13 @@ export const loadFinanceSummary = async (connection, {from,to}) => {
     [start,end,start,end,start,end,start,end]);
   const check=checks[0]||{};
   const warnings=[];
+  if(exclusions.before_start.count>0) warnings.push(`${exclusions.before_start.count} transaction(s) within the selected dates are before the Finance Starting Date (${start}), including ₱${exclusions.before_start.property_collections.toFixed(2)} in property collections. They may already be included in the opening balance. Review the starting date and balance to avoid counting them twice.`);
+  if(exclusions.property_excluded_count>0) warnings.push(`Property collections of ₱${exclusions.property_excluded_by_setting.toFixed(2)} are excluded because the Include Property Collections setting is off.`);
   if(Number(check.cancelled_archives)>0) warnings.push('Cancelled sale archives contain older payment history. Confirm archived collections are included before relying on this balance.');
   if(Number(check.unconfirmed_checks)>0) warnings.push('Check payments are excluded until clearing can be verified.');
   if(Number(check.cash_advances_to_review)>0) warnings.push('Employee cash advances require manual reconciliation; request date does not prove payout date.');
   if(Number(check.refunds_to_review)>0) warnings.push('Some cancellation refunds have no recorded payment date or reference. Confirm payouts before relying on this balance.');
-  return {configured:true,start_date:start,opening_balance:Number(settings.opening_balance),...summary,
+  return {configured:true,start_date:start,opening_balance:Number(settings.opening_balance),includes_property_collections:includeProperty,exclusions,sources,...summary,
     transactions:summary.transactions.slice(0,300),total_records:summary.transactions.length,
     warnings, balance_verified:warnings.length===0};
 };

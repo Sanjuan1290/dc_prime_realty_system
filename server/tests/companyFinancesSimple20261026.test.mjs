@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {computeCashSummary, validateFinanceEntry, moneyAmount, dateOnly, FINANCE_ACTIVITY_SQL, loadFinanceSummary} from '../services/companyFinances.service.js';
+import {computeCashSummary, validateFinanceEntry, moneyAmount, dateOnly, FINANCE_ACTIVITY_SQL, loadFinanceSummary, summarizeSourceExclusions} from '../services/companyFinances.service.js';
 const entry={kind:'expense',amount:'123.45',category_id:5,description:'Office electricity',transaction_date:'2026-10-26'};
 const settings={start_date:'2026-10-01'};
 const activity=[
@@ -65,4 +65,58 @@ test('existing payroll release still follows finalized-only one-way status trans
  const service=fs.readFileSync(new URL('../services/payrollRelease.service.js',import.meta.url),'utf8');
  assert.match(service,/payroll_status IN \('finalized','corrected'\)/);
  assert.match(service,/normalized\.releaseNotes,\s*normalized\.releaseWitnessName,\s*payrollId/);
+});
+
+test('Oct 25 actual source receipts reconcile to the Cash Collected card and released payouts',()=>{
+ const actual=[
+  {reference:'property:1',txn_date:'2026-10-25',kind:'income',amount:'50000.00',source:'property'},
+  {reference:'property:2',txn_date:'2026-10-25',kind:'income',amount:'128700.00',source:'property'},
+  {reference:'property:3',txn_date:'2026-10-25',kind:'income',amount:'18869.44',source:'property'},
+  ...[6240,2496,1974.34,1769.66].map((amount,i)=>({reference:`commission:${i+1}`,txn_date:'2026-10-25',kind:'expense',amount,source:'commission'})),
+  {reference:'network:1',txn_date:'2026-10-25',kind:'expense',amount:'1560.00',source:'network_payout'},
+  {reference:'salary:1',txn_date:'2026-10-25',kind:'expense',amount:'6957.48',source:'salary'},
+ ];
+ const summary=computeCashSummary({openingBalance:0,startDate:'2026-10-25',from:'2026-10-01',to:'2026-10-31',activities:actual});
+ assert.equal(summary.money_in,197569.44);
+ assert.equal(summary.money_out,20997.48);
+ assert.equal(summary.available_balance,176571.96);
+ const excl= summarizeSourceExclusions({rows:actual,start:'2026-10-26',from:'2026-10-01',to:'2026-10-31',includeProperty:true});
+ assert.equal(excl.before_start.property_collections,197569.44);
+ assert.equal(excl.before_start.salary_paid,6957.48);
+ assert.equal(excl.before_start.commissions_paid,14040);
+ assert.equal(excl.before_start.count,9);
+});
+test('before-start and opted-out payments are shown explicitly rather than silently lost',async()=>{
+ const rows=[
+  {reference:'property:1',txn_date:'2026-10-25',kind:'income',amount:'197569.44',source:'property'},
+  {reference:'salary:1',txn_date:'2026-10-25',kind:'expense',amount:'6957.48',source:'salary'},
+  {reference:'property:2',txn_date:'2026-10-27',kind:'income',amount:'9000.00',source:'property'},
+  {reference:'manual:5',txn_date:'2026-10-27',kind:'expense',amount:'2055.00',source:'manual'},
+ ];
+ const calls=[];
+ const db={query:async(sql,params=[])=>{
+  if(sql.includes('FROM company_finance_settings'))return [[{start_date:'2026-10-26',opening_balance:'1555.00',includes_property_collections:0}]];
+  if(sql.includes('SELECT * FROM (')){calls.push(params);return [rows]}
+  return [[{cancelled_archives:0,unconfirmed_checks:0,cash_advances_to_review:0,refunds_to_review:0}]];
+ }};
+ const report=await loadFinanceSummary(db,{from:'2026-10-01',to:'2026-10-31'});
+ assert.deepEqual(calls,[['2026-10-01','2026-10-31']]);
+ assert.equal(report.money_in,0);
+ assert.equal(report.money_out,2055);
+ assert.equal(report.available_balance,-500);
+ assert.equal(report.exclusions.before_start.property_collections,197569.44);
+ assert.equal(report.exclusions.before_start.salary_paid,6957.48);
+ assert.equal(report.exclusions.property_excluded_by_setting,9000);
+ assert.equal(report.balance_verified,false);
+ assert.ok(report.warnings.some(w=>w.includes('Finance Starting Date')));
+ assert.ok(report.warnings.some(w=>w.includes('Include Property Collections')));
+});
+test('opening-balance correction is permission gated, requires an explanation and keeps audit history',()=>{
+ const controller=fs.readFileSync(new URL('../controllers/System/companyFinances.controller.js',import.meta.url),'utf8');
+ const routes=fs.readFileSync(new URL('../routers/System/companyFinances.routers.js',import.meta.url),'utf8');
+ assert.match(routes,/router\.put\('\/opening-balance',requirePermission\(PERMISSIONS\.COMPANY_FINANCES_OPENING_BALANCE\),finance\.correctOpeningBalance\)/);
+ assert.match(controller,/Finance Starting Balance Corrected/);
+ assert.match(controller,/transaction_date < \?/);
+ assert.match(controller,/req\.body\?\.confirmed!==true/);
+ assert.match(controller,/\{before,after,reason\}/);
 });

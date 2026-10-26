@@ -7,6 +7,7 @@ router.use(authenticateUser);
 router.get('/overview',requirePermission(PERMISSIONS.COMPANY_FINANCES_VIEW),finance.overview);
 router.get('/categories',requirePermission(PERMISSIONS.COMPANY_FINANCES_VIEW),finance.categories);
 router.post('/opening-balance',requirePermission(PERMISSIONS.COMPANY_FINANCES_OPENING_BALANCE),finance.saveOpeningBalance);
+router.put('/opening-balance',requirePermission(PERMISSIONS.COMPANY_FINANCES_OPENING_BALANCE),finance.correctOpeningBalance);
 router.post('/categories',requirePermission(PERMISSIONS.COMPANY_FINANCES_CATEGORIES),finance.createCategory);
 router.put('/categories/:id',requirePermission(PERMISSIONS.COMPANY_FINANCES_CATEGORIES),finance.updateCategory);
 router.post('/transactions',requirePermission(PERMISSIONS.COMPANY_FINANCES_RECORD),finance.createTransaction);
