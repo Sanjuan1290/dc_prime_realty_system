@@ -27,6 +27,28 @@ const categoryLabels = {
   company_profit: 'Network Company Profit',
 }
 
+// Keep every column readable rather than compressing 15 columns into the viewport.
+// Widths match the header and body because both use the same fixed table layout.
+const auditTableColumns = [
+  { label: 'Action Date', width: 188 },
+  { label: 'Category', width: 174 },
+  { label: 'Project', width: 155 },
+  { label: 'Account', width: 165 },
+  { label: 'Account Status', width: 150 },
+  { label: 'Unit', width: 90 },
+  { label: 'Buyer', width: 165 },
+  { label: 'Payee', width: 170 },
+  { label: 'Amount / Direction', width: 180, align: 'right' },
+  { label: 'Type / Stage', width: 185 },
+  { label: 'Method', width: 110 },
+  { label: 'Reference ID', width: 230 },
+  { label: 'Action', width: 118 },
+  { label: 'Encoded By', width: 157 },
+  { label: 'Description', width: 360 },
+]
+
+const auditCellClass = 'px-4 py-4 align-top text-left leading-5'
+
 const PaymentLogs = () => {
   const { projectSlug } = useParams()
   const [search, setSearch] = useState('')
@@ -229,15 +251,19 @@ const PaymentLogs = () => {
           <p className="mt-1 text-sm font-semibold text-slate-500">
             Showing {logs.length ? `${startIndex + 1}-${endIndex}` : '0'} of {logs.length} record(s) (latest 300 matching events).
           </p>
+          <p className="mt-1 text-xs font-medium text-slate-500">Scroll horizontally to view all columns.</p>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-[1250px] w-full divide-y divide-slate-200 text-sm">
+        <div className="overflow-x-auto overscroll-x-contain" role="region" aria-label="Payment and commission release history table" tabIndex={0}>
+          <table className="w-full min-w-[2600px] table-fixed divide-y divide-slate-200 text-sm">
+            <colgroup>
+              {auditTableColumns.map((column) => <col key={column.label} style={{ width: `${column.width}px` }} />)}
+            </colgroup>
             <thead className="bg-slate-50">
               <tr>
-                {['Action Date', 'Category', 'Project', 'Account', 'Account Status', 'Unit', 'Buyer', 'Payee', 'Amount / Direction', 'Type / Stage', 'Method', 'Reference ID', 'Action', 'Encoded By', 'Description'].map((head) => (
-                  <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">
-                    {head}
+                {auditTableColumns.map((column) => (
+                  <th key={column.label} scope="col" className={`px-4 py-3 align-middle text-xs font-black uppercase tracking-wide text-slate-500 ${column.align === 'right' ? 'text-right' : 'text-left'}`}>
+                    {column.label}
                   </th>
                 ))}
               </tr>
@@ -252,30 +278,30 @@ const PaymentLogs = () => {
 
               {!isLoading && paginatedLogs.map((log) => (
                 <tr key={log.id} className="transition hover:bg-slate-50">
-                  <td className="px-4 py-4 font-semibold text-slate-700">{log.actionAtText}</td>
-                  <td className="px-4 py-4">
-                    <span className={`inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs font-black ring-1 ${log.category === 'company_profit' ? 'bg-indigo-50 text-indigo-700 ring-indigo-100' : log.category === 'seller_commission' ? 'bg-violet-50 text-violet-700 ring-violet-100' : 'bg-sky-50 text-sky-700 ring-sky-100'}`}>
+                  <td className={`${auditCellClass} font-semibold text-slate-700 break-normal`}>{log.actionAtText}</td>
+                  <td className={auditCellClass}>
+                    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-black ring-1 ${log.category === 'company_profit' ? 'bg-indigo-50 text-indigo-700 ring-indigo-100' : log.category === 'seller_commission' ? 'bg-violet-50 text-violet-700 ring-violet-100' : 'bg-sky-50 text-sky-700 ring-sky-100'}`}>
                       {categoryLabels[log.category] || 'Buyer Payment'}
                     </span>
                   </td>
-                  <td className="px-4 py-4 font-semibold text-slate-700">{log.project}</td>
-                  <td className="px-4 py-4 font-mono font-black text-slate-900">{log.accountReference}</td>
-                  <td className="px-4 py-4 font-semibold capitalize text-slate-700">{String(log.accountStatus || '-').replaceAll('_', ' ')}</td>
-                  <td className="px-4 py-4 font-black text-blue-700">{log.unit}</td>
-                  <td className="px-4 py-4 font-black text-slate-950">{log.buyer}</td>
-                  <td className="px-4 py-4 font-semibold text-slate-700">{log.payee || '-'}</td>
-                  <td className="px-4 py-4">
-                    <p className="font-black text-slate-950">{money(log.amount)}</p>
+                  <td className={`${auditCellClass} break-words font-semibold text-slate-700`}>{log.project}</td>
+                  <td className={`${auditCellClass} whitespace-nowrap font-mono text-xs font-bold text-slate-900`}>{log.accountReference}</td>
+                  <td className={`${auditCellClass} font-semibold capitalize text-slate-700`}>{String(log.accountStatus || '-').replaceAll('_', ' ')}</td>
+                  <td className={`${auditCellClass} whitespace-nowrap font-bold text-blue-700`}>{log.unit}</td>
+                  <td className={`${auditCellClass} break-words font-bold text-slate-950`}>{log.buyer}</td>
+                  <td className={`${auditCellClass} break-words font-semibold text-slate-700`}>{log.payee || '-'}</td>
+                  <td className="px-4 py-4 align-top text-right tabular-nums leading-5">
+                    <p className="whitespace-nowrap font-black text-slate-950">{money(log.amount)}</p>
                     <p className={`mt-1 text-[10px] font-black uppercase tracking-wide ${log.direction === 'outgoing' ? 'text-violet-700' : log.direction === 'incoming' ? 'text-emerald-700' : 'text-slate-500'}`}>
                       {log.direction === 'outgoing' ? 'Outgoing payout' : 'Buyer payment activity'}
                     </p>
                   </td>
-                  <td className="px-4 py-4 font-semibold text-slate-700">{log.paymentType}</td>
-                  <td className="px-4 py-4 font-semibold text-slate-700">{log.paymentMethod}</td>
-                  <td className="px-4 py-4 font-semibold text-slate-700">{log.referenceId}</td>
-                  <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black ring-1 ${actionTone(log.action)}`}>{log.actionLabel}</span></td>
-                  <td className="px-4 py-4 font-semibold text-slate-700">{log.encodedBy}</td>
-                  <td className="px-4 py-4 font-semibold text-slate-600">{log.actionDescription}</td>
+                  <td className={`${auditCellClass} break-words font-semibold text-slate-700`}>{log.paymentType}</td>
+                  <td className={`${auditCellClass} break-words font-semibold text-slate-700`}>{log.paymentMethod}</td>
+                  <td className={`${auditCellClass} break-words font-mono text-xs font-semibold text-slate-700`}>{log.referenceId}</td>
+                  <td className={auditCellClass}><span className={`inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-black ring-1 ${actionTone(log.action)}`}>{log.actionLabel}</span></td>
+                  <td className={`${auditCellClass} break-words font-semibold text-slate-700`}>{log.encodedBy}</td>
+                  <td className={`${auditCellClass} break-words font-semibold text-slate-600`}>{log.actionDescription}</td>
                 </tr>
               ))}
 
@@ -335,6 +361,7 @@ const PaymentLogs = () => {
 }
 
 export default PaymentLogs
+
 
 
 
