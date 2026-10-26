@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiEdit2, FiPlus, FiTag, FiAlertTriangle, FiRefreshCw, FiTrash2, FiDownload } from 'react-icons/fi'
+import { FiEdit2, FiPlus, FiTag, FiAlertTriangle, FiRefreshCw, FiTrash2, FiDownload, FiCalendar } from 'react-icons/fi'
 import { useFetch, useFetchBlob, useFetchPost, useFetchPut } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { hasPermission, PERMISSIONS } from '../../config/permissions'
 import StatusAlert from '../../components/Shared/StatusAlert'
+import { financeRangeOptions, getFinancePresetRange } from './companyFinanceDateRanges'
 
 const php = (value) => new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(Number(value || 0))
 const today = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
@@ -20,8 +21,9 @@ export default function CompanyFinances(){
   const canRecord=hasPermission(user,PERMISSIONS.COMPANY_FINANCES_RECORD)
   const canEdit=hasPermission(user,PERMISSIONS.COMPANY_FINANCES_EDIT)
   const canCategories=hasPermission(user,PERMISSIONS.COMPANY_FINANCES_CATEGORIES)
-  const [from,setFrom]=useState(()=>`${today().slice(0,7)}-01`)
-  const [to,setTo]=useState(today)
+  const [dateRange,setDateRange]=useState('this_month')
+  const [from,setFrom]=useState(()=>getFinancePresetRange('this_month',today()).from)
+  const [to,setTo]=useState(()=>getFinancePresetRange('this_month',today()).to)
   const [tab,setTab]=useState('transactions')
   const [page,setPage]=useState(1)
   const [exporting,setExporting]=useState(false)
@@ -34,7 +36,7 @@ export default function CompanyFinances(){
   const [newCategoryName,setNewCategoryName]=useState('')
   const [voidId,setVoidId]=useState(null)
   const [voidReason,setVoidReason]=useState('')
-  const finance=useQuery({queryKey:['company-finances',from,to,page],queryFn:()=>useFetch(`/company-finances/overview?${new URLSearchParams({from,to,page:String(page)})}`),enabled:!!user&&from<=to})
+  const finance=useQuery({queryKey:['company-finances',from,to,page],queryFn:()=>useFetch(`/company-finances/overview?${new URLSearchParams({from,to,page:String(page)})}`),enabled:!!user&&Boolean(from&&to)&&from<=to})
   const categories=useQuery({queryKey:['company-finance-categories'],queryFn:()=>useFetch('/company-finances/categories'),enabled:!!user})
   const data=finance.data?.data
   const list=categories.data?.data||[]
@@ -66,6 +68,14 @@ export default function CompanyFinances(){
   }
   const pageInfo=data?.page_size?data:{page:1,page_size:100,total_pages:1,range_start:0,range_end:0,total_records:0}
   const changeDate=(setter,value)=>{setPage(1);setter(value)}
+  const changeRange=(value)=>{
+    setDateRange(value)
+    setPage(1)
+    if(value==='custom') return // Keep displayed dates as a starting point for editing.
+    const next=getFinancePresetRange(value,today())
+    if(next){setFrom(next.from);setTo(next.to)}
+  }
+  const isCustomRange=dateRange==='custom'
   return <main className="mx-auto max-w-7xl space-y-5 pb-10">
     <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
       <div><p className="text-xs font-bold uppercase tracking-wider text-blue-600">D&C Prime Realty</p><h1 className="text-2xl font-black text-slate-950">Company Finances</h1><p className="mt-1 text-sm text-slate-600">Money received, money spent, and the remaining balance. No bank connection needed.</p></div>
@@ -73,7 +83,32 @@ export default function CompanyFinances(){
     </header>
     {error?<StatusAlert type="error" message={error}/>:null}
     {finance.isError?<StatusAlert type="error" message={finance.error?.message||'Unable to load finances.'}/>:null}
-    <Card><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><label><Label>From</Label><input aria-label="From date" type="date" value={from} onChange={e=>changeDate(setFrom,e.target.value)} className={field}/></label><label><Label>To</Label><input aria-label="To date" type="date" value={to} onChange={e=>changeDate(setTo,e.target.value)} className={field}/></label><div className="flex items-end"><button onClick={()=>{setPage(1);setFrom(`${today().slice(0,7)}-01`);setTo(today())}} className={`${btn} w-full bg-slate-100 text-slate-700`}>This Month</button></div></div>{from>to?<p className="mt-2 text-sm font-semibold text-red-700">From date cannot be after To date.</p>:null}</Card>
+    <Card>
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-black text-slate-950"><FiCalendar /> Report Date Filter</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Preset ranges cover complete calendar months. Custom lets you choose exact start and end dates.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[620px]">
+          <label className="grid gap-1">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Range</span>
+            <select aria-label="Date range" value={dateRange} onChange={e=>changeRange(e.target.value)} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50">
+              {financeRangeOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">From Date</span>
+            <input aria-label="From date" type="date" value={from} max={isCustomRange?(to||undefined):undefined} onChange={e=>changeDate(setFrom,e.target.value)} disabled={!isCustomRange} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"/>
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">To Date</span>
+            <input aria-label="To date" type="date" value={to} min={isCustomRange?(from||undefined):undefined} onChange={e=>changeDate(setTo,e.target.value)} disabled={!isCustomRange} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"/>
+          </label>
+        </div>
+      </div>
+      {!from||!to?<p className="mt-3 text-sm font-semibold text-red-700">Choose both From and To dates.</p>:null}
+      {from&&to&&from>to?<p className="mt-3 text-sm font-semibold text-red-700">From date cannot be after To date.</p>:null}
+    </Card>
     {finance.isLoading?<StatusAlert type="loading" message="Loading transactions…"/>:null}
     {data?<>
       <div className="grid gap-3 sm:grid-cols-3"><Card className="sm:col-span-3 lg:col-span-1"><p className="text-sm font-semibold text-slate-500">Available Balance</p><p className="mt-1 text-3xl font-black text-slate-900">{data.balance_verified?php(data.available_balance):'Needs Review'}</p><p className="mt-2 text-xs text-slate-500">As of {to} · Calculated from ₱0.00 using recorded transactions.</p>{!data.balance_verified?<p className="mt-1 text-xs font-bold text-amber-700">Some source records need reconciliation.</p>:null}</Card><Card><p className="text-sm font-semibold text-slate-500">Money In</p><p className="mt-1 text-2xl font-black text-emerald-700">{php(data.money_in)}</p><p className="mt-2 text-xs text-slate-500">For selected dates</p></Card><Card><p className="text-sm font-semibold text-slate-500">Money Out</p><p className="mt-1 text-2xl font-black text-rose-700">{php(data.money_out)}</p><p className="mt-2 text-xs text-slate-500">For selected dates</p></Card></div>
@@ -137,3 +172,4 @@ export default function CompanyFinances(){
     {voidId?<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4" role="dialog" aria-modal="true"><div className="w-full max-w-md space-y-4 rounded-2xl bg-white p-5"><h2 className="text-lg font-black">Void this transaction?</h2><p className="text-sm text-slate-600">The record will remain in audit history, but will no longer count toward totals.</p><label className="block"><Label>Reason *</Label><textarea className={field} required minLength={5} maxLength={500} value={voidReason} onChange={e=>setVoidReason(e.target.value)} placeholder="Why is this transaction incorrect?"/></label><div className="flex justify-end gap-2"><button onClick={()=>setVoidId(null)} className={`${btn} bg-slate-100`}>Cancel</button><button disabled={voidReason.trim().length<5||mutation.isPending} onClick={()=>mutation.mutate({path:`/company-finances/transactions/${voidId}/void`,body:{reason:voidReason}})} className={`${btn} bg-red-600 text-white`}>Void Transaction</button></div></div></div>:null}
   </main>
 }
+
