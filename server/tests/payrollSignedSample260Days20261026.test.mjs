@@ -22,7 +22,7 @@ test('a previous 10-hour attendance setting cannot change the newly approved 8-h
   assert.equal(rates.hourlyRate, 86.54)
 })
 
-test('new payroll absence uses 480 minutes; capped worked time also uses 480 minutes', () => {
+test('legacy 8-hour attendance remains supported without changing the hourly rate calculation', () => {
   const schedule = { scheduledTimeIn: '09:00:00', scheduledTimeOut: '20:00:00', breakStart: '12:00:00', breakMinutes: 60, regularWorkingMinutes: 480, lateAfter: '09:00:00' }
   const rows = [
     calculateAttendancePayrollRow({ date: '2026-10-01', attendance: { actual_time_in: '09:00:00', actual_time_out: '20:00:00' }, restDays: [], daySetting: { day_type: 'regular' }, schedule }),
@@ -35,11 +35,11 @@ test('new payroll absence uses 480 minutes; capped worked time also uses 480 min
   assert.equal(summary.tardinessAbsenceMinutes, 480)
 })
 
-test('draft generation explicitly applies the 8-hour override; Attendance master clock stays unchanged', () => {
+test('new drafts use the 10-hour attendance clock and 8-hour salary rate divisor', () => {
   const payroll = readFileSync(new URL('../services/employeePayroll.service.js', import.meta.url), 'utf8')
   const attendance = readFileSync(new URL('../services/payrollAttendance.service.js', import.meta.url), 'utf8')
-  assert.match(payroll, /paidWorkMinutesOverride: PAYROLL_PAID_WORK_MINUTES/)
-  assert.match(payroll, /employee-salary-260days-8hours-night-v2/)
+  assert.doesNotMatch(payroll, /paidWorkMinutesOverride: PAYROLL_PAID_WORK_MINUTES/)
+  assert.match(payroll, /employee-salary-260days-compressed-shift-v3/)
   assert.match(attendance, /paidWorkMinutesOverride \?\? runtime\.regularWorkingMinutes/)
   assert.match(attendance, /regularWorkingMinutes: schedule\.regularWorkingMinutes/)
 })
@@ -53,3 +53,4 @@ test('previous released payroll values remain visible exactly as saved', () => {
   assert.equal(recent.annualDays, 260)
   assert.equal(recent.workHours, 8)
 })
+

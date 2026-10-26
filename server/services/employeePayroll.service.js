@@ -1,7 +1,7 @@
 import { findUnsupportedHolidayOvertime, holidayOvertimeWarning } from './payrollHolidayOvertimeGuard.service.js';
 import { buildEmployeeNameSql, dateOnly } from '../controllers/System/Employees/employeeModule.shared.js';
 import { ensureAttendanceLiteSchema, getManilaDateTime } from '../controllers/System/Employees/attendanceLite.shared.js';
-import { calculateDraftPayrollMoney, evaluateAttendanceBonus, PAYROLL_PAID_WORK_MINUTES } from './payrollCalculation.service.js';
+import { calculateDraftPayrollMoney, evaluateAttendanceBonus } from './payrollCalculation.service.js';
 import { getPayrollAttendanceSummary } from './payrollAttendance.service.js';
 import { getEffectiveCompensationForPeriod } from './payrollCompensation.service.js';
 import { clampPayrollAttendanceThrough, payrollPeriodFromDates, resolvePayrollPeriod, payrollPayday } from './payrollPeriod.service.js';
@@ -9,7 +9,7 @@ import { getPayrollSettingsSnapshot } from './payrollSettings.service.js';
 import { getEmployeeRestDaysAsOf } from './employeeRestDay.service.js';
 import { computeNewHireWorkdayFraction } from './payrollNewHireProration.service.js';
 
-export const PAYROLL_CALCULATION_VERSION = 'employee-salary-260days-8hours-night-v2';
+export const PAYROLL_CALCULATION_VERSION = 'employee-salary-260days-compressed-shift-v3';
 let payrollSchemaReady = false;
 
 const parseJson = (value, fallback = null) => {
@@ -465,8 +465,9 @@ export const calculateAndStoreDraftPayroll = async (connection, {
   }
   // Only Attendance on/after the actual hire date can affect first-payroll money.
   const attendance = await getPayrollAttendanceSummary(connection, {
+    // A compressed schedule uses the full assigned shift as the regular workday.
+    // PAYROLL_PAID_WORK_MINUTES (8h) is only the rate/divisor basis.
     employeeId, dateFrom: partialStart || normalizedPeriod.periodStart, dateTo: attendanceThrough,
-    paidWorkMinutesOverride: PAYROLL_PAID_WORK_MINUTES,
   });
   const eligibility = partialStart
     ? computeNewHireWorkdayFraction({
@@ -560,7 +561,7 @@ export const calculateAndStoreDraftPayroll = async (connection, {
       time_out: row.timeOut,
       scheduled_day: row.scheduledDay,
       absence: row.absence,
-      // Keep actual shift duration separate from the approved 8-hour payroll cap.
+      // Preserve actual worked minutes alongside regular shift hours for the receipt.
       // Store these values at draft creation so the receipt never needs live attendance.
       total_worked_minutes: Math.round(Number(row.totalWorkedSeconds || 0) / 60),
       scheduled_attendance_minutes: row.scheduledDay ? Number(attendance.schedule.attendanceWorkingMinutes || attendance.schedule.regularWorkingMinutes) : 0,

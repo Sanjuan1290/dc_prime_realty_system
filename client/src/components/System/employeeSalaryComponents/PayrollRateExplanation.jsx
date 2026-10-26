@@ -25,8 +25,9 @@ const PayrollRateExplanation = ({ payroll }) => {
       </div>
       <div className="rounded-xl border border-blue-100 bg-white p-3">
         <p className="text-xs font-black text-slate-700">Hourly Rate</p>
-        <p className="mt-1 text-xs leading-5 text-slate-600">{details.hourlyMatchesDaily ? <>{money(details.daily)} ÷ {formatNumber(details.workHours)} paid hours</> : <>Saved hourly rate for this payroll</>}</p>
+        <p className="mt-1 text-xs leading-5 text-slate-600">{details.hourlyMatchesDaily ? <>{money(details.daily)} ÷ {formatNumber(details.hourlyBasisHours)} rate-basis hours</> : <>Saved hourly rate for this payroll</>}</p>
         <p className="mt-2 text-sm font-black text-slate-950">= {money(details.hourly)} per hour</p>
+        {details.workHours > details.hourlyBasisHours ? <p className="mt-1 text-[11px] font-semibold text-blue-800">Attendance shift: {formatNumber(details.workHours)} hours/day (compressed schedule). The hourly pay divisor remains {formatNumber(details.hourlyBasisHours)} hours.</p> : null}
       </div>
       <div className="rounded-xl border border-blue-100 bg-white p-3">
         <p className="text-xs font-black text-slate-700">Late / Absent Deduction</p>
@@ -39,3 +40,4 @@ const PayrollRateExplanation = ({ payroll }) => {
 }
 
 export default PayrollRateExplanation
+

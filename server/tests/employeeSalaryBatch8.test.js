@@ -55,13 +55,14 @@ test('formal correction is Finalized-only, blocks Released payroll, and requires
   assert.match(correctionService, /Correction authorization requires an authenticated user/)
 })
 
-test('correction Final Double-Check uses a review hash so stale proposed values cannot be approved', () => {
+test('compact salary correction retains review hash and secure audit history without Before/After confirmation step', () => {
   assert.match(correctionService, /const reviewHash = stableHash/)
   assert.match(correctionService, /PAYROLL_CORRECTION_REVIEW_STALE/)
-  assert.match(correctionService, /Reopen Salary Correction and review the latest Before vs After values/)
-  assert.match(correctionModal, /Final Double-Check — Before vs After/)
+  assert.match(correctionService, /Reopen Salary Correction and check the updated amount/)
+  assert.match(correctionModal, /Update Finalized Salary/)
   assert.match(correctionModal, /review_hash: review\.review_hash/)
-  assert.match(correctionModal, /Final Double-Check confirmed/)
+  assert.match(correctionModal, /Save Salary Correction/)
+  assert.doesNotMatch(correctionModal, /Final Double-Check|Before vs After|setConfirmed/)
 })
 
 test('correction preserves the prior official snapshot in the correction table before replacing active corrected snapshot', () => {
@@ -111,5 +112,6 @@ test('Corrected payroll remains official and can still be released, while Releas
   assert.match(salaryDetail, /canRelease && \['finalized', 'corrected'\]\.includes\(payroll\?\.payroll_status\)/)
   assert.match(correctionService, /RELEASED_PAYROLL_CORRECTION_BLOCKED/)
 })
+
 
 

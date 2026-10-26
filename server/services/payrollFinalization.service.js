@@ -84,11 +84,12 @@ const buildLiveAttendance = async (connection, payroll, today) => {
     employeeId: payroll.employee_id,
     dateFrom: payroll.period_start,
     dateTo: attendanceThrough,
-    // New payroll uses 8 paid hours; historical payroll keeps its original clock basis.
+    // Only legacy 8-hour-capped records use the old clock basis when verifying
+    // their original fingerprint. New compressed-shift records use the full shift.
     paidWorkMinutesOverride: /^employee-salary-260days-8hours-/.test(String(payroll.calculation_version || '')) ? PAYROLL_PAID_WORK_MINUTES : null,
     // Previous payroll versions used the saved night seconds; do not make
     // unchanged attendance appear edited merely because this engine was upgraded.
-    nightDifferentialMode: /^employee-salary-260days-8hours-night-/.test(String(payroll.calculation_version || '')) ? 'automatic' : 'legacy',
+    nightDifferentialMode: /^(employee-salary-260days-8hours-night-|employee-salary-260days-compressed-shift-)/.test(String(payroll.calculation_version || '')) ? 'automatic' : 'legacy',
   });
   const payload = buildPayrollAttendanceFingerprintPayload({
     attendanceCalculatedThrough: attendanceThrough,

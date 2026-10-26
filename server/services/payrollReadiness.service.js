@@ -2,7 +2,7 @@ import { findUnsupportedHolidayOvertime, holidayOvertimeWarning } from './payrol
 /** Read-only preflight for Employee Salary. No payroll or Attendance rows are written. */
 import { getEffectiveCompensationForPeriod } from './payrollCompensation.service.js';
 import { getPayrollAttendanceSummary } from './payrollAttendance.service.js';
-import { calculateDraftPayrollMoney, PAYROLL_PAID_WORK_MINUTES } from './payrollCalculation.service.js';
+import { calculateDraftPayrollMoney } from './payrollCalculation.service.js';
 import { clampPayrollAttendanceThrough } from './payrollPeriod.service.js';
 import { getEmployeeRestDaysAsOf } from './employeeRestDay.service.js';
 import { getPayrollAttendanceReviewDays } from './payrollAttendanceReview.service.js';
@@ -80,7 +80,7 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
   let attendance = null;
   try {
     const through = clampPayrollAttendanceThrough({ ...period, today });
-    attendance = await getPayrollAttendanceSummary(connection, { employeeId: employee.employee_id, dateFrom: compensation?.payroll_new_hire_start || period.periodStart, dateTo: through, paidWorkMinutesOverride: PAYROLL_PAID_WORK_MINUTES });
+    attendance = await getPayrollAttendanceSummary(connection, { employeeId: employee.employee_id, dateFrom: compensation?.payroll_new_hire_start || period.periodStart, dateTo: through, });
     if (Number(attendance.schedule.regularWorkingMinutes) <= 0) {
       issues.push({ code: 'INVALID_REGULAR_WORKING_MINUTES', message: 'Set Regular Working Minutes greater than zero in Attendance Settings.' });
     }
@@ -152,6 +152,7 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
     attendance: { recorded_days: recordedDays, incomplete_days: incompleteDays, checked_days: attendance?.rows?.length || 0, rest_days: restDays, review_days: reviewDays },
   };
 };
+
 
 
 

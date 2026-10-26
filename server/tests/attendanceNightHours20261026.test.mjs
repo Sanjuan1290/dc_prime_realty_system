@@ -93,8 +93,8 @@ test('older finalized payroll versions can compare legacy saved night seconds', 
   assert.equal(row('22:00', '06:00').nightDifferentialSeconds, 28800);
   const finalization = read('server/services/payrollFinalization.service.js');
   const payrollService = read('server/services/employeePayroll.service.js');
-  assert.match(finalization, /nightDifferentialMode: \/\^employee-salary-260days-8hours-night-/);
-  assert.match(payrollService, /employee-salary-260days-8hours-night-v2/);
+  assert.match(finalization, /nightDifferentialMode: \/\^\(employee-salary-260days-8hours-night-/);
+  assert.match(payrollService, /employee-salary-260days-compressed-shift-v3/);
 });
 
 test('UI shows Timed In and next-day Time Out, preserves status filter wire code', () => {
@@ -126,3 +126,4 @@ test('drafts persist night minutes per date while finalization fingerprints reta
   assert.match(salaryView, /Night Hrs/);
   assert.match(salaryView, /formatPayrollDuration\(row\.night_differential_minutes\)/);
 });
+

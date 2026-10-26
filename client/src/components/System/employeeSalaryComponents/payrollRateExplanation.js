@@ -22,9 +22,13 @@ export const explainPayrollRates = (payroll = {}) => {
 
   const annualDays = findAnnualDayFactor(monthly, daily)
   const workHours = paidMinutes / 60
+  // 4 x 10-hour compressed shifts and 5 x 8-hour shifts share the same
+  // 40-hour weekly pay. The saved hourly rate still uses an 8-hour divisor.
+  // For older 10-hour rate-basis records, retain their actual historic divisor.
+  const hourlyBasisHours = Math.abs(roundMoney(daily / 8) - hourly) <= 0.01 ? 8 : workHours
   const deductionFromSavedRate = roundMoney((missedMinutes / 60) * hourly)
   const matchesRecordedDeduction = Math.abs(deductionFromSavedRate - recordedDeduction) <= 0.01
-  const hourlyMatchesDaily = Math.abs(roundMoney(daily / workHours) - hourly) <= 0.01
+  const hourlyMatchesDaily = Math.abs(roundMoney(daily / hourlyBasisHours) - hourly) <= 0.01
 
   return {
     monthly,
@@ -32,6 +36,7 @@ export const explainPayrollRates = (payroll = {}) => {
     hourly,
     annualDays,
     workHours,
+    hourlyBasisHours,
     missedMinutes,
     recordedDeduction,
     deductionFromSavedRate,
@@ -39,3 +44,4 @@ export const explainPayrollRates = (payroll = {}) => {
     hourlyMatchesDaily,
   }
 }
+

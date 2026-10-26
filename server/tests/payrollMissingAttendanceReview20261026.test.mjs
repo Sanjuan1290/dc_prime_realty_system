@@ -87,11 +87,11 @@ test('recheck happens on the server and is permission gated', () => {
   assert.doesNotMatch(ui, /Confirm genuine absences with Operations/);
   assert.match(ui, /Incomplete attendance/);
 });
-test('new 8-hour payroll basis is also used for Final Review and preflight, not previous 10-hour clock', () => {
+test('new compressed shift uses 10-hour attendance for Final Review and preflight with 8-hour salary divisor', () => {
   const finalization = read('server/services/payrollFinalization.service.js');
   const readiness = read('server/services/payrollReadiness.service.js');
   assert.match(finalization, /paidWorkMinutesOverride: \/\^employee-salary-260days-8hours-/);
-  assert.match(readiness, /paidWorkMinutesOverride: PAYROLL_PAID_WORK_MINUTES/);
+  assert.doesNotMatch(readiness, /paidWorkMinutesOverride: PAYROLL_PAID_WORK_MINUTES/);
 });
 
 

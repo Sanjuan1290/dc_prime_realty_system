@@ -293,7 +293,7 @@ export const applyPayrollCorrection = async (connection, {
   }
   if (!reviewHash || String(reviewHash) !== review.review_hash) {
     throw payrollError(
-      'The correction inputs changed after Final Double-Check. Reopen Salary Correction and review the latest Before vs After values.',
+      'Attendance or salary data changed while this correction was open. Reopen Salary Correction and check the updated amount.',
       'PAYROLL_CORRECTION_REVIEW_STALE',
       409,
       review
@@ -338,6 +338,7 @@ export const applyPayrollCorrection = async (connection, {
     review,
   };
 };
+
 
 
 
