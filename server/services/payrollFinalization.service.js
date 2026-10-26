@@ -1,6 +1,8 @@
 import { findUnsupportedHolidayOvertime } from './payrollHolidayOvertimeGuard.service.js';
+import { getPayrollAttendanceReviewDays, validateAttendanceFinalReview } from './payrollAttendanceReview.service.js';
 import { createHash } from 'node:crypto';
 import { getPayrollAttendanceSummary } from './payrollAttendance.service.js';
+import { PAYROLL_PAID_WORK_MINUTES } from './payrollCalculation.service.js';
 import { getEffectiveCompensationForPeriod } from './payrollCompensation.service.js';
 import { clampPayrollAttendanceThrough } from './payrollPeriod.service.js';
 import { getPayrollSettingsSnapshot, payrollSettingsEqual } from './payrollSettings.service.js';
@@ -82,6 +84,8 @@ const buildLiveAttendance = async (connection, payroll, today) => {
     employeeId: payroll.employee_id,
     dateFrom: payroll.period_start,
     dateTo: attendanceThrough,
+    // New payroll uses 8 paid hours; historical payroll keeps its original clock basis.
+    paidWorkMinutesOverride: /^employee-salary-260days-8hours-/.test(String(payroll.calculation_version || '')) ? PAYROLL_PAID_WORK_MINUTES : null,
   });
   const payload = buildPayrollAttendanceFingerprintPayload({
     attendanceCalculatedThrough: attendanceThrough,
@@ -250,9 +254,14 @@ export const getPayrollFinalizationReview = async (connection, payroll, today) =
   const compensationChanged = !sameEffectiveCompensation(payroll, effectiveCompensation);
 
   const holidayOvertimeDays = findUnsupportedHolidayOvertime(payroll.attendance_breakdown || []);
+  const attendanceReviewDays = getPayrollAttendanceReviewDays(liveAttendance.attendance.rows);
+  const incompletePunchDays = attendanceReviewDays.filter((day) => day.issue === 'incomplete');
   return {
     payroll,
-    can_finalize: !attendanceChanged && !compensationChanged && !payrollSettingsChanged && holidayOvertimeDays.length === 0,
+    can_finalize: !attendanceChanged && !compensationChanged && !payrollSettingsChanged && holidayOvertimeDays.length === 0 && incompletePunchDays.length === 0,
+    attendance_review_required: attendanceReviewDays.some((day) => day.issue === 'missing'),
+    attendance_review_days: attendanceReviewDays,
+    incomplete_punches_require_correction: incompletePunchDays.length > 0,
     holiday_overtime_requires_review: holidayOvertimeDays.length > 0,
     holiday_overtime_days: holidayOvertimeDays,
     attendance_changed_since_draft: attendanceChanged,
@@ -271,9 +280,12 @@ export const getPayrollFinalizationReview = async (connection, payroll, today) =
   };
 };
 
-export const finalizePayroll = async (connection, { payroll, finalizedByUserId, today }) => {
+export const finalizePayroll = async (connection, { payroll, finalizedByUserId, today, attendanceReviewConfirmed = false, reviewedMissingDates = [] }) => {
   const review = await getPayrollFinalizationReview(connection, payroll, today);
   if (!review.can_finalize) {
+    if (review.incomplete_punches_require_correction) {
+      validateAttendanceFinalReview({ review, attendanceReviewConfirmed, reviewedMissingDates });
+    }
     if (review.holiday_overtime_requires_review) {
       throw payrollError('Holiday overtime needs review. Separate holiday overtime pay is not available yet, so this Draft cannot be finalized.', 'PAYROLL_HOLIDAY_OVERTIME_REVIEW_REQUIRED', 409, review);
     }
@@ -284,6 +296,8 @@ export const finalizePayroll = async (connection, { payroll, finalizedByUserId, 
       review
     );
   }
+
+  validateAttendanceFinalReview({ review, attendanceReviewConfirmed, reviewedMissingDates });
 
   const snapshot = buildFinalizedPayrollSnapshot(payroll);
   await connection.query(`

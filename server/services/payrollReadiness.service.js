@@ -2,9 +2,10 @@ import { findUnsupportedHolidayOvertime, holidayOvertimeWarning } from './payrol
 /** Read-only preflight for Employee Salary. No payroll or Attendance rows are written. */
 import { getEffectiveCompensationForPeriod } from './payrollCompensation.service.js';
 import { getPayrollAttendanceSummary } from './payrollAttendance.service.js';
-import { calculateDraftPayrollMoney } from './payrollCalculation.service.js';
+import { calculateDraftPayrollMoney, PAYROLL_PAID_WORK_MINUTES } from './payrollCalculation.service.js';
 import { clampPayrollAttendanceThrough } from './payrollPeriod.service.js';
 import { getEmployeeRestDaysAsOf } from './employeeRestDay.service.js';
+import { getPayrollAttendanceReviewDays } from './payrollAttendanceReview.service.js';
 
 const valuePresent = (value) => value !== null && value !== undefined && String(value).trim() !== '';
 
@@ -79,7 +80,7 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
   let attendance = null;
   try {
     const through = clampPayrollAttendanceThrough({ ...period, today });
-    attendance = await getPayrollAttendanceSummary(connection, { employeeId: employee.employee_id, dateFrom: compensation?.payroll_new_hire_start || period.periodStart, dateTo: through });
+    attendance = await getPayrollAttendanceSummary(connection, { employeeId: employee.employee_id, dateFrom: compensation?.payroll_new_hire_start || period.periodStart, dateTo: through, paidWorkMinutesOverride: PAYROLL_PAID_WORK_MINUTES });
     if (Number(attendance.schedule.regularWorkingMinutes) <= 0) {
       issues.push({ code: 'INVALID_REGULAR_WORKING_MINUTES', message: 'Set Regular Working Minutes greater than zero in Attendance Settings.' });
     }
@@ -124,8 +125,11 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
   if (attendance?.summary?.nightDifferentialMinutes && settings.night_differential_percentage === null) premiumMissing.push('Night Differential');
   checks.push({ field: 'premium_rates', label: 'Premium pay rates for recorded hours', source: 'Payroll Settings', required: false, ok: premiumMissing.length === 0, value: [...new Set(premiumMissing)] });
   if (premiumMissing.length) warnings.push(`Payroll Settings not configured for recorded premium hours: ${[...new Set(premiumMissing)].join(', ')}. Draft premium pay may be ₱0.00.`);
-  if (recordedDays === 0 && attendance?.rows?.length) warnings.push('No Time In/Out entries were found in this period. Unrecorded scheduled days may be treated as absences.');
-  if (incompleteDays) warnings.push(`${incompleteDays} Attendance day(s) have Time In but no Time Out. Verify automatic/manual timeout first.`);
+  const reviewDays = getPayrollAttendanceReviewDays(attendance?.rows);
+  const missingDates = reviewDays.filter((day) => day.issue === 'missing').map((day) => day.date);
+  const incompleteDates = reviewDays.filter((day) => day.issue === 'incomplete').map((day) => day.date);
+  if (missingDates.length) warnings.push(`Attendance needs checking: No verified Time In/Out on ${missingDates.join(', ')}. Operations must enter verified fieldwork hours or confirm genuine absences before Final Review.`);
+  if (incompleteDates.length) warnings.push(`Attendance needs correction: Incomplete Time In/Out on ${incompleteDates.join(', ')}. Operations must correct these before Final Review.`);
   const holidayIssue = holidayOvertimeWarning(findUnsupportedHolidayOvertime(attendance?.rows || []));
   if (holidayIssue) warnings.push(holidayIssue);
 
@@ -135,7 +139,7 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
     warnings,
     checks,
     compensation: compensation ? { effective_from: compensation.effective_from, effective_to: compensation.effective_to, monthly_basic_salary: Number(compensation.monthly_basic_salary) } : null,
-    attendance: { recorded_days: recordedDays, incomplete_days: incompleteDays, checked_days: attendance?.rows?.length || 0, rest_days: restDays },
+    attendance: { recorded_days: recordedDays, incomplete_days: incompleteDays, checked_days: attendance?.rows?.length || 0, rest_days: restDays, review_days: reviewDays },
   };
 };
 

@@ -414,6 +414,8 @@ export const finalizeEmployeePayroll = async (req, res) => {
       payroll,
       finalizedByUserId: req.authUser?.id || null,
       today: getManilaDateTime().date,
+      attendanceReviewConfirmed: req.body?.attendance_review_confirmed === true,
+      reviewedMissingDates: req.body?.reviewed_missing_dates,
     });
     const finalized = await getPayrollDraftById(connection, payrollId);
 
@@ -438,6 +440,8 @@ export const finalizeEmployeePayroll = async (req, res) => {
         netFundRelease: finalized.net_fund_release,
         calculationVersion: finalized.calculation_version,
         finalizedAttendanceFingerprint: result.review.current_attendance_fingerprint,
+        attendanceReviewConfirmed: Boolean(result.review.attendance_review_required),
+        reviewedMissingDates: (result.review.attendance_review_days || []).filter((day) => day.issue === 'missing').map((day) => day.date),
       },
     });
 
@@ -582,6 +586,7 @@ export const releaseEmployeePayroll = async (req, res) => {
     connection.release();
   }
 };
+
 
 
 

@@ -41,8 +41,17 @@ export const calculateAttendancePayrollRow = ({ date, attendance, restDays, dayS
   const timeOut = attendance?.actual_time_out || null;
   const isExplicitAbsent = String(attendance?.attendance_status || '').toLowerCase() === 'absent';
   const regularWorkingSeconds = Number(schedule.regularWorkingMinutes || 600) * 60;
+  // A missed scan is not proof the employee was absent. Existing explicit
+  // absent records are considered recorded; missing/incomplete punches need review.
+  const hasAnyPunch = Boolean(timeIn || timeOut);
+  // A single punch needs correction even on a rest day, holiday, or an
+  // explicitly absent entry. Blank rest days/holidays/events do not need review.
+  const reviewIssue = hasAnyPunch
+    ? (!timeIn || !timeOut ? 'incomplete' : null)
+    : (!isRestDay && !isHoliday && !hasEvent && !isExplicitAbsent ? 'missing' : null);
 
   const base = {
+    reviewIssue,
     date,
     dayType,
     timeIn,
