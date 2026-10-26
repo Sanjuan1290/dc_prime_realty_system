@@ -29,7 +29,6 @@ const EmployeeSalary = () => {
   const canGenerate = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_GENERATE)
   const canRecalculate = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RECALCULATE_DRAFT)
   const canFinalize = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_FINALIZE)
-  const canCorrect = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_CORRECT_FINALIZED)
   const canRelease = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RELEASE)
   const canPrintReceipt = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RECEIPT_PRINT)
   const canExportReceipt = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RECEIPT_EXPORT)
@@ -196,14 +195,15 @@ const EmployeeSalary = () => {
       {showPayrollSummaryExport ? <PayrollSummaryExportModal month={month} periodType={periodType} periodLabel={period?.periodLabel} onClose={() => setShowPayrollSummaryExport(false)} /> : null}
       {showPayrollSettings ? <PayrollSettingsModal onClose={() => setShowPayrollSettings(false)} onSaved={(result) => { setAlert({ type: 'success', message: result?.message || 'Payroll Settings updated.' }); registerQuery.refetch() }} /> : null}
       {showGenerate ? <GeneratePayrollModal month={month} periodType={periodType} periodLabel={period?.periodLabel} scheduledReleaseDate={period?.scheduledReleaseDate} onClose={() => setShowGenerate(false)} onGenerated={handleGenerated} /> : null}
-      {selectedPayrollId ? <SalaryDetailModal canManagePayrollSettings={canManagePayrollSettings} payrollId={selectedPayrollId} initialTab={selectedPayrollTab} canRecalculate={canRecalculate} canFinalize={canFinalize} canCorrect={canCorrect} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={canExportReceipt} onClose={() => setSelectedPayrollId(null)} onUpdated={() => registerQuery.refetch()} /> : null}
+      {selectedPayrollId ? <SalaryDetailModal canManagePayrollSettings={canManagePayrollSettings} payrollId={selectedPayrollId} initialTab={selectedPayrollTab} canRecalculate={canRecalculate} canFinalize={canFinalize} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={canExportReceipt} onClose={() => setSelectedPayrollId(null)} onUpdated={() => registerQuery.refetch()} /> : null}
       {selectedReceiptPayrollId ? <FundReleaseReceiptModal payrollId={selectedReceiptPayrollId} canPrint={canPrintReceipt} canExport={canExportReceipt} onClose={() => setSelectedReceiptPayrollId(null)} /> : null}
-      {historyEmployee ? <SalaryHistoryModal employee={historyEmployee} canCorrect={canCorrect} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={canExportReceipt} onClose={() => setHistoryEmployee(null)} /> : null}
+      {historyEmployee ? <SalaryHistoryModal employee={historyEmployee} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={canExportReceipt} onClose={() => setHistoryEmployee(null)} /> : null}
     </main>
   )
 }
 
 export default EmployeeSalary
+
 
 
 

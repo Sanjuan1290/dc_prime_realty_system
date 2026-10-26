@@ -13,7 +13,7 @@ import {
 import SalaryDetailModal from './SalaryDetailModal'
 import FundReleaseReceiptModal from './FundReleaseReceiptModal'
 
-const SalaryHistoryModal = ({ employee, canCorrect = false, canRelease = false, canPrintReceipt = false, canExportReceipt = false, onClose }) => {
+const SalaryHistoryModal = ({ employee, canRelease = false, canPrintReceipt = false, canExportReceipt = false, onClose }) => {
   const employeeId = Number(employee?.employee_id || 0)
   const [selectedPayrollId, setSelectedPayrollId] = useState(null)
   const [selectedReceiptId, setSelectedReceiptId] = useState(null)
@@ -88,13 +88,14 @@ const SalaryHistoryModal = ({ employee, canCorrect = false, canRelease = false, 
         </footer>
       </div>
 
-      {selectedPayrollId ? <SalaryDetailModal payrollId={selectedPayrollId} historyMode canRecalculate={false} canFinalize={false} canCorrect={canCorrect} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={canExportReceipt} onClose={() => setSelectedPayrollId(null)} onUpdated={() => query.refetch()} /> : null}
+      {selectedPayrollId ? <SalaryDetailModal payrollId={selectedPayrollId} historyMode canRecalculate={false} canFinalize={false} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={canExportReceipt} onClose={() => setSelectedPayrollId(null)} onUpdated={() => query.refetch()} /> : null}
       {selectedReceiptId ? <FundReleaseReceiptModal payrollId={selectedReceiptId} historyMode canPrint={canPrintReceipt} canExport={canExportReceipt} onClose={() => setSelectedReceiptId(null)} /> : null}
     </div>
   )
 }
 
 export default SalaryHistoryModal
+
 
 
 

@@ -123,10 +123,11 @@ test('Batch 4 UI shows Final Review and flags Attendance changes without enablin
   assert.match(page, /Final Review/);
   assert.match(detail, /Proceed to Final Review/);
   assert.match(detail, /Attendance changed after this payroll was finalized/);
-  assert.match(detail, /Create Salary Correction/);
+  assert.doesNotMatch(detail, /Create Salary Correction|Salary Correction<\/button>/);
   assert.match(review, /Payroll Final Double-Check/);
   assert.match(review, /Finalize Salary/);
   assert.match(review, /Future promotions, Attendance Settings changes, salary changes, or Attendance corrections will not automatically rewrite this payroll/);
 });
+
 
 

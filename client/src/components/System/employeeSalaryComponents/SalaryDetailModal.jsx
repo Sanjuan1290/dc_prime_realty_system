@@ -5,7 +5,6 @@ import StatusAlert from '../../Shared/StatusAlert'
 import FinalizePayrollModal from './FinalizePayrollModal'
 import FundReleaseReceiptModal from './FundReleaseReceiptModal'
 import ReleasePayrollModal from './ReleasePayrollModal'
-import CorrectPayrollModal from './CorrectPayrollModal'
 import PayrollSettingsModal from './PayrollSettingsModal'
 import SignedSalaryReceiptsModal from './SignedSalaryReceiptsModal'
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
@@ -21,14 +20,13 @@ const dayTypeLabel = (value) => ({ regular: 'Regular', double_pay: 'Double Pay',
 const stateLabel = (row) => row.absence ? 'Absent' : row.state ? String(row.state).replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : '—'
 const settingValue = (value, suffix = '') => value === null || value === undefined ? 'Not configured' : `${Number(value)}${suffix}`
 
-const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initialTab = 'salary', canRecalculate = false, canFinalize = false, canCorrect = false, canRelease = false, canPrintReceipt = false, canExportReceipt = false, historyMode = false, onClose, onUpdated }) => {
+const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initialTab = 'salary', canRecalculate = false, canFinalize = false, canRelease = false, canPrintReceipt = false, canExportReceipt = false, historyMode = false, onClose, onUpdated }) => {
   const queryClient = useQueryClient()
   const [tab, setTab] = useState(initialTab)
   const [alert, setAlert] = useState(null)
   const [showFinalReview, setShowFinalReview] = useState(false)
   const [showReceipt, setShowReceipt] = useState(false)
   const [showRelease, setShowRelease] = useState(false)
-  const [showCorrection, setShowCorrection] = useState(false)
   const [showPayrollSettings, setShowPayrollSettings] = useState(false)
   const [showSignedReceipts, setShowSignedReceipts] = useState(false)
 
@@ -115,7 +113,7 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
 
             {officialStatus ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-sm font-bold text-emerald-900">{payroll.payroll_status === 'released' ? 'Salary Released' : 'Salary Finalized'}</p><p className="mt-1 text-sm text-emerald-900">Finalized {payroll.finalized_at ? formatPayrollDate(payroll.finalized_at) : '—'}{payroll.finalized_by_name ? ` by ${payroll.finalized_by_name}` : ''}</p></section> : null}
 
-            {officialStatus && payroll.attendance_change?.changed ? <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 shrink-0 text-amber-700" /><div><p className="font-black text-amber-950">Attendance changed after this payroll was finalized.</p><p className="mt-1 text-sm font-semibold leading-5 text-amber-900">The official salary has not been silently rewritten. Authorized users can open Salary Correction to review the complete Before vs After recalculation.</p></div></div><div className="mt-3 divide-y divide-amber-200 rounded-xl border border-amber-200 bg-white px-3">{(payroll.attendance_change.differences || []).map((item) => <div key={item.field} className="flex items-center justify-between gap-4 py-2 text-xs font-bold text-slate-700"><span>{item.label}</span><span className="text-right">{String(item.before ?? '—')} → {String(item.after ?? '—')}</span></div>)}</div>{canCorrect && payroll.payroll_status !== 'released' ? <button type="button" onClick={() => setShowCorrection(true)} className="mt-3 h-9 rounded-lg bg-violet-700 px-3 text-xs font-black text-white hover:bg-violet-800">Create Salary Correction</button> : null}</section> : null}
+            {officialStatus && payroll.attendance_change?.changed ? <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 shrink-0 text-amber-700" /><div><p className="font-black text-amber-950">Attendance changed after this payroll was finalized.</p><p className="mt-1 text-sm font-semibold leading-5 text-amber-900">This finalized salary remains unchanged. Review the saved attendance and payroll records before the next salary run.</p></div></div><div className="mt-3 divide-y divide-amber-200 rounded-xl border border-amber-200 bg-white px-3">{(payroll.attendance_change.differences || []).map((item) => <div key={item.field} className="flex items-center justify-between gap-4 py-2 text-xs font-bold text-slate-700"><span>{item.label}</span><span className="text-right">{String(item.before ?? '—')} → {String(item.after ?? '—')}</span></div>)}</div></section> : null}
 
             <section>
               <h3 className="mb-3 text-sm font-black uppercase tracking-wide text-slate-500">Salary and Pay Rates</h3>
@@ -183,7 +181,6 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
             {payroll ? <button type="button" onClick={() => setShowReceipt(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-800 hover:bg-slate-50"><FiFileText />{officialStatus ? 'Acknowledgement Receipt' : 'Preview Receipt'}</button> : null}
             {canRecalculate && payroll?.payroll_status === 'draft' ? <button type="button" onClick={() => recalcMutation.mutate()} disabled={recalcMutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50"><FiRefreshCw className={recalcMutation.isPending ? 'animate-spin' : ''} />{recalcMutation.isPending ? 'Recalculating...' : 'Recalculate Draft'}</button> : null}
             {canFinalize && payroll?.payroll_status === 'draft' ? <button type="button" onClick={() => setShowFinalReview(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white hover:bg-emerald-700"><FiLock />Proceed to Final Review</button> : null}
-            {canCorrect && ['finalized', 'corrected'].includes(payroll?.payroll_status) ? <button type="button" onClick={() => setShowCorrection(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-700 px-5 text-sm font-black text-white hover:bg-violet-800"><FiAlertTriangle />Salary Correction</button> : null}
             {canRelease && ['finalized', 'corrected'].includes(payroll?.payroll_status) ? <button type="button" onClick={() => setShowRelease(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-black text-white hover:bg-emerald-800"><FiCheckCircle />Mark as Released</button> : null}
           </div>
         </footer>
@@ -192,13 +189,13 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
       {showPayrollSettings ? <PayrollSettingsModal initialSection={payroll?.calculation_warnings?.some((warning) => /attendance bonus/i.test(warning)) ? 'attendance-bonus' : null} onClose={() => setShowPayrollSettings(false)} onSaved={() => { setShowPayrollSettings(false); setAlert({ type: 'success', message: payroll?.payroll_status === 'draft' ? 'Payroll Settings saved. Recalculate this Draft to apply the new policy.' : 'Payroll Settings saved. Existing finalized payroll history is unchanged.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary'] }); }} /> : null}
       {showFinalReview ? <FinalizePayrollModal payrollId={payrollId} onClose={() => setShowFinalReview(false)} onFinalized={(result) => { setAlert({ type: 'success', message: result?.message || 'Payroll finalized.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary-detail', payrollId] }); queryClient.invalidateQueries({ queryKey: ['employee-salary-receipt', payrollId] }); onUpdated?.() }} /> : null}
       {showReceipt ? <FundReleaseReceiptModal payrollId={payrollId} canPrint={canPrintReceipt} canExport={canExportReceipt} historyMode={historyMode} onClose={() => setShowReceipt(false)} /> : null}
-      {showCorrection && payroll ? <CorrectPayrollModal payrollId={payrollId} onClose={() => setShowCorrection(false)} onCorrected={(result) => { setAlert({ type: 'success', message: result?.message || 'Salary Correction saved.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary-detail', payrollId] }); queryClient.invalidateQueries({ queryKey: ['employee-salary-receipt', payrollId] }); onUpdated?.() }} /> : null}
       {showRelease && payroll ? <ReleasePayrollModal payroll={payroll} onClose={() => setShowRelease(false)} onReleased={(result) => { setShowReceipt(true); setAlert({ type: 'success', message: 'Payroll release recorded. The acknowledgment receipt is ready to print and sign.' }); queryClient.invalidateQueries({ queryKey: ['employee-salary-detail', payrollId] }); queryClient.invalidateQueries({ queryKey: ['employee-salary-receipt', payrollId] }); onUpdated?.() }} /> : null}
     </div>
   )
 }
 
 export default SalaryDetailModal
+
 
 
 

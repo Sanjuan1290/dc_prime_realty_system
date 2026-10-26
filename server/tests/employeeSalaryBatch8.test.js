@@ -97,13 +97,13 @@ test('controller writes Payroll Corrected audit log with reason, Before/After to
   assert.match(controller, /differences: result\.review\.differences/)
 })
 
-test('UI exposes correction workflow only to authorized users and displays Correction History', () => {
-  assert.match(salaryPage, /PERMISSIONS\.PAYROLL_CORRECT_FINALIZED/)
+test('Salary Correction buttons are removed while previous correction history remains readable', () => {
   assert.match(salaryPage, /<option value="corrected">Corrected<\/option>/)
-  assert.match(salaryDetail, /canCorrect && \['finalized', 'corrected'\]\.includes\(payroll\?\.payroll_status\)/)
   assert.match(salaryDetail, /Correction History/)
-  assert.match(salaryDetail, /CorrectPayrollModal/)
-  assert.match(historyModal, /canCorrect=\{canCorrect\}/)
+  assert.match(salaryDetail, /Attendance changed after this payroll was finalized/)
+  assert.doesNotMatch(salaryDetail, /Create Salary Correction|CorrectPayrollModal|setShowCorrection|canCorrect/)
+  assert.doesNotMatch(salaryPage, /canCorrect|PAYROLL_CORRECT_FINALIZED/)
+  assert.doesNotMatch(historyModal, /canCorrect|CorrectPayrollModal/)
 })
 
 test('Corrected payroll remains official and can still be released, while Released payroll cannot be corrected', () => {
