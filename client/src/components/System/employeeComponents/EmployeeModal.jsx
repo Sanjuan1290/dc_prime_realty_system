@@ -118,10 +118,6 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
       setNotice({ type: 'warning', message: 'Select at least one Rest Day.' })
       return false
     }
-    if (isEdit && !form.rest_days_effective_from) {
-      setNotice({ type: 'warning', message: 'Select when the Rest Day schedule becomes effective.' })
-      return false
-    }
     return true
   }
 
@@ -308,9 +304,9 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
                     return <label key={value} className={`flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2.5 text-xs font-semibold transition ${checked ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}><input type="checkbox" checked={checked} onChange={() => toggleRestDay(value)} className="h-4 w-4 rounded border-slate-300 text-blue-600" />{label}</label>
                   })}
                 </div>
-                {isEdit ? (
-                  <label className="mt-3 grid max-w-xs gap-1.5"><span className="text-xs font-semibold text-slate-600">Rest Days Start Date *</span><input type="date" max={getManilaDate()} className={inputClass} value={form.rest_days_effective_from} onChange={(e) => setValue('rest_days_effective_from', e.target.value)} /></label>
-                ) : <p className="mt-3 text-xs font-semibold text-slate-500">Rest days start on the hire date.</p>}
+                <p className="mt-3 text-xs font-semibold text-slate-500">
+                  {isEdit ? 'Changes to Rest Days start on the day you save. Older schedules are preserved.' : 'The first Rest Day schedule starts on the hire date.'}
+                </p>
               </section>
             </>
           ) : null}
@@ -370,6 +366,8 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
 }
 
 export default EmployeeModal
+
+
 
 
 

@@ -486,10 +486,13 @@ const buildEmployeeSheet = (employee, data, cutoffLabel) => {
   const regularAttended = rows.reduce((sum, row) => sum + Number(row.regularAttendedSeconds || 0), 0)
   const holidayWorked = rows.reduce((sum, row) => sum + Number(row.holidayWorkedSeconds || 0), 0)
   const requiredHours = scheduledDays * regularWorkingSeconds
+  const attendanceDays = rows.filter((row) => row.totalWorkedSeconds > 0).length
+  const restDayWorkDays = rows.filter((row) => row.state === 'rest_work' && row.totalWorkedSeconds > 0).length
+  const restDayWorkSeconds = rows.reduce((sum, row) => sum + (row.state === 'rest_work' ? Number(row.totalWorkedSeconds || 0) : 0), 0)
 
-  setCell(sheet, summaryStart - 1, 0, 'No. of Days', textStyle())
+  setCell(sheet, summaryStart - 1, 0, 'Scheduled Workdays', textStyle())
   setCell(sheet, summaryStart - 1, 1, scheduledDays, textStyle(COLORS.black, true, 'left'))
-  setCell(sheet, summaryStart, 0, 'No. Hours', textStyle())
+  setCell(sheet, summaryStart, 0, 'Scheduled Hours', textStyle())
   setCell(sheet, summaryStart, 1, excelDuration(requiredHours), textStyle(COLORS.black, true, 'left'), '[h]:mm:ss')
 
   setCell(sheet, summaryStart - 1, 3, 'TOTAL HOURS WORKED INCLUDING OT', textStyle())
@@ -501,13 +504,19 @@ const buildEmployeeSheet = (employee, data, cutoffLabel) => {
 
   setCell(sheet, summaryStart - 1, 6, 'ADJUSTMENTS / ABSENCES', textStyle())
   setCell(sheet, summaryStart, 6, absenceCount, textStyle(COLORS.red, false))
+  setCell(sheet, summaryStart + 1, 0, 'Days Attended', textStyle())
+  setCell(sheet, summaryStart + 1, 1, attendanceDays, textStyle(COLORS.black, true, 'left'))
+  setCell(sheet, summaryStart + 2, 0, 'Rest Days Worked', textStyle())
+  setCell(sheet, summaryStart + 2, 1, restDayWorkDays, textStyle(COLORS.black, true, 'left'))
   setCell(sheet, summaryStart + 2, 5, 'UNDER TIME (MINS)', textStyle())
   setCell(sheet, summaryStart + 2, 6, 'OTHER LOST (MINS)', textStyle())
   setCell(sheet, summaryStart + 3, 5, 0, textStyle(COLORS.black, false))
   setCell(sheet, summaryStart + 3, 6, 0, textStyle(COLORS.black, false))
 
-  setCell(sheet, summaryStart - 1, 8, 'OVERTIME', textStyle())
+  setCell(sheet, summaryStart - 1, 8, 'Regular Overtime', textStyle())
   setCell(sheet, summaryStart, 8, excelDuration(overtime), textStyle(COLORS.black, true), '[h]:mm:ss')
+  setCell(sheet, summaryStart + 1, 8, 'REST-DAY WORK', textStyle())
+  setCell(sheet, summaryStart + 2, 8, excelDuration(restDayWorkSeconds), textStyle(COLORS.black, true), '[h]:mm:ss')
 
   setCell(sheet, summaryStart - 1, 9, 'HOURS ATTENDED LESS OT/RD OT & TOTAL DEDUCTION', textStyle())
   setCell(sheet, summaryStart, 9, excelDuration(regularAttended), textStyle(COLORS.black, true), '[h]:mm:ss')
@@ -563,5 +572,7 @@ export const downloadAttendanceWorkbook = (payload, { cutoffLabel = '' } = {}) =
   XLSX.writeFile(workbook, filename, { compression: true, cellStyles: true })
   return filename
 }
+
+
 
 

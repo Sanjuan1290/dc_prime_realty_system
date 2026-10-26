@@ -420,7 +420,9 @@ export const updateEmployee = async (req, res) => {
       employeeId, previousHireDate: hireDate, newHireDate: requestedHireDate,
       reason: payload.hireDateChangeReason, actorId, today,
     });
-    const restDaysEffectiveFrom = payload.restDaysEffectiveFrom || today;
+    // Ordinary employee edits take effect on the server's current Manila date.
+    // Ignore client-submitted effective dates to prevent accidental backdating.
+    const restDaysEffectiveFrom = today;
     if (restDaysEffectiveFrom < hireDateChange.current) {
       throw Object.assign(new Error('Rest Day effective date cannot be before the employee hire date.'), { statusCode: 400 });
     }
@@ -670,6 +672,8 @@ export const createEmployeeEmploymentChange = async (req, res) => {
     connection.release();
   }
 };
+
+
 
 
 

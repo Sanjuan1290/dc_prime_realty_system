@@ -37,8 +37,10 @@ test('Salary Detail hides unsupported settings while preserving four displayed r
   const detail=read('client/src/components/System/employeeSalaryComponents/SalaryDetailModal.jsx');
   const review=read('client/src/components/System/employeeSalaryComponents/FinalizePayrollModal.jsx');
   const settings=read('client/src/components/System/employeeSalaryComponents/PayrollSettingsModal.jsx');
-  for(const label of ['Regular Overtime','Rest Day Overtime','Holiday Pay Rate','Night Shift Extra Pay']) assert.match(detail,new RegExp(label));
+  for(const label of ['Regular Overtime','Rest-Day Work','Holiday Pay Rate','Night Shift Differential']) assert.match(detail,new RegExp(label));
   assert.doesNotMatch(detail,/label="Overtime on Regular Holidays"|label="Overtime on Special Holidays"/);
   assert.doesNotMatch(review,/label="Regular Holiday OT Multiplier"|label="Special Holiday OT Multiplier"/);
   assert.match(settings,/role="switch"/);
 });
+
+

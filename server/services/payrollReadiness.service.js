@@ -128,7 +128,17 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
   const reviewDays = getPayrollAttendanceReviewDays(attendance?.rows);
   const missingDates = reviewDays.filter((day) => day.issue === 'missing').map((day) => day.date);
   const incompleteDates = reviewDays.filter((day) => day.issue === 'incomplete').map((day) => day.date);
-  if (missingDates.length) warnings.push(`Attendance needs checking: No verified Time In/Out on ${missingDates.join(', ')}. Operations must enter verified fieldwork hours or confirm genuine absences before Final Review.`);
+  if (Number(attendance?.summary?.restDayOvertimeMinutes || 0) > 0) {
+    const configured = settings.rest_day_ot_multiplier;
+    if (configured !== null && configured !== undefined && Number(configured) < 1.30) {
+      warnings.push(`Rest-day work rate is ${Number(configured).toFixed(2)}×. Covered employees generally require at least 1.30× for the first 8 hours. Confirm the approved rate in Payroll Settings before release.`);
+    }
+    if ((attendance?.rows || []).some((day) => Number(day.restDayOvertimeSeconds || 0) > 8 * 3600)) {
+      warnings.push('Rest-day work over 8 hours was recorded. The current rate applies one multiplier to all rest-day hours; review any additional overtime premium before release.');
+    }
+  }
+  // Blank scheduled dates are already counted as absences in Draft payroll.
+  // Do not create a second confirmation workflow for a date with no punches.
   if (incompleteDates.length) warnings.push(`Attendance needs correction: Incomplete Time In/Out on ${incompleteDates.join(', ')}. Operations must correct these before Final Review.`);
   const holidayIssue = holidayOvertimeWarning(findUnsupportedHolidayOvertime(attendance?.rows || []));
   if (holidayIssue) warnings.push(holidayIssue);
@@ -142,5 +152,7 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
     attendance: { recorded_days: recordedDays, incomplete_days: incompleteDays, checked_days: attendance?.rows?.length || 0, rest_days: restDays, review_days: reviewDays },
   };
 };
+
+
 
 

@@ -49,7 +49,7 @@ const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
     ['Special Holiday Hours', decimalHours(payroll.special_holiday_minutes)],
     ['Tardiness / Absences', `${Number(payroll.tardiness_absence_minutes || 0).toLocaleString()} Minutes`],
     ['Overtime', decimalHours(payroll.overtime_minutes)],
-    ['Rest Day Overtime', decimalHours(payroll.rest_day_overtime_minutes)],
+    ['Rest-Day Work', decimalHours(payroll.rest_day_overtime_minutes)],
     ['Night Differential', decimalHours(payroll.night_differential_minutes)],
   ] : []
 
@@ -116,7 +116,7 @@ const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
               <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Payroll Settings Snapshot</h3><span className="text-xs font-bold text-slate-500">Revision {payroll.payroll_settings_snapshot?.settings_revision ?? '—'}</span></div>
               <div className="mt-2 grid gap-x-6 lg:grid-cols-2">
                 <ReviewRow label="Regular Overtime" value={settingValue(payroll.payroll_settings_snapshot?.regular_ot_multiplier, '×')} />
-                <ReviewRow label="Rest Day Overtime" value={settingValue(payroll.payroll_settings_snapshot?.rest_day_ot_multiplier, '×')} />
+                <ReviewRow label="Rest-Day Work" value={settingValue(payroll.payroll_settings_snapshot?.rest_day_ot_multiplier, '×')} />
                 <ReviewRow label="Holiday Pay Rate" value={payroll.payroll_settings_snapshot?.regular_holiday_multiplier === payroll.payroll_settings_snapshot?.special_holiday_multiplier
                   ? settingValue(payroll.payroll_settings_snapshot?.regular_holiday_multiplier, '×')
                   : `Regular: ${settingValue(payroll.payroll_settings_snapshot?.regular_holiday_multiplier, '×')} / Special: ${settingValue(payroll.payroll_settings_snapshot?.special_holiday_multiplier, '×')}`} />
@@ -125,7 +125,7 @@ const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
             </section>
 
             <section className="grid gap-4 lg:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200 p-4"><h3 className="border-b border-slate-200 pb-3 text-sm font-black uppercase tracking-wide text-slate-500">Earnings</h3><ReviewRow label="Overtime Pay" value={money(payroll.overtime_pay)} /><ReviewRow label="Rest Day OT" value={money(payroll.rest_day_overtime_pay)} /><ReviewRow label="Regular Holiday Pay" value={money(payroll.regular_holiday_pay)} /><ReviewRow label="Special Holiday Pay" value={money(payroll.special_holiday_pay)} /><ReviewRow label="Night Differential" value={money(payroll.night_differential_pay)} /><ReviewRow label="Manual Additions" value={money(payroll.manual_additions_total)} /></div>
+              <div className="rounded-2xl border border-slate-200 p-4"><h3 className="border-b border-slate-200 pb-3 text-sm font-black uppercase tracking-wide text-slate-500">Earnings</h3><ReviewRow label="Overtime Pay" value={money(payroll.overtime_pay)} /><ReviewRow label="Rest-Day Work Pay" value={money(payroll.rest_day_overtime_pay)} /><ReviewRow label="Regular Holiday Pay" value={money(payroll.regular_holiday_pay)} /><ReviewRow label="Special Holiday Pay" value={money(payroll.special_holiday_pay)} /><ReviewRow label="Night Differential" value={money(payroll.night_differential_pay)} /><ReviewRow label="Manual Additions" value={money(payroll.manual_additions_total)} /></div>
               <div className="rounded-2xl border border-slate-200 p-4"><h3 className="border-b border-slate-200 pb-3 text-sm font-black uppercase tracking-wide text-slate-500">Allowances</h3><ReviewRow label="Rice Allowance" value={money(payroll.rice_allowance)} /><ReviewRow label="Transportation" value={money(payroll.transportation_allowance)} /><ReviewRow label="Attendance Bonus" value={money(payroll.attendance_bonus)} /></div>
               <div className="rounded-2xl border border-slate-200 p-4"><h3 className="border-b border-slate-200 pb-3 text-sm font-black uppercase tracking-wide text-slate-500">Deductions & Total</h3><ReviewRow label="Attendance Deduction" value={money(payroll.attendance_deduction)} /><ReviewRow label="Manual Deductions" value={money(payroll.manual_deductions_total)} /><ReviewRow label="Net Fund Release" value={money(payroll.net_fund_release)} strong /></div>
             </section>
@@ -144,6 +144,8 @@ const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
 }
 
 export default FinalizePayrollModal
+
+
 
 
 

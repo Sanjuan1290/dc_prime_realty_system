@@ -10,11 +10,11 @@ const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), '
 const schedule = { regularWorkingMinutes: 480, scheduledTimeIn: '09:00:00', scheduledTimeOut: '20:00:00', lateAfter: '09:00:00', breakStart: '12:00:00', breakMinutes: 60 };
 const row = (attendance = null, opts = {}) => calculateAttendancePayrollRow({ date: opts.date || '2026-10-14', attendance, restDays: opts.restDays || [], daySetting: opts.daySetting || { day_type: 'regular' }, schedule });
 
-test('missing regular-day scan remains an absence for draft math but needs verification', () => {
+test('missing regular-day scan counts as absence without a second approval warning', () => {
   const r = row();
   assert.equal(r.state, 'absent');
   assert.equal(r.absence, true);
-  assert.equal(r.reviewIssue, 'missing');
+  assert.equal(r.reviewIssue, null);
 });
 test('explicit recorded absence does not show as forgotten scan', () => {
   const r = row({ attendance_status: 'absent' });
@@ -35,8 +35,9 @@ test('missing either punch requires a correction', () => {
   assert.equal(row({ actual_time_in: '09:00:00' }, { restDays: ['wednesday'] }).reviewIssue, 'incomplete');
   assert.equal(row({ actual_time_in: '09:00:00' }, { daySetting: { day_type: 'regular_holiday' } }).reviewIssue, 'incomplete');
 });
-test('no-punch record without an explicit absence remains unverified', () => {
-  assert.equal(row({ attendance_status: 'present' }).reviewIssue, 'missing');
+test('no-punch record without an explicit absent status still counts as an absence', () => {
+  assert.equal(row({ attendance_status: 'present' }).state, 'absent');
+  assert.equal(row({ attendance_status: 'present' }).reviewIssue, null);
 });
 test('date lists contain only real unresolved days and are stable', () => {
   const days = getPayrollAttendanceReviewDays([
@@ -95,3 +96,5 @@ test('new 8-hour payroll basis is also used for Final Review and preflight, not 
   assert.match(finalization, /paidWorkMinutesOverride: \/\^employee-salary-260days-8hours-/);
   assert.match(readiness, /paidWorkMinutesOverride: PAYROLL_PAID_WORK_MINUTES/);
 });
+
+

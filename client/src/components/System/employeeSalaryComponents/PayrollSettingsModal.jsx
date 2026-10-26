@@ -8,7 +8,7 @@ import { useFetch, useFetchPut } from '../../../utils/useFetch'
 // Keep API/database keys unchanged. Only the labels displayed to staff are simplified.
 const numericFields = [
   ['regular_ot_multiplier', 'Regular Overtime Rate (× hourly pay)', '×'],
-  ['rest_day_ot_multiplier', 'Rest Day Overtime Rate (× hourly pay)', '×'],
+  ['rest_day_ot_multiplier', 'Rest-Day Work Rate (× hourly pay)', '×'],
 ]
 // Historical holiday overtime columns are preserved, not exposed as new settings.
 const legacyHolidayOtKeys = ['regular_holiday_ot_multiplier', 'special_holiday_ot_multiplier']
@@ -195,6 +195,8 @@ const PayrollSettingsModal = ({ onClose, onSaved, initialSection = null }) => {
 }
 
 export default PayrollSettingsModal
+
+
 
 
 

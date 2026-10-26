@@ -14,8 +14,8 @@ test('accepts positive two-place amounts',()=>{assert.equal(moneyAmount('12.01')
 test('rejects zero, negative, nonnumeric and three decimal amounts',()=>{for(const v of ['0','-1','4.001','abc',null,'NaN'])assert.throws(()=>moneyAmount(v))});
 test('validates real date only',()=>{assert.equal(dateOnly('2026-10-26'),'2026-10-26');for(const v of ['2026-02-30','2026-13-01','1/1/2026','2026-1-1'])assert.throws(()=>dateOnly(v))});
 test('manual transaction fields validated and trimmed',()=>{const e=validateFinanceEntry({...entry,description:'  Office electricity  '},settings);assert.equal(e.description,'Office electricity');assert.equal(e.amount,'123.45')});
-test('manual entries cannot be backdated before opening date',()=>assert.throws(()=>validateFinanceEntry({...entry,transaction_date:'2026-09-30'},settings),/starting date/));
-test('manual entries cannot be posted before finance setup',()=>assert.throws(()=>validateFinanceEntry(entry,{}),/opening balance/));
+test('manual entries can use historical dates without a cutover',()=>assert.equal(validateFinanceEntry({...entry,transaction_date:'2026-09-30'}).transactionDate,'2026-09-30'));
+test('manual entries do not require an opening-balance setup',()=>assert.equal(validateFinanceEntry(entry).amount,'123.45'));
 test('manual entries cannot be future dated',()=>assert.throws(()=>validateFinanceEntry({...entry,transaction_date:'2030-01-01'},settings),/Future/));
 test('category id, kind and description required',()=>{for(const patch of [{category_id:0},{kind:'other'},{description:''}])assert.throws(()=>validateFinanceEntry({...entry,...patch},settings))});
 test('available cash includes opening, collections, salary, commissions and income',()=>{
@@ -38,8 +38,9 @@ test('source SQL uses only released salary and net cash paid',()=>{assert.match(
 test('commission payouts only Released and net',()=>{assert.match(FINANCE_ACTIVITY_SQL,/r\.net_release_amount/);assert.match(FINANCE_ACTIVITY_SQL,/release_status='Released'/);assert.match(FINANCE_ACTIVITY_SQL,/NOT EXISTS/)});
 test('avoids representing a cheque as cash before clearing',()=>assert.match(FINANCE_ACTIVITY_SQL,/lot_project_payment_method <> 'Check'/));
 test('never duplicates seller commissions as manual transactions by source',()=>{assert.match(FINANCE_ACTIVITY_SQL,/manual:/);assert.match(FINANCE_ACTIVITY_SQL,/commission:/);assert.match(FINANCE_ACTIVITY_SQL,/network:/)});
-test('unconfigured status never guesses zero',async()=>{
- const db={query:async()=>[[{start_date:null,opening_balance:null}]]};const s=await loadFinanceSummary(db,{from:'2026-10-01',to:'2026-10-26'});assert.equal(s.configured,false);assert.equal(s.available_balance,undefined);
+test('zero baseline does not require a settings row',async()=>{
+ const db={query:async sql=>sql.includes('SELECT * FROM (')?[activity]:[[{cancelled_archives:0,unconfirmed_checks:0,cash_advances_to_review:0,refunds_to_review:0}]]};
+ const s=await loadFinanceSummary(db,{from:'2026-10-01',to:'2026-10-26'});assert.equal(s.configured,true);assert.equal(s.opening_balance,0);assert.equal(s.available_balance,41292.62);
 });
 test('warnings block verified badge for unreviewed archive, checks, and advances',async()=>{
  const db={query:async sql=>{
@@ -86,7 +87,7 @@ test('Oct 25 actual source receipts reconcile to the Cash Collected card and rel
  assert.equal(excl.before_start.commissions_paid,14040);
  assert.equal(excl.before_start.count,9);
 });
-test('before-start and opted-out payments are shown explicitly rather than silently lost',async()=>{
+test('legacy Finance Starting Date and opening balance do not alter zero-based finance balances',async()=>{
  const rows=[
   {reference:'property:1',txn_date:'2026-10-25',kind:'income',amount:'197569.44',source:'property'},
   {reference:'salary:1',txn_date:'2026-10-25',kind:'expense',amount:'6957.48',source:'salary'},
@@ -95,30 +96,39 @@ test('before-start and opted-out payments are shown explicitly rather than silen
  ];
  const calls=[];
  const db={query:async(sql,params=[])=>{
-  if(sql.includes('FROM company_finance_settings'))return [[{start_date:'2026-10-26',opening_balance:'1555.00',includes_property_collections:0}]];
+  assert.doesNotMatch(sql,/FROM company_finance_settings/);
   if(sql.includes('SELECT * FROM (')){calls.push(params);return [rows]}
   return [[{cancelled_archives:0,unconfirmed_checks:0,cash_advances_to_review:0,refunds_to_review:0}]];
  }};
- const report=await loadFinanceSummary(db,{from:'2026-10-01',to:'2026-10-31'});
- assert.deepEqual(calls,[['2026-10-01','2026-10-31']]);
- assert.equal(report.money_in,0);
+ const report=await loadFinanceSummary(db,{from:'2026-10-26',to:'2026-10-31'});
+ assert.deepEqual(calls,[['1000-01-01','2026-10-31']]);
+ assert.equal(report.money_in,9000);
  assert.equal(report.money_out,2055);
- assert.equal(report.available_balance,-500);
- assert.equal(report.exclusions.before_start.property_collections,197569.44);
- assert.equal(report.exclusions.before_start.salary_paid,6957.48);
- assert.equal(report.exclusions.property_excluded_by_setting,9000);
- assert.equal(report.balance_verified,false);
- assert.ok(report.warnings.some(w=>w.includes('Finance Starting Date')));
- assert.ok(report.warnings.some(w=>w.includes('Include Property Collections')));
+ assert.equal(report.available_balance,197556.96);
+ assert.equal(report.opening_balance,0);
+ assert.equal(report.includes_property_collections,true);
+ assert.equal(report.balance_verified,true);
 });
-test('opening-balance correction is permission gated, requires an explanation and keeps audit history',()=>{
- const controller=fs.readFileSync(new URL('../controllers/System/companyFinances.controller.js',import.meta.url),'utf8');
+test('starting-balance mutation endpoints are unavailable and Role & Access shows finance features',()=>{
  const routes=fs.readFileSync(new URL('../routers/System/companyFinances.routers.js',import.meta.url),'utf8');
- assert.match(routes,/router\.put\('\/opening-balance',requirePermission\(PERMISSIONS\.COMPANY_FINANCES_OPENING_BALANCE\),finance\.correctOpeningBalance\)/);
- assert.match(controller,/Finance Starting Balance Corrected/);
- assert.match(controller,/transaction_date < \?/);
- assert.match(controller,/req\.body\?\.confirmed!==true/);
- assert.match(controller,/\{before,after,reason\}/);
+ const catalog=fs.readFileSync(new URL('../controllers/System/accessControl.controller.js',import.meta.url),'utf8');
+ assert.doesNotMatch(routes,/router\.(post|put)\('\/opening-balance'/);
+ assert.match(catalog,/group: 'Company Finances'/);
+ for(const key of ['COMPANY_FINANCES_VIEW','COMPANY_FINANCES_RECORD','COMPANY_FINANCES_EDIT','COMPANY_FINANCES_CATEGORIES'])assert.match(catalog,new RegExp(`PERMISSIONS\.${key}`));
+ assert.doesNotMatch(catalog,/COMPANY_FINANCES_OPENING_BALANCE/);
+});
+test('transaction timestamps preserve actual recording time and never invent historical times',()=>{
+ assert.match(FINANCE_ACTIVITY_SQL,/t\.created_at/);
+ assert.match(FINANCE_ACTIVITY_SQL,/p\.lot_project_payment_verified_at/);
+ assert.match(FINANCE_ACTIVITY_SQL,/p\.released_at/);
+ assert.match(FINANCE_ACTIVITY_SQL,/r\.release_recorded_at/);
+ assert.match(FINANCE_ACTIVITY_SQL,/NULL, NULL/);
+ const sorted=computeCashSummary({openingBalance:0,startDate:'2026-01-01',from:'2026-10-01',to:'2026-10-31',activities:[
+  {reference:'manual:1',txn_date:'2026-10-26',recorded_at:'2026-10-26 10:00:00',kind:'income',amount:100,source:'manual'},
+  {reference:'property:2',txn_date:'2026-10-26',recorded_at:'2026-10-26 16:30:05',kind:'income',amount:200,source:'property'},
+  {reference:'property:3',txn_date:'2026-10-25',kind:'income',amount:300,source:'property'},
+ ]});
+ assert.deepEqual(sorted.transactions.map(r=>r.reference),['property:2','manual:1','property:3']);
 });
 
 test('finance transactions return 100 entries per page, beyond the old 300 limit, without changing totals',async()=>{
@@ -151,7 +161,7 @@ test('finance transactions return 100 entries per page, beyond the old 300 limit
   for(const result of [page1,page4,all]){
     assert.equal(result.money_in,351);
     assert.equal(result.money_out,0);
-    assert.equal(result.available_balance,361);
+    assert.equal(result.available_balance,351);
   }
 });
 
@@ -162,7 +172,7 @@ test('CSV export includes all rows, column names and spreadsheet-formula protect
     {reference:'property:1',title:'Property payment',kind:'income',category:'Property Collections',txn_date:'2026-10-26',source:'property',amount:50000},
   ];
   const csv=buildFinanceCsv(rows);
-  assert.match(csv,/Name","Type","Category","Entry","Date","Amount \(PHP\)","Reference/);
+  assert.match(csv,/Name","Type","Category","Entry","Date & Time","Amount \(PHP\)","Reference/);
   assert.match(csv,/"'=SUM\(1,2\)"/);
   assert.match(csv,/"Manual"/);
   assert.match(csv,/"Automatic"/);
@@ -175,7 +185,7 @@ test('Company Finances UI shows six requested columns, real pagination and type-
   const ui=fs.readFileSync(new URL('../../client/src/pages/System/CompanyFinances.jsx',import.meta.url),'utf8');
   const controller=fs.readFileSync(new URL('../controllers/System/companyFinances.controller.js',import.meta.url),'utf8');
   const routes=fs.readFileSync(new URL('../routers/System/companyFinances.routers.js',import.meta.url),'utf8');
-  for(const label of ['Name','Type','Category','Entry','Date','Amount'])assert.match(ui,new RegExp(`>${label}</th>`));
+  for(const label of ['Name','Type','Category','Entry','Date & Time','Amount'])assert.match(ui,new RegExp(`>${label}</th>`));
   assert.match(ui,/Page \{pageInfo\.page\} of \{pageInfo\.total_pages\}/);
   assert.match(ui,/Showing \{pageInfo\.range_start/);
   assert.match(ui,/100 per page/);
@@ -187,4 +197,12 @@ test('Company Finances UI shows six requested columns, real pagination and type-
   assert.match(ui,/exportCsv=async/);
   assert.match(routes,/router\.get\('\/transactions\/export',requirePermission\(PERMISSIONS\.COMPANY_FINANCES_VIEW\),finance\.exportTransactions\)/);
   assert.match(controller,/entry\.kind!==prev\.kind/);
+});
+
+test('Role & Access lists currently active Company Finance and protected listing actions',()=>{
+ const catalog=fs.readFileSync(new URL('../controllers/System/accessControl.controller.js',import.meta.url),'utf8');
+ const meta=fs.readFileSync(new URL('../../client/src/utils/permissionMeta.js',import.meta.url),'utf8');
+ assert.match(catalog,/Undo Listing Import.*LOT_LISTINGS_IMPORT_UNDO/);
+ assert.match(catalog,/Change Assigned Seller.*LOT_ASSIGNED_SELLER_EDIT/);
+ assert.match(meta,/import_undo/);
 });

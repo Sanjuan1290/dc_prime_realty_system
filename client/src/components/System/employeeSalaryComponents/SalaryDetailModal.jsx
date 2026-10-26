@@ -62,7 +62,7 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
     ['Special Holiday Hours', formatPayrollDuration(payroll.special_holiday_minutes)],
     ['Late / Absent Time', `${Number(payroll.tardiness_absence_minutes || 0).toLocaleString('en-PH')} mins`],
     ['Overtime', formatPayrollDuration(payroll.overtime_minutes)],
-    ['Rest Day Overtime', formatPayrollDuration(payroll.rest_day_overtime_minutes)],
+    ['Rest-Day Work', formatPayrollDuration(payroll.rest_day_overtime_minutes)],
     ['Night Differential', formatPayrollDuration(payroll.night_differential_minutes)],
   ] : [], [payroll])
 
@@ -134,7 +134,7 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
               <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Applied Payroll Settings</h3><span className="text-xs font-bold text-slate-500">Revision {payroll.payroll_settings_snapshot?.settings_revision ?? '—'}</span></div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 <Metric label="Regular Overtime" value={settingValue(payroll.payroll_settings_snapshot?.regular_ot_multiplier, '×')} />
-                <Metric label="Rest Day Overtime" value={settingValue(payroll.payroll_settings_snapshot?.rest_day_ot_multiplier, '×')} />
+                <Metric label="Rest-Day Work" value={settingValue(payroll.payroll_settings_snapshot?.rest_day_ot_multiplier, '×')} />
                 <Metric label="Holiday Pay Rate" value={payroll.payroll_settings_snapshot?.regular_holiday_multiplier === payroll.payroll_settings_snapshot?.special_holiday_multiplier
                   ? settingValue(payroll.payroll_settings_snapshot?.regular_holiday_multiplier, '×')
                   : `Regular: ${settingValue(payroll.payroll_settings_snapshot?.regular_holiday_multiplier, '×')} / Special: ${settingValue(payroll.payroll_settings_snapshot?.special_holiday_multiplier, '×')}`} />
@@ -199,6 +199,8 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
 }
 
 export default SalaryDetailModal
+
+
 
 
 

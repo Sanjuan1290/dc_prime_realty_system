@@ -35,14 +35,12 @@ export const calculateAttendancePayrollRow = ({ date, attendance, restDays, dayS
   const isExplicitAbsent = String(attendance?.attendance_status || '').toLowerCase() === 'absent';
   const shift = getAttendanceShift(timeIn, timeOut);
   const regularWorkingSeconds = Number(schedule.regularWorkingMinutes || 600) * 60;
-  // A missed scan is not proof the employee was absent. Existing explicit
-  // absent records are considered recorded; missing/incomplete punches need review.
+  // For closed payroll dates, a scheduled day without any punch counts as
+  // Absent. Only partial/invalid punches need Operations to correct them.
   const hasAnyPunch = Boolean(timeIn || timeOut);
   // A single punch needs correction even on a rest day, holiday, or an
   // explicitly absent entry. Blank rest days/holidays/events do not need review.
-  const reviewIssue = hasAnyPunch
-    ? (!timeIn || !timeOut || !shift ? 'incomplete' : null)
-    : (!isRestDay && !isHoliday && !hasEvent && !isExplicitAbsent ? 'missing' : null);
+  const reviewIssue = hasAnyPunch && (!timeIn || !timeOut || !shift) ? 'incomplete' : null;
 
   const base = {
     reviewIssue,
@@ -229,6 +227,8 @@ export const getPayrollAttendanceSummary = async (connection, { employeeId, date
     summary: summarizeAttendancePayrollRows({ rows, regularWorkingMinutes: schedule.regularWorkingMinutes }),
   };
 };
+
+
 
 
 

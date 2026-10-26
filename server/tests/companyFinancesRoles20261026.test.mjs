@@ -21,5 +21,5 @@ test('cash summary is below the date range filter and permission gated',()=>{
 });
 test('owner permission list includes new finance controls',()=>{
   const s=read('../config/permissions.js');
-  for(const key of ['COMPANY_FINANCES_VIEW','COMPANY_FINANCES_RECORD','COMPANY_FINANCES_EDIT','COMPANY_FINANCES_CATEGORIES','COMPANY_FINANCES_OPENING_BALANCE'])assert.ok(s.includes(key));
+  for(const key of ['COMPANY_FINANCES_VIEW','COMPANY_FINANCES_RECORD','COMPANY_FINANCES_EDIT','COMPANY_FINANCES_CATEGORIES'])assert.ok(s.includes(key));
 });

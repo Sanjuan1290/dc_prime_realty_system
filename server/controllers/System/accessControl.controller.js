@@ -25,9 +25,10 @@ import { writeAuditLog } from './auditLogs.controller.js';
 const permissionCatalog = [
   { group: 'Dashboard', kind: 'READ', items: [['View Dashboard', PERMISSIONS.SYSTEM_DASHBOARD_VIEW]] },
   { group: 'Reports', kind: 'READ', items: [['View Reports', PERMISSIONS.SYSTEM_REPORTS_VIEW], ['Export Reports', PERMISSIONS.SYSTEM_REPORTS_EXPORT]] },
+  { group: 'Company Finances', kind: 'OPERATE', items: [['View Company Finances', PERMISSIONS.COMPANY_FINANCES_VIEW], ['Add Income & Expenses', PERMISSIONS.COMPANY_FINANCES_RECORD], ['Edit or Void Manual Transactions', PERMISSIONS.COMPANY_FINANCES_EDIT], ['Manage Finance Categories', PERMISSIONS.COMPANY_FINANCES_CATEGORIES]] },
   { group: 'Projects', kind: 'OPERATE', items: [['View Projects', PERMISSIONS.SYSTEM_PROJECTS_VIEW], ['Add Project', PERMISSIONS.SYSTEM_PROJECTS_CREATE], ['Edit Project', PERMISSIONS.SYSTEM_PROJECTS_EDIT], ['Delete Project', PERMISSIONS.SYSTEM_PROJECTS_DELETE], ['Print Price List', PERMISSIONS.SYSTEM_PROJECTS_PRINT_PRICE_LIST]] },
   { group: 'Project Dashboard & Reports', kind: 'READ', items: [['Open Project Workspace', PERMISSIONS.LOT_PROJECT_VIEW], ['View Project Dashboard', PERMISSIONS.LOT_DASHBOARD_VIEW], ['View Project Reports', PERMISSIONS.LOT_REPORTS_VIEW], ['Export Project Reports', PERMISSIONS.LOT_REPORTS_EXPORT]] },
-  { group: 'Listings / Units', kind: 'OPERATE', items: [['View Listings', PERMISSIONS.LOT_LISTINGS_VIEW], ['View Listing Profile', PERMISSIONS.LOT_LISTING_PROFILE_VIEW], ['Import Listings', PERMISSIONS.LOT_LISTINGS_IMPORT], ['Add Listing', PERMISSIONS.LOT_LISTINGS_CREATE], ['Edit Listing', PERMISSIONS.LOT_LISTINGS_EDIT], ['Delete Listing', PERMISSIONS.LOT_LISTINGS_DELETE]] },
+  { group: 'Listings / Units', kind: 'OPERATE', items: [['View Listings', PERMISSIONS.LOT_LISTINGS_VIEW], ['View Listing Profile', PERMISSIONS.LOT_LISTING_PROFILE_VIEW], ['Import Listings', PERMISSIONS.LOT_LISTINGS_IMPORT], ['Undo Listing Import', PERMISSIONS.LOT_LISTINGS_IMPORT_UNDO], ['Change Assigned Seller', PERMISSIONS.LOT_ASSIGNED_SELLER_EDIT], ['Add Listing', PERMISSIONS.LOT_LISTINGS_CREATE], ['Edit Listing', PERMISSIONS.LOT_LISTINGS_EDIT], ['Delete Listing', PERMISSIONS.LOT_LISTINGS_DELETE]] },
   { group: 'Reservations', kind: 'OPERATE', items: [['Reserve Unit', PERMISSIONS.LOT_RESERVATIONS_CREATE], ['Correct Reservation (Governed)', PERMISSIONS.LOT_RESERVATION_CORRECT]] },
   { group: 'Buyer / Profile', kind: 'OPERATE', items: [['Edit Buyer Profile', PERMISSIONS.LOT_BUYER_PROFILE_EDIT], ['View Buyer Documents', PERMISSIONS.LOT_BUYER_DOCUMENTS_VIEW], ['Update Buyer Documents', PERMISSIONS.LOT_BUYER_DOCUMENTS_UPDATE], ['View Account History', PERMISSIONS.LOT_ACCOUNT_HISTORY_VIEW], ['Use Printouts', PERMISSIONS.LOT_PRINTOUTS_USE], ['Manage Cancellation', PERMISSIONS.LOT_CANCELLATIONS_MANAGE], ['Process Cancellation Settlement / Refund', PERMISSIONS.LOT_CANCELLATIONS_SETTLE], ['Return Cancelled Unit to Available', PERMISSIONS.LOT_CANCELLATIONS_RELEASE_UNIT]] },
   { group: 'Payments', kind: 'OPERATE', items: [['View Payments', PERMISSIONS.LOT_PAYMENTS_VIEW], ['Add Payment', PERMISSIONS.LOT_PAYMENTS_CREATE], ['Edit Payment', PERMISSIONS.LOT_PAYMENTS_EDIT], ['Delete Payment', PERMISSIONS.LOT_PAYMENT_DELETE], ['Penalty / LMF Adjustment (Governed)', PERMISSIONS.LOT_PENALTY_CORRECT], ['View Payments Audit', PERMISSIONS.LOT_PAYMENT_LOGS_VIEW]] },
@@ -240,6 +241,8 @@ export const applyRoleDefaultsToUser = async (req, res) => {
     return res.status(error?.statusCode || 500).json({ code: error?.code, message: error?.message || 'Failed to apply role defaults.' });
   } finally { connection.release(); }
 };
+
+
 
 
 
