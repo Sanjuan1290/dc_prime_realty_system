@@ -64,7 +64,7 @@ test('settings values are nullable until company-approved and unsupported mid-pe
   assert.throws(() => validatePayrollSettingsPayload({ mid_period_change_rule: 'calendar_day_proration' }), /No approved mid-period proration formula/)
 })
 
-test('configured premium-pay rules calculate OT, rest-day OT, holiday pay and night differential from the existing hourly rate', () => {
+test('configured premium-pay rules calculate OT, rest-day OT, holiday pay and night differential from the signed payroll sample hourly rate', () => {
   const money = calculateDraftPayrollMoney({
     monthlyBasicSalary: 15000,
     regularWorkingMinutes: 600,
@@ -85,16 +85,16 @@ test('configured premium-pay rules calculate OT, rest-day OT, holiday pay and ni
       night_differential_percentage: 10,
     },
   })
-  assert.equal(money.hourlyRate, 49.32)
-  assert.equal(money.overtimePay, 61.65)
-  assert.equal(money.restDayOvertimePay, 64.12)
-  assert.equal(money.regularHolidayPay, 98.64)
-  assert.equal(money.specialHolidayPay, 64.12)
-  assert.equal(money.nightDifferentialPay, 4.93)
-  assert.equal(money.netFundRelease, 7793.46)
+  assert.equal(money.hourlyRate, 86.54)
+  assert.equal(money.overtimePay, 108.18)
+  assert.equal(money.restDayOvertimePay, 112.5)
+  assert.equal(money.regularHolidayPay, 173.08)
+  assert.equal(money.specialHolidayPay, 112.5)
+  assert.equal(money.nightDifferentialPay, 8.65)
+  assert.equal(money.netFundRelease, 8014.91)
 })
 
-test('unconfigured premium rules remain zero and preserve the original receipt benchmark when no premium hours exist', () => {
+test('unconfigured premium rules remain zero using the current signed-sample rate', () => {
   const money = calculateDraftPayrollMoney({
     monthlyBasicSalary: 15000,
     regularWorkingMinutes: 600,
@@ -105,9 +105,9 @@ test('unconfigured premium rules remain zero and preserve the original receipt b
     payrollSettings: normalizePayrollSettingsSnapshot({}),
   })
   assert.equal(money.halfMonthBasic, 7500)
-  assert.equal(money.attendanceDeduction, 1031.61)
+  assert.equal(money.attendanceDeduction, 1810.13)
   assert.equal(money.overtimePay, 0)
-  assert.equal(money.netFundRelease, 6468.39)
+  assert.equal(money.netFundRelease, 5689.87)
 })
 
 test('Draft payroll snapshots current settings and Final Review rejects a settings revision change until recalculation', () => {
@@ -147,6 +147,7 @@ test('Payroll Settings UI clearly keeps rates blank until approved and exposes o
   assert.match(settingsModal, /legacyHolidayOtKeys/)
   assert.doesNotMatch(settingsModal, /'Regular Holiday OT Multiplier'/)
 })
+
 
 
 

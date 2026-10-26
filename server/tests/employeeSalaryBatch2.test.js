@@ -39,24 +39,26 @@ test('payroll period resolver uses 1-15 and 16-last calendar day including leap 
   assert.equal(resolvePayrollPeriod({ month: '2026-10', periodType: 'second_half' }).periodEnd, '2026-10-31');
 });
 
-test('primary receipt benchmark reproduces 49.32 hourly, 1,031.61 deduction and 6,468.39 net', () => {
+test('company payroll receipt reproduces 260 days, 8 hours and the 1,830-minute deduction', () => {
   const rates = calculatePayrollRates({ monthlyBasicSalary: 15000, regularWorkingMinutes: 600 });
   assert.equal(rates.halfMonthBasic, 7500);
-  assert.equal(rates.hourlyRate, 49.32);
-  assert.equal(calculateAttendanceDeduction({ tardinessAbsenceMinutes: 1255, hourlyRate: rates.hourlyRate }), 1031.61);
+  assert.equal(rates.dailyRate, 692.307692);
+  assert.equal(rates.regularHoursPerDay, 8);
+  assert.equal(rates.hourlyRate, 86.54);
+  assert.equal(calculateAttendanceDeduction({ tardinessAbsenceMinutes: 1830, hourlyRate: rates.hourlyRate }), 2639.47);
 
   const draft = calculateDraftPayrollMoney({
     monthlyBasicSalary: 15000,
     regularWorkingMinutes: 600,
-    tardinessAbsenceMinutes: 1255,
+    tardinessAbsenceMinutes: 1830,
     periodType: 'first_half',
     riceAllowance: 500,
     transportationAllowance: 500,
   });
-  assert.equal(draft.attendanceDeduction, 1031.61);
+  assert.equal(draft.attendanceDeduction, 2639.47);
   assert.equal(draft.riceAllowance, 0);
   assert.equal(draft.transportationAllowance, 0);
-  assert.equal(draft.netFundRelease, 6468.39);
+  assert.equal(draft.netFundRelease, 4860.53);
 });
 
 test('rice and transportation allowances follow the approved first-half and second-half rule', () => {
@@ -150,5 +152,6 @@ test('Batch 2 records premium hours without hard-coding money multipliers; later
   assert.match(calculator, /nightDifferentialPercentage === null \? 0/);
   assert.doesNotMatch(calculator, /const regularOtMultiplier = 1\.25|const restDayOtMultiplier = 1\.30|const regularHolidayMultiplier = 2\.00|const nightDifferentialPercentage = 10/);
 });
+
 
 

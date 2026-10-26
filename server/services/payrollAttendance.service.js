@@ -161,7 +161,7 @@ export const summarizeAttendancePayrollRows = ({ rows, regularWorkingMinutes }) 
   };
 };
 
-export const getPayrollAttendanceSummary = async (connection, { employeeId, dateFrom, dateTo }) => {
+export const getPayrollAttendanceSummary = async (connection, { employeeId, dateFrom, dateTo, paidWorkMinutesOverride = null }) => {
   const dates = enumerateDateRange(dateFrom, dateTo);
   if (!dates.length) throw Object.assign(new Error('Attendance range is invalid.'), { statusCode: 400 });
 
@@ -171,7 +171,8 @@ export const getPayrollAttendanceSummary = async (connection, { employeeId, date
     scheduledTimeOut: runtime.scheduledTimeOut,
     breakStart: runtime.breakStart,
     breakMinutes: runtime.breakMinutes,
-    regularWorkingMinutes: runtime.regularWorkingMinutes,
+    // Override only for payroll calculations; keep the Attendance clock unchanged.
+    regularWorkingMinutes: paidWorkMinutesOverride ?? runtime.regularWorkingMinutes,
     lateAfter: runtime.lateAfter,
   };
 
@@ -219,8 +220,9 @@ export const getPayrollAttendanceSummary = async (connection, { employeeId, date
   return {
     schedule,
     rows,
-    summary: summarizeAttendancePayrollRows({ rows, regularWorkingMinutes: runtime.regularWorkingMinutes }),
+    summary: summarizeAttendancePayrollRows({ rows, regularWorkingMinutes: schedule.regularWorkingMinutes }),
   };
 };
+
 
 

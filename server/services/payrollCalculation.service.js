@@ -6,6 +6,10 @@ const round = (value, decimals = 2) => {
 const nullableRate = (value) => value === null || value === undefined || value === '' ? null : Number(value);
 const hoursFromMinutes = (minutes) => Number(minutes || 0) / 60;
 
+// D&C Prime's signed salary sample: 52 weeks × 5 workdays and 8 paid hours.
+export const PAYROLL_ANNUAL_WORKDAYS = 52 * 5;
+export const PAYROLL_PAID_WORK_MINUTES = 8 * 60;
+
 export const calculatePayrollRates = ({ monthlyBasicSalary, regularWorkingMinutes }) => {
   const monthly = Number(monthlyBasicSalary || 0);
   const regularMinutes = Number(regularWorkingMinutes || 0);
@@ -17,10 +21,12 @@ export const calculatePayrollRates = ({ monthlyBasicSalary, regularWorkingMinute
   }
 
   const halfMonthBasic = round(monthly / 2, 2);
-  const dailyRate = round((monthly * 12) / 365, 6);
-  const regularHoursPerDay = regularMinutes / 60;
-  // The supplied receipt establishes the displayed 2-decimal hourly rate as the
-  // deduction basis (49.32 -> 1,031.61 for 1,255 minutes).
+  const dailyRate = round((monthly * 12) / PAYROLL_ANNUAL_WORKDAYS, 6);
+  // Payroll pay rates use 8 paid hours, even when the attendance clock uses a
+  // longer shift. Payroll attendance summaries likewise use this 8-hour cap.
+  const regularHoursPerDay = PAYROLL_PAID_WORK_MINUTES / 60;
+  // The signed payroll sample rounds the hourly rate to 2 decimal places before
+  // computing the late/absence deduction (86.54 × 1,830 / 60 = 2,639.47).
   const hourlyRate = round(dailyRate / regularHoursPerDay, 2);
   const minuteRate = round(hourlyRate / 60, 6);
 
@@ -146,6 +152,7 @@ export const calculateDraftPayrollMoney = ({
     netFundRelease,
   };
 };
+
 
 
 

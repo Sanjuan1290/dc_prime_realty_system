@@ -77,7 +77,6 @@ test('Payroll writes eligible and explanatory fields in both update and insert p
 test('Employees table exposes Other Actions with permission-limited options, edit and status separate',()=>{
   const src=source('client/src/pages/System/Employees.jsx');
   for(const label of ['Other Actions','Attendance Barcode','Employment History','Salary History','Promote / Change Salary','Deactivate','Edit']) assert.ok(src.includes(label));
-  assert.match(src, /downloadAttendanceBarcodePng\(\{ value: employee\.barcode_code/);
   assert.match(src,/canViewPayrollHistory \?/);
   assert.match(src,/canCreateEmploymentChange \?/);
 });

@@ -36,9 +36,9 @@ test('invalid or incomplete historical values do not fabricate a rate', () => {
   assert.equal(explainPayrollRates({ monthly_salary_snapshot: 15000, daily_rate: 0 }), null)
 })
 
-test('Salary Details shows explanation and leaves payroll engine unchanged', () => {
+test('Salary Details shows saved rates; new drafts use the signed 260-day company rate', () => {
   const source = readFileSync(new URL('../../client/src/components/System/employeeSalaryComponents/SalaryDetailModal.jsx', import.meta.url), 'utf8')
   const engine = readFileSync(new URL('../services/payrollCalculation.service.js', import.meta.url), 'utf8')
   assert.match(source, /<PayrollRateExplanation payroll=\{payroll\}/)
-  assert.match(engine, /\(monthly \* 12\) \/ 365/)
+  assert.match(engine, /\(monthly \* 12\) \/ PAYROLL_ANNUAL_WORKDAYS/)
 })

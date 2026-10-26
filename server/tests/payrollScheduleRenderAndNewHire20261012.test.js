@@ -59,7 +59,7 @@ test('new-hire scheduled workday fraction uses hire-date rest schedule for entir
   const pay = calculateDraftPayrollMoney({ monthlyBasicSalary: 15000, regularWorkingMinutes: 600, tardinessAbsenceMinutes: 0, periodType: 'first_half', riceAllowance: 500, transportationAllowance: 500, prorationFraction: d.fraction });
   assert.equal(pay.halfMonthBasic, 937.50);
   assert.equal(pay.netFundRelease, 937.50);
-  assert.equal(pay.hourlyRate, 49.32);
+  assert.equal(pay.hourlyRate, 86.54);
 });
 
 test('source enforces prehire Attendance exclusion, future-hire block, and release safety', () => {
@@ -75,4 +75,5 @@ test('source enforces prehire Attendance exclusion, future-hire block, and relea
   assert.throws(() => validatePayrollReleaseInput({ payroll, releasedByUserId: 1, releaseDate: '2026-10-12' }), /before the payroll period ends/);
   assert.throws(() => validatePayrollReleaseInput({ payroll, releasedByUserId: 1, releaseDate: '2099-12-01' }), /cannot be in the future/);
 });
+
 
