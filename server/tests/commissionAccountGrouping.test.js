@@ -88,7 +88,7 @@ test('commission page and modal expose account-safe Company & Seller Commission 
   ]);
 
   assert.match(pageSource, /One row per unit and buyer/);
-  assert.match(pageSource, /\['Unit', 'Client', 'Sellers', 'Network Name', 'Commission Base \(Before Discount\)', 'Total Gross'/);
+  assert.match(pageSource, /\['Unit', 'Client', 'Sellers', 'Network Name', 'Commission Base \(Before Discount\)', 'Total Gross \(incl\. Profit\)'/);
   assert.match(pageSource, /commissionGroup=\{selected\}/);
   assert.match(modalSource, /Company & Seller Commission/);
   assert.match(modalSource, /Select company or seller commission/);
@@ -96,4 +96,6 @@ test('commission page and modal expose account-safe Company & Seller Commission 
   assert.match(controllerSource, /return every commission recipient for the/);
   assert.match(controllerSource, /searchCommission\.lot_project_listing_id = c\.lot_project_listing_id/);
 });
+
+
 

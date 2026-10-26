@@ -136,7 +136,49 @@ export const summarizeCashSources = ({transactions}) => {
   };
 };
 
-export const loadFinanceSummary = async (connection, {from,to}) => {
+/** One hundred entries per page. Totals always use every transaction, never just the page. */
+export const FINANCE_PAGE_SIZE = 100;
+export const pageFinanceTransactions = (transactions, page = 1) => {
+  const requested = Number(page);
+  if (!Number.isSafeInteger(requested) || requested < 1 || requested > 1_000_000) {
+    throw fail('Choose a valid transactions page.');
+  }
+  const total = transactions.length;
+  const pages = Math.max(1, Math.ceil(total / FINANCE_PAGE_SIZE));
+  const current = Math.min(requested, pages);
+  const offset = (current - 1) * FINANCE_PAGE_SIZE;
+  return {
+    transactions: transactions.slice(offset, offset + FINANCE_PAGE_SIZE),
+    total_records: total,
+    page: current,
+    page_size: FINANCE_PAGE_SIZE,
+    total_pages: pages,
+    range_start: total ? offset + 1 : 0,
+    range_end: Math.min(total, offset + FINANCE_PAGE_SIZE),
+  };
+};
+
+/** Export every matching record, not only the currently displayed 100. */
+export const buildFinanceCsv = (transactions) => {
+  const cell = (value, numeric = false) => {
+    const original = String(value ?? '');
+    // Prevent Excel/LibreOffice formula interpretation of user-supplied names.
+    const safe = !numeric && /^[\s\uFEFF]*[=+@\-]/.test(original) ? `'${original}` : original;
+    return `"${safe.replaceAll('"', '""')}"`;
+  };
+  const lines = [[ 'Name', 'Type', 'Category', 'Entry', 'Date', 'Amount (PHP)', 'Reference' ].map(cell).join(',')];
+  for (const tx of transactions) {
+    const amount = (tx.kind === 'income' ? 1 : -1) * cents(tx.amount) / 100;
+    lines.push([
+      tx.title, tx.kind === 'income' ? 'Income' : 'Expense', tx.category,
+      tx.source === 'manual' ? 'Manual' : 'Automatic', tx.txn_date,
+      amount.toFixed(2), tx.reference,
+    ].map((value,index)=>cell(value,index===5)).join(','));
+  }
+  return `\uFEFF${lines.join('\r\n')}\r\n`;
+};
+
+export const loadFinanceSummary = async (connection, {from,to,page=1,allTransactions=false}) => {
   const settings = await getFinanceSettings(connection);
   if (!settings?.start_date || settings.opening_balance===null) return {configured:false,reason:'Set the opening balance and starting date to see available cash.'};
   const start = String(settings.start_date).slice(0,10), end=dateOnly(to), requestedFrom=dateOnly(from||start);
@@ -162,7 +204,8 @@ export const loadFinanceSummary = async (connection, {from,to}) => {
   if(Number(check.unconfirmed_checks)>0) warnings.push('Check payments are excluded until clearing can be verified.');
   if(Number(check.cash_advances_to_review)>0) warnings.push('Employee cash advances require manual reconciliation; request date does not prove payout date.');
   if(Number(check.refunds_to_review)>0) warnings.push('Some cancellation refunds have no recorded payment date or reference. Confirm payouts before relying on this balance.');
+  const pagination = pageFinanceTransactions(summary.transactions, page);
   return {configured:true,start_date:start,opening_balance:Number(settings.opening_balance),includes_property_collections:includeProperty,exclusions,sources,...summary,
-    transactions:summary.transactions.slice(0,300),total_records:summary.transactions.length,
+    ...pagination,transactions:allTransactions?summary.transactions:pagination.transactions,
     warnings, balance_verified:warnings.length===0};
 };

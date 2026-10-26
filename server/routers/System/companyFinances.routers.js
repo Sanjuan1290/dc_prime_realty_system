@@ -5,6 +5,7 @@ import * as finance from '../../controllers/System/companyFinances.controller.js
 const router=express.Router();
 router.use(authenticateUser);
 router.get('/overview',requirePermission(PERMISSIONS.COMPANY_FINANCES_VIEW),finance.overview);
+router.get('/transactions/export',requirePermission(PERMISSIONS.COMPANY_FINANCES_VIEW),finance.exportTransactions);
 router.get('/categories',requirePermission(PERMISSIONS.COMPANY_FINANCES_VIEW),finance.categories);
 router.post('/opening-balance',requirePermission(PERMISSIONS.COMPANY_FINANCES_OPENING_BALANCE),finance.saveOpeningBalance);
 router.put('/opening-balance',requirePermission(PERMISSIONS.COMPANY_FINANCES_OPENING_BALANCE),finance.correctOpeningBalance);

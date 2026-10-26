@@ -7,7 +7,7 @@ import StatusAlert from '../../components/Shared/StatusAlert'
 import ReviewReturnLink from '../../components/Shared/ReviewReturnLink'
 import { dismissReviewRecordQuery } from '../../utils/reviewRecordNavigation'
 import ReleaseDetailsModal from '../../components/Lot_Projects/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal'
-import { groupCommissionRecords } from '../../utils/commissionRecords'
+import { groupCommissionRecords, includeCompanyProfitInCommissionGroups } from '../../utils/commissionRecords'
 import { useFetch as fetchJson, useFetchPatch as patchJson } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { hasPermission, PERMISSIONS } from '../../config/permissions'
@@ -32,7 +32,7 @@ const StatCard = ({ label, value, tone = 'slate', isMoney = true }) => {
   return (
     <div className={`rounded-2xl border border-slate-200 p-5 shadow-sm ${styles[tone]}`}>
       <p className="text-sm font-black text-slate-500">{label}</p>
-      <p className="mt-3 text-2xl font-black">{isMoney ? money(value) : value}</p>
+      <p className="mt-3 text-2xl font-black">{isMoney && value !== '—' ? money(value) : value}</p>
     </div>
   )
 }
@@ -88,6 +88,7 @@ const matchesGroupFilters = (group, commissionTypeFilter, eligibilityFilter) => 
     || sellers.some((seller) => String(seller.commissionType || '').toLowerCase() === commissionTypeFilter)
   const matchesEligibility = eligibilityFilter === 'all'
     || sellers.some((seller) => getEligibilityKey(seller) === eligibilityFilter)
+    || (eligibilityFilter === 'eligible' && Number(group.companyProfitEligibleToRelease || 0) > 0)
 
   return matchesType && matchesEligibility
 }
@@ -125,6 +126,16 @@ const Commission = () => {
     queryFn: () => fetchJson(`/projects/lot-projects/${projectSlug}/commissions${queryString ? `?${queryString}` : ''}`),
     enabled: Boolean(projectSlug),
     keepPreviousData: true,
+  })
+
+  // Existing protected Company Profit ledger; same query key as Commission Details.
+  const {
+    data: profitData, isLoading: isProfitLoading, isFetching: isProfitFetching,
+    isError: isProfitError, error: profitError, refetch: refetchProfit,
+  } = useQuery({
+    queryKey: ['network-company-profit', projectSlug],
+    queryFn: () => fetchJson(`/projects/lot-projects/${projectSlug}/network-company-profit`),
+    enabled: Boolean(projectSlug),
   })
 
   const updateCommissionMutation = useMutation({
@@ -215,6 +226,7 @@ const Commission = () => {
       else setAlert(notice)
 
       queryClient.invalidateQueries({ queryKey: ['lot-commissions', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['network-company-profit', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-payment-logs', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
 
@@ -226,7 +238,7 @@ const Commission = () => {
             ? { ...seller, ...updatedCommission }
             : seller
         ))
-        return groupCommissionRecords(nextSellers)[0] || current
+        return includeCompanyProfitInCommissionGroups(groupCommissionRecords(nextSellers), profitData?.data)[0] || current
       })
     },
     onError: (mutationError) => {
@@ -251,7 +263,12 @@ const Commission = () => {
 
   const records = useMemo(() => data?.data || [], [data?.data])
   const project = data?.project || {}
-  const groupedRecords = useMemo(() => groupCommissionRecords(records), [records])
+  const groupedRecords = useMemo(
+    () => includeCompanyProfitInCommissionGroups(groupCommissionRecords(records), profitData?.data),
+    [records, profitData?.data]
+  )
+  const totalsLoading = isLoading || isProfitLoading
+  const totalsError = isError || isProfitError
   // A bulk release updates several commission rows at once. Refresh the open
   // buyer-account details from the canonical query result, not a stale copy.
   useEffect(() => {
@@ -268,8 +285,8 @@ const Commission = () => {
   const returnToReview = () => navigate(`/portal/${user?.role || 'super_admin'}/review-center/reviews/${reviewId}`)
 
   const filteredRecords = useMemo(
-    () => groupedRecords.filter((group) => matchesGroupFilters(group, commissionTypeFilter, eligibilityFilter)),
-    [groupedRecords, commissionTypeFilter, eligibilityFilter]
+    () => (totalsError ? [] : groupedRecords.filter((group) => matchesGroupFilters(group, commissionTypeFilter, eligibilityFilter))),
+    [groupedRecords, commissionTypeFilter, eligibilityFilter, totalsError]
   )
 
   const displayStats = useMemo(
@@ -304,6 +321,7 @@ const Commission = () => {
   const refreshRecords = () => {
     setAlert({ type: 'info', message: 'Refreshing commission records...' })
     refetch()
+    refetchProfit()
   }
 
   const handleCommissionAction = (commission, payload) => {
@@ -316,9 +334,9 @@ const Commission = () => {
   return (
     <main className="flex flex-col gap-6">
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
-      {isLoading ? <StatusAlert type="loading" message="Loading commission accounts and seller recipients..." /> : null}
-      {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing commission accounts..." /> : null}
-      {isError ? <StatusAlert type="error" message={error?.message || 'Failed to load commissions.'} /> : null}
+      {totalsLoading ? <StatusAlert type="loading" message="Loading seller commissions and Company Profit..." /> : null}
+      {!totalsLoading && (isFetching || isProfitFetching) ? <StatusAlert type="info" message="Refreshing commissions and Company Profit..." /> : null}
+      {totalsError ? <StatusAlert type="error" message={profitError?.message || error?.message || 'Could not load both seller commissions and Company Profit. Combined totals are unavailable.'} /> : null}
 
       <ReviewReturnLink role={user?.role} reviewId={dismissedReviewId || (reviewView ? reviewId : 0)} />
       <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -340,15 +358,23 @@ const Commission = () => {
         </div>
       </section>
 
-      <p className="-mb-4 text-xs font-semibold text-slate-500">Summary amounts reflect seller commissions only; Network Company Profit is tracked separately within each account.</p>
+      <p className="-mb-4 text-xs font-semibold text-slate-500">
+        Totals include seller commissions and separately tracked Network Company Profit. Seller recipients are counted separately; Company Profit is not a seller.
+      </p>
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Commission Accounts" value={isLoading ? '...' : displayStats.total || 0} isMoney={false} />
-        <StatCard label="Gross Commission" value={displayStats.gross || 0} tone="blue" />
-        <StatCard label="Eligible to Release" value={displayStats.eligible || 0} tone="indigo" />
-        <StatCard label="Released" value={displayStats.released || 0} tone="emerald" />
-        <StatCard label="Net Remaining" value={displayStats.remaining || 0} tone="amber" />
+        <StatCard label="Commission Accounts" value={totalsLoading || totalsError ? '—' : displayStats.total || 0} isMoney={false} />
+        <StatCard label="Gross Commission" value={totalsLoading || totalsError ? '—' : displayStats.gross || 0} tone="blue" />
+        <StatCard label="Eligible to Release" value={totalsLoading || totalsError ? '—' : displayStats.eligible || 0} tone="indigo" />
+        <StatCard label="Released" value={totalsLoading || totalsError ? '—' : displayStats.released || 0} tone="emerald" />
+        <StatCard label="Net Remaining" value={totalsLoading || totalsError ? '—' : displayStats.remaining || 0} tone="amber" />
       </section>
 
+      {!totalsLoading && !totalsError ? (
+        <p className="-mb-3 text-xs font-semibold text-slate-600">
+          Gross breakdown: Seller commissions {money(filteredRecords.reduce((sum, item) => sum + item.sellerGrossCommission, 0))}
+          {' · '} Company Profit {money(filteredRecords.reduce((sum, item) => sum + item.companyProfitGross, 0))}
+        </p>
+      ) : null}
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_220px_220px_auto]">
           <label className="relative">
@@ -388,7 +414,7 @@ const Commission = () => {
             aria-label="Filter accounts by seller eligibility"
           >
             <option value="all">All Eligibility</option>
-            <option value="eligible">Has Eligible Seller</option>
+            <option value="eligible">Has Eligible Release</option>
             <option value="completed">Has Completed Seller</option>
             <option value="not_eligible">Has Not Eligible Seller</option>
           </select>
@@ -402,35 +428,38 @@ const Commission = () => {
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-white px-5 py-4">
           <h2 className="text-lg font-black text-slate-950">Commission Records</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">One row per unit and buyer. Seller commission amounts are listed in the table; open Details for each seller and the separately tracked Network Company Profit.</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">One row per unit and buyer. Total Gross, Released and Net Remaining include Company Profit; Details keep the seller and Company Profit records separate.</p>
         </div>
 
         <div className="hidden overflow-x-auto lg:block">
           <table className="min-w-[1080px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {['Unit', 'Client', 'Sellers', 'Network Name', 'Commission Base (Before Discount)', 'Total Gross', 'Released', 'Net Remaining', 'Payment %', 'Actions'].map((head) => (
+                {['Unit', 'Client', 'Sellers', 'Network Name', 'Commission Base (Before Discount)', 'Total Gross (incl. Profit)', 'Released', 'Net Remaining', 'Payment %', 'Actions'].map((head) => (
                   <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>
                 ))}
               </tr>
             </thead>
 
             <tbody className="divide-y divide-slate-100">
-              {isLoading ? <tr><td colSpan={10} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading commission accounts...</td></tr> : null}
+              {totalsLoading ? <tr><td colSpan={10} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading commission accounts...</td></tr> : null}
 
-              {!isLoading && paginatedRecords.map((record) => (
+              {!totalsLoading && !totalsError && paginatedRecords.map((record) => (
                 <tr key={record.id} className="transition hover:bg-slate-50">
                   <td className="px-4 py-4 font-black text-blue-700">{record.unit}</td>
                   <td className="px-4 py-4 font-black text-slate-950">{record.client}</td>
                   <td className="px-4 py-4">
                     <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">
                       <FiUsers className="h-3.5 w-3.5" />
-                      {record.sellerCount} recipient{record.sellerCount === 1 ? '' : 's'}
+                      {record.sellerCount} seller{record.sellerCount === 1 ? '' : 's'}
                     </div>
                   </td>
                   <td className="px-4 py-4 font-semibold text-slate-600">{record.sellerGroupLabel}</td>
                   <td className="px-4 py-4 font-black text-slate-950">{money(record.commissionBase)}</td>
-                  <td className="px-4 py-4 font-black text-slate-950">{money(record.grossCommission)}</td>
+                  <td className="px-4 py-4 font-black text-slate-950">
+                    {money(record.grossCommission)}
+                    {record.hasCompanyProfit ? <p className="mt-1 text-[10px] font-semibold text-slate-500">Includes {money(record.companyProfitGross)} Company Profit</p> : null}
+                  </td>
                   <td className="px-4 py-4 font-semibold text-emerald-700">{money(record.released)}</td>
                   <td className="px-4 py-4 font-black text-blue-700">{money(record.netRemaining)}</td>
                   <td className="px-4 py-4 font-semibold text-slate-600">{Number(record.paymentPercent || 0).toFixed(2)}%</td>
@@ -443,7 +472,7 @@ const Commission = () => {
                 </tr>
               ))}
 
-              {!isLoading && !filteredRecords.length ? (
+              {!totalsLoading && !totalsError && !filteredRecords.length ? (
                 <tr>
                   <td colSpan={10} className="px-4 py-10 text-center">
                     <FiDollarSign className="mx-auto h-8 w-8 text-slate-300" />
@@ -457,21 +486,21 @@ const Commission = () => {
         </div>
 
         <div className="grid gap-3 p-4 lg:hidden">
-          {isLoading ? <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading commission accounts...</p> : null}
-          {!isLoading && paginatedRecords.map((record) => (
+          {totalsLoading ? <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading commission accounts...</p> : null}
+          {!totalsLoading && !totalsError && paginatedRecords.map((record) => (
             <article key={record.id} className="rounded-2xl border border-slate-200 p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-black text-blue-700">{record.unit}</p>
                   <p className="mt-1 text-base font-black text-slate-950">{record.client}</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">{record.sellerCount} commission recipient{record.sellerCount === 1 ? '' : 's'} · {record.sellerGroupLabel}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{record.sellerCount} seller{record.sellerCount === 1 ? '' : 's'} · {record.sellerGroupLabel}{record.hasCompanyProfit ? ' · + Company Profit' : ''}</p>
                 </div>
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">{Number(record.paymentPercent || 0).toFixed(2)}%</span>
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-black uppercase text-slate-400">Commission Base (Before Discount)</p><p className="mt-1 text-sm font-black text-slate-900">{money(record.commissionBase)}</p></div>
-                <div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-black uppercase text-slate-400">Total Gross</p><p className="mt-1 text-sm font-black text-slate-900">{money(record.grossCommission)}</p></div>
+                <div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-black uppercase text-slate-400">Total Gross</p><p className="mt-1 text-sm font-black text-slate-900">{money(record.grossCommission)}</p>{record.hasCompanyProfit ? <p className="mt-1 text-[10px] text-slate-500">Includes {money(record.companyProfitGross)} Company Profit</p> : null}</div>
                 <div className="rounded-xl bg-emerald-50 p-3"><p className="text-[10px] font-black uppercase text-emerald-600">Released</p><p className="mt-1 text-sm font-black text-emerald-700">{money(record.released)}</p></div>
                 <div className="rounded-xl bg-blue-50 p-3"><p className="text-[10px] font-black uppercase text-blue-600">Net Remaining</p><p className="mt-1 text-sm font-black text-blue-700">{money(record.netRemaining)}</p></div>
               </div>
@@ -509,7 +538,7 @@ const Commission = () => {
         </div>
       </section>
 
-      {reviewView && !isLoading && !reviewedGroup ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">The exact commission was not found. <button type="button" className="ml-2 underline" onClick={returnToReview}>Back to Review</button></div> : null}
+      {reviewView && !totalsLoading && !totalsError && !reviewedGroup ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">The exact commission was not found. <button type="button" className="ml-2 underline" onClick={returnToReview}>Back to Review</button></div> : null}
       {selected ? (
         <ReleaseDetailsModal
           commissionGroup={selected}
@@ -535,6 +564,8 @@ const Commission = () => {
 }
 
 export default Commission
+
+
 
 
 

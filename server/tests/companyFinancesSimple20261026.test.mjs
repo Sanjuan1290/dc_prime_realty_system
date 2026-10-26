@@ -120,3 +120,71 @@ test('opening-balance correction is permission gated, requires an explanation an
  assert.match(controller,/req\.body\?\.confirmed!==true/);
  assert.match(controller,/\{before,after,reason\}/);
 });
+
+test('finance transactions return 100 entries per page, beyond the old 300 limit, without changing totals',async()=>{
+  const {pageFinanceTransactions, FINANCE_PAGE_SIZE}=await import('../services/companyFinances.service.js');
+  assert.equal(FINANCE_PAGE_SIZE,100);
+  const records=Array.from({length:351},(_,i)=>({reference:`manual:${i+1}`,txn_date:'2026-10-26',kind:'income',amount:'1.00',title:`Entry ${i+1}`,source:'manual'}));
+  const first=pageFinanceTransactions(records,1);
+  const fourth=pageFinanceTransactions(records,'4');
+  assert.equal(first.transactions.length,100);
+  assert.equal(first.range_start,1);
+  assert.equal(first.range_end,100);
+  assert.equal(first.total_pages,4);
+  assert.equal(fourth.transactions.length,51);
+  assert.equal(fourth.transactions[0].reference,'manual:301');
+  assert.equal(fourth.transactions[50].reference,'manual:351');
+  assert.equal(fourth.total_records,351);
+  assert.equal(pageFinanceTransactions(records,999).page,4);
+  for(const invalid of [0,-1,1.5,'not-a-number',Infinity]) assert.throws(()=>pageFinanceTransactions(records,invalid),/valid transactions page/);
+  const db={query:async sql=>{
+    if(sql.includes('FROM company_finance_settings'))return [[{start_date:'2026-10-01',opening_balance:'10.00',includes_property_collections:1}]];
+    if(sql.includes('SELECT * FROM ('))return [records];
+    return [[{cancelled_archives:0,unconfirmed_checks:0,cash_advances_to_review:0,refunds_to_review:0}]];
+  }};
+  const page1=await loadFinanceSummary(db,{from:'2026-10-01',to:'2026-10-26',page:1});
+  const page4=await loadFinanceSummary(db,{from:'2026-10-01',to:'2026-10-26',page:4});
+  const all=await loadFinanceSummary(db,{from:'2026-10-01',to:'2026-10-26',allTransactions:true});
+  assert.equal(page1.transactions.length,100);
+  assert.equal(page4.transactions.length,51);
+  assert.equal(all.transactions.length,351);
+  for(const result of [page1,page4,all]){
+    assert.equal(result.money_in,351);
+    assert.equal(result.money_out,0);
+    assert.equal(result.available_balance,361);
+  }
+});
+
+test('CSV export includes all rows, column names and spreadsheet-formula protection',async()=>{
+  const {buildFinanceCsv}=await import('../services/companyFinances.service.js');
+  const rows=[
+    {reference:'manual:1',title:'=SUM(1,2)',kind:'expense',category:'Food',txn_date:'2026-10-26',source:'manual',amount:1555},
+    {reference:'property:1',title:'Property payment',kind:'income',category:'Property Collections',txn_date:'2026-10-26',source:'property',amount:50000},
+  ];
+  const csv=buildFinanceCsv(rows);
+  assert.match(csv,/Name","Type","Category","Entry","Date","Amount \(PHP\)","Reference/);
+  assert.match(csv,/"'=SUM\(1,2\)"/);
+  assert.match(csv,/"Manual"/);
+  assert.match(csv,/"Automatic"/);
+  assert.match(csv,/"-1555\.00"/);
+  assert.match(csv,/"50000\.00"/);
+  assert.equal(csv.split('\r\n').length,4);
+});
+
+test('Company Finances UI shows six requested columns, real pagination and type-specific entry modals',()=>{
+  const ui=fs.readFileSync(new URL('../../client/src/pages/System/CompanyFinances.jsx',import.meta.url),'utf8');
+  const controller=fs.readFileSync(new URL('../controllers/System/companyFinances.controller.js',import.meta.url),'utf8');
+  const routes=fs.readFileSync(new URL('../routers/System/companyFinances.routers.js',import.meta.url),'utf8');
+  for(const label of ['Name','Type','Category','Entry','Date','Amount'])assert.match(ui,new RegExp(`>${label}</th>`));
+  assert.match(ui,/Page \{pageInfo\.page\} of \{pageInfo\.total_pages\}/);
+  assert.match(ui,/Showing \{pageInfo\.range_start/);
+  assert.match(ui,/100 per page/);
+  assert.match(ui,/setPage\(pageInfo\.page\+1\)/);
+  assert.doesNotMatch(ui,/latest 300 shown/);
+  assert.doesNotMatch(ui,/<Label>Type<\/Label>/);
+  assert.match(ui,/newEntry\('income'\)/);
+  assert.match(ui,/newEntry\('expense'\)/);
+  assert.match(ui,/exportCsv=async/);
+  assert.match(routes,/router\.get\('\/transactions\/export',requirePermission\(PERMISSIONS\.COMPANY_FINANCES_VIEW\),finance\.exportTransactions\)/);
+  assert.match(controller,/entry\.kind!==prev\.kind/);
+});

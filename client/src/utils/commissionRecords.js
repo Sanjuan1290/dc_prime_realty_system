@@ -100,3 +100,65 @@ export const groupCommissionRecords = (records = []) => {
 }
 
 
+
+
+
+/**
+ * Display-only combined totals. Seller commission records remain unchanged and
+ * Network Company Profit continues to use its separate approval/release ledger.
+ * Link by persisted buyer ACCOUNT ID, never by unit ID, name, or listing ID.
+ */
+export const includeCompanyProfitInCommissionGroups = (groups = [], profits = []) => {
+  const byAccount = new Map()
+  const seenProfitIds = new Set()
+  const cents = (value) => {
+    const number = Number(value)
+    return Number.isFinite(number) ? Math.round(number * 100) : 0
+  }
+
+  for (const profit of Array.isArray(profits) ? profits : []) {
+    const accountId = Number(profit.accountId)
+    const profitId = Number(profit.id)
+    if (!Number.isSafeInteger(accountId) || accountId <= 0
+        || !Number.isSafeInteger(profitId) || profitId <= 0 || seenProfitIds.has(profitId)) continue
+    seenProfitIds.add(profitId)
+    const current = byAccount.get(accountId) || { gross: 0, released: 0, eligible: 0 }
+    current.gross += cents(profit.totalProfit)
+    current.released += cents(profit.released)
+    current.eligible += (Array.isArray(profit.stages) ? profit.stages : [])
+      .filter((stage) => stage.status === 'Pending' && stage.canRelease === true)
+      .reduce((total, stage) => total + cents(stage.amount), 0)
+    byAccount.set(accountId, current)
+  }
+
+  return groups.map((group) => {
+    const accountId = Number(group.accountId)
+    const profit = Number.isSafeInteger(accountId) && accountId > 0 ? byAccount.get(accountId) : null
+    const sellerGross = cents(group.grossCommission)
+    const sellerReleased = cents(group.released)
+    const sellerEligible = cents(group.eligibleToRelease)
+    const sellerRemaining = cents(group.netRemaining)
+    const companyGross = profit?.gross || 0
+    const companyReleased = profit?.released || 0
+    const companyEligible = profit?.eligible || 0
+    const companyRemaining = Math.max(0, companyGross - companyReleased)
+    return {
+      ...group,
+      // Preserve seller-only amounts for visible breakdown and audit checks.
+      sellerGrossCommission: sellerGross / 100,
+      sellerReleased: sellerReleased / 100,
+      sellerEligibleToRelease: sellerEligible / 100,
+      sellerNetRemaining: sellerRemaining / 100,
+      companyProfitGross: companyGross / 100,
+      companyProfitReleased: companyReleased / 100,
+      companyProfitEligibleToRelease: companyEligible / 100,
+      companyProfitRemaining: companyRemaining / 100,
+      hasCompanyProfit: companyGross > 0,
+      // Combined display totals, not changes to either source ledger.
+      grossCommission: (sellerGross + companyGross) / 100,
+      released: (sellerReleased + companyReleased) / 100,
+      eligibleToRelease: (sellerEligible + companyEligible) / 100,
+      netRemaining: (sellerRemaining + companyRemaining) / 100,
+    }
+  })
+}

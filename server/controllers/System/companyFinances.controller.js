@@ -1,6 +1,6 @@
 import { db } from '../../db/connect.js';
 import { writeAuditLog } from './auditLogs.controller.js';
-import { getFinanceSettings, loadFinanceSummary, validateFinanceEntry, moneyAmount, dateOnly } from '../../services/companyFinances.service.js';
+import { getFinanceSettings, loadFinanceSummary, validateFinanceEntry, moneyAmount, dateOnly, buildFinanceCsv } from '../../services/companyFinances.service.js';
 const respondError=(res,e)=>res.status(e.statusCode||500).json({success:false,code:e.code||'FINANCE_ERROR',message:e.statusCode?e.message:'Unable to save company finances.'});
 const bad=(msg,code='FINANCE_INVALID',statusCode=400)=>Object.assign(new Error(msg),{code,statusCode});
 const id=(value)=>{const n=Number(value);if(!Number.isSafeInteger(n)||n<1)throw bad('Invalid record.');return n};
@@ -19,9 +19,23 @@ export const overview=async(req,res)=>{
     const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
     const to=dateOnly(req.query.to||today);
     const from=dateOnly(req.query.from||`${to.slice(0,7)}-01`);
-    const data=await loadFinanceSummary(db,{from,to});
+    const data=await loadFinanceSummary(db,{from,to,page:req.query.page ?? 1});
     return res.json({success:true,data});
   }catch(e){return respondError(res,e)}
+};
+/** All matching rows, not the paginated table subset. Financial reports remain unchanged. */
+export const exportTransactions = async(req,res)=>{
+  try {
+    const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const to=dateOnly(req.query.to||today);
+    const from=dateOnly(req.query.from||`${to.slice(0,7)}-01`);
+    const data=await loadFinanceSummary(db,{from,to,allTransactions:true});
+    if(!data.configured)throw bad('Set your opening balance before exporting transactions.','FINANCE_NOT_CONFIGURED',409);
+    res.setHeader('Content-Type','text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition',`attachment; filename="DCP-Company-Finances-${from}-to-${to}.csv"`);
+    res.setHeader('Cache-Control','no-store');
+    return res.send(buildFinanceCsv(data.transactions));
+  } catch(e){return respondError(res,e)}
 };
 export const categories=async(_req,res)=>{
   try {const [rows]=await db.query('SELECT id,kind,name,protected,is_active FROM company_finance_categories ORDER BY kind,name');return res.json({success:true,data:rows})}catch(e){return respondError(res,e)}
@@ -108,7 +122,9 @@ export const createTransaction=(req,res)=>withTransaction(req,res,async connecti
 export const updateTransaction=(req,res)=>withTransaction(req,res,async connection=>{
   const txid=id(req.params.id);const [rows]=await connection.query('SELECT * FROM company_finance_transactions WHERE id=? FOR UPDATE',[txid]);
   if(!rows.length||rows[0].status!=='posted')throw bad('Only active manual transactions can be edited.','NOT_EDITABLE',409);
-  const prev=rows[0]; const entry=validateFinanceEntry(req.body||{},await getReadySettings(connection));await validateCategory(connection,entry);
+  const prev=rows[0]; const entry=validateFinanceEntry(req.body||{},await getReadySettings(connection));
+  if(entry.kind!==prev.kind)throw bad('Income and Expense types cannot be changed while editing.','FINANCE_TYPE_LOCKED',409);
+  await validateCategory(connection,entry);
   await connection.query(`UPDATE company_finance_transactions SET category_id=?,kind=?,amount=?,transaction_date=?,description=?,notes=?,updated_by_user_id=? WHERE id=?`,
     [entry.categoryId,entry.kind,entry.amount,entry.transactionDate,entry.description,entry.notes,req.authUser.id,txid]);
   await audit(connection,req,'Manual Transaction Corrected',txid,{before:{kind:prev.kind,amount:prev.amount,transaction_date:prev.transaction_date,category_id:prev.category_id},after:entry});

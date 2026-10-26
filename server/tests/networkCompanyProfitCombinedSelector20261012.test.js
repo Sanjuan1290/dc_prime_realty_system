@@ -40,7 +40,8 @@ test('profit record selection requires exact buyer account ID, avoiding resold u
   assert.match(group, /const key = accountId/);
 });
 
-test('Company Profit is never added to seller totals and has separate release approvals', () => {
+test('Company Profit is included in combined account display but keeps separate release approvals', () => {
+  assert.match(page, /includeCompanyProfitInCommissionGroups\(groupCommissionRecords\(records\), profitData\?\.data\)/);
   assert.match(page, /summary\.gross \+= Number\(item\.grossCommission/);
   assert.match(page, /summary\.released \+= Number\(item\.released/);
   assert.match(profitPanel, /enabled: Boolean\(projectSlug\) && !embedded/);
@@ -50,4 +51,6 @@ test('Company Profit is never added to seller totals and has separate release ap
   assert.match(profitPanel, /Print Acknowledgment/);
   assert.match(backend, /WHERE id = \? AND profit_account_id = \? AND release_status = 'Pending'/);
 });
+
+
 
