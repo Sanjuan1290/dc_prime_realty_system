@@ -113,6 +113,7 @@ const draftSource = (payroll) => ({
   },
   deductions: { attendance_deduction: payroll.attendance_deduction },
   net_fund_release: payroll.net_fund_release,
+  attendance_breakdown: payroll.attendance_breakdown,
 });
 
 export const buildFundReleaseReceipt = (payroll, { today = null } = {}) => {
@@ -137,6 +138,18 @@ export const buildFundReleaseReceipt = (payroll, { today = null } = {}) => {
   const halfMonthBasic = n(compensation.half_month_basic ?? payroll?.half_month_basic);
   const manualDeductions = n(adjustments.manual_deductions_total ?? payroll?.manual_deductions_total);
   const netFundRelease = n(source.net_fund_release ?? payroll?.net_fund_release);
+  // Historical receipts may lack the original shift-duration fields. Do not
+  // invent worked hours from the present attendance settings or from clock labels.
+  const breakdown = source.attendance_breakdown;
+  const hasRecordedTime = Array.isArray(breakdown) && breakdown.length > 0
+    && breakdown.every((row) => Number.isFinite(Number(row?.total_worked_minutes))
+      && row?.total_worked_minutes !== undefined
+      && Number.isFinite(Number(row?.scheduled_attendance_minutes))
+      && row?.scheduled_attendance_minutes !== undefined);
+  const attendanceMinutes = hasRecordedTime ? breakdown.reduce((total, row) => total + Number(row.scheduled_attendance_minutes), 0) : null;
+  const actualMinutes = hasRecordedTime ? breakdown.reduce((total, row) => total + Number(row.total_worked_minutes), 0) : null;
+  const unclassifiedMinutes = hasRecordedTime && breakdown.every((row) => row?.unclassified_extra_minutes !== undefined)
+    ? breakdown.reduce((total, row) => total + Number(row.unclassified_extra_minutes), 0) : null;
   const receiptDate = dateOnly(payroll?.released_date)
     || dateOnly(payroll?.period_release_date)
     || dateOnly(payroll?.finalized_at)
@@ -162,6 +175,9 @@ export const buildFundReleaseReceipt = (payroll, { today = null } = {}) => {
     },
     half_month_basic: halfMonthBasic,
     hourly_rate: n(compensation.hourly_rate ?? payroll?.hourly_rate_snapshot),
+    scheduled_attendance_minutes: attendanceMinutes,
+    actual_worked_minutes: actualMinutes,
+    unclassified_extra_minutes: unclassifiedMinutes,
     total_regular_hours: hoursFromMinutes(attendance.expected_regular_minutes ?? payroll?.expected_regular_minutes),
     total_regular_hours_attended: hoursFromMinutes(attendance.regular_attended_minutes ?? payroll?.regular_attended_minutes),
     paid_time_off_hours: hoursFromMinutes(attendance.pto_minutes ?? payroll?.pto_minutes),
@@ -198,6 +214,7 @@ export const buildFundReleaseReceipt = (payroll, { today = null } = {}) => {
     source: official && payroll?.finalized_snapshot ? 'finalized_snapshot' : 'draft_calculation',
   };
 };
+
 
 
 

@@ -176,6 +176,8 @@ export const getPayrollAttendanceSummary = async (connection, { employeeId, date
     breakMinutes: runtime.breakMinutes,
     // Override only for payroll calculations; keep the Attendance clock unchanged.
     regularWorkingMinutes: paidWorkMinutesOverride ?? runtime.regularWorkingMinutes,
+    // The attendance workday may be 10h even when the approved payroll basis is 8h.
+    attendanceWorkingMinutes: runtime.regularWorkingMinutes,
     lateAfter: runtime.lateAfter,
   };
 
@@ -227,6 +229,7 @@ export const getPayrollAttendanceSummary = async (connection, { employeeId, date
     summary: summarizeAttendancePayrollRows({ rows, regularWorkingMinutes: schedule.regularWorkingMinutes }),
   };
 };
+
 
 
 

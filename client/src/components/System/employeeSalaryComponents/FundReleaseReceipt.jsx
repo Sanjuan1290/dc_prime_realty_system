@@ -10,6 +10,11 @@ const numberValue = (value) => Number(value || 0).toLocaleString('en-PH', {
   maximumFractionDigits: 2,
 })
 
+const durationLabel = (minutes) => {
+  const total = Math.round(Number(minutes || 0))
+  return `${Math.floor(total / 60)}h ${String(total % 60).padStart(2, '0')}m`
+}
+
 const FundReleaseReceipt = ({ receipt }) => {
   if (!receipt) return null
 
@@ -19,8 +24,12 @@ const FundReleaseReceipt = ({ receipt }) => {
     { key: 'position', label: 'Position', custom: true, unit: receipt.department || '' },
     { key: 'half', label: 'Half-month Basic', value: amount(receipt.half_month_basic) },
     { key: 'rate', label: 'Rate', value: amount(receipt.hourly_rate), unit: 'Per Hour' },
-    { key: 'regular-hours', label: 'Total Regular Hours', value: numberValue(receipt.total_regular_hours) },
-    { key: 'regular-attended', label: 'Total Regular Hours Attended', value: amount(receipt.total_regular_hours_attended) },
+    ...(receipt.scheduled_attendance_minutes == null ? [] : [
+      { key: 'attendance-hours', label: 'Scheduled Attendance Hours', value: durationLabel(receipt.scheduled_attendance_minutes) },
+      { key: 'worked-hours', label: 'Actual Hours Worked (after break)', value: durationLabel(receipt.actual_worked_minutes) },
+    ]),
+    { key: 'regular-hours', label: 'Standard Regular Hours (8h/day payroll basis)', value: numberValue(receipt.total_regular_hours), unit: 'Hours' },
+    { key: 'regular-attended', label: 'Total Regular Hours Attended (credited at 8h/day)', value: numberValue(receipt.total_regular_hours_attended), unit: 'Hours' },
     { key: 'pto', label: 'Paid Time Off', value: numberValue(receipt.paid_time_off_hours), unit: 'Hour' },
     { key: 'regular-holiday', label: 'Total Holiday Hours (Regular)', value: numberValue(receipt.regular_holiday_hours) },
     { key: 'special-holiday', label: 'Total Holiday Hours (Special Non-Working)', value: numberValue(receipt.special_holiday_hours) },
@@ -88,6 +97,12 @@ const FundReleaseReceipt = ({ receipt }) => {
         </tbody>
       </table>
 
+      {receipt.unclassified_extra_minutes > 0 ? (
+        <p className="mt-3 text-[11px] font-semibold leading-snug">
+          Attendance includes {durationLabel(receipt.unclassified_extra_minutes)} outside the current regular-pay and premium-hour categories.
+          Review the applicable pay arrangement before finalizing. These hours are not automatically added as overtime.
+        </p>
+      ) : null}
       <p className="mt-5 text-[13px] font-medium leading-snug">
         <span className="mr-1">Total Amount:</span>
         <span className="font-bold uppercase">{receipt.amount_in_words}</span>
@@ -115,6 +130,7 @@ const FundReleaseReceipt = ({ receipt }) => {
 }
 
 export default FundReleaseReceipt
+
 
 
 

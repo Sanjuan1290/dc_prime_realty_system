@@ -27,7 +27,7 @@ const blank = {
   position: '', employment_type: 'regular', employee_status: 'active',
   hire_date: getManilaDate(), hire_date_change_reason: '',
   monthly_basic_salary: '', rice_allowance: '0', transportation_allowance: '0', attendance_bonus: '0',
-  rest_days: [], rest_days_effective_from: getManilaDate(),
+  rest_days: [],
 }
 
 const normalizeConfigs = (departmentConfigs = [], departments = []) => {
@@ -56,7 +56,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
       department: employee.department || initialDepartment, position: employee.position || '',
       employment_type: employee.employment_type || 'regular', employee_status: employee.employee_status || 'active',
       hire_date: String(employee.hire_date || getManilaDate()).slice(0, 10),
-      rest_days: Array.isArray(employee.rest_days) ? employee.rest_days : [], rest_days_effective_from: getManilaDate(),
+      rest_days: Array.isArray(employee.rest_days) ? employee.rest_days : [],
     } : { department: initialDepartment }),
   }))
 
@@ -366,6 +366,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
 }
 
 export default EmployeeModal
+
 
 
 

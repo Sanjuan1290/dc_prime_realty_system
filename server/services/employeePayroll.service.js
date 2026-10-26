@@ -560,6 +560,16 @@ export const calculateAndStoreDraftPayroll = async (connection, {
       time_out: row.timeOut,
       scheduled_day: row.scheduledDay,
       absence: row.absence,
+      // Keep actual shift duration separate from the approved 8-hour payroll cap.
+      // Store these values at draft creation so the receipt never needs live attendance.
+      total_worked_minutes: Math.round(Number(row.totalWorkedSeconds || 0) / 60),
+      scheduled_attendance_minutes: row.scheduledDay ? Number(attendance.schedule.attendanceWorkingMinutes || attendance.schedule.regularWorkingMinutes) : 0,
+      unclassified_extra_minutes: Math.round(Math.max(
+        Number(row.totalWorkedSeconds || 0) - Number(row.regularAttendedSeconds || 0)
+        - Number(row.overtimeSeconds || 0) - Number(row.restDayOvertimeSeconds || 0)
+        - Number(row.regularHolidaySeconds || 0) - Number(row.specialHolidaySeconds || 0)
+        - Number(row.doublePaySeconds || 0), 0
+      ) / 60),
       regular_attended_minutes: Math.round(Number(row.regularAttendedSeconds || 0) / 60),
       late_minutes: Math.round(Number(row.lateSeconds || 0) / 60),
       overtime_minutes: Math.round(Number(row.overtimeSeconds || 0) / 60),
@@ -833,6 +843,7 @@ export const listEmployeePayrollHistory = async (connection, employeeId) => {
     history,
   };
 };
+
 
 
 

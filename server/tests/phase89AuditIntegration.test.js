@@ -53,14 +53,19 @@ test('audit exports preserve original and new seller allocations',()=>{
  assert.equal(rows.length,1);assert.equal(rows[0][7],'Old');assert.equal(rows[0][8],'New');assert.equal(rows[0][9],'1');assert.equal(rows[0][10],'2');assert.equal(rows[0][11],'100');assert.equal(rows[0][12],'200');
  assert.deepEqual(sellerAuditRows([{id:10,metadata:{}}]),[]);
 });
-test('review comparison is snapshot-only and Audit UI has cross links with permissions',()=>{
+test('review comparison is snapshot-only, Review History is local, and Audit UI preserves review links',()=>{
  const component=read('client/src/components/Shared/ReviewSensitiveActionSummary.jsx');
  const review=read('client/src/pages/System/ReviewCenter.jsx');
  const auditPage=read('client/src/pages/System/AuditLogs.jsx');
  const auditModal=read('client/src/components/System/auditLogsComponents/AuditLogDetailsModal.jsx');
  assert.match(component,/Historical|historical|saved historical/);
  assert.doesNotMatch(component,/useQuery|fetch\(|useFetch\(/);
- assert.match(review,/hasPermission\(actor, PERMISSIONS.AUDIT_LOGS_VIEW\)/);
+ // The Review Center links to its own history instead of requiring Audit Logs access.
+ assert.match(review, /id="review-history"/);
+ assert.match(review, /View Review History/);
+ assert.match(review, /document\.getElementById\('review-history'\)\?\.scrollIntoView/);
+ assert.doesNotMatch(review, /hasPermission\(actor, PERMISSIONS.AUDIT_LOGS_VIEW\)/);
+ assert.doesNotMatch(review, /View Activity/);
  assert.match(auditPage,/reviewId.*linkedReviewId/);
  assert.match(auditModal,/getAuditReferences\(log.metadata\)/);
  assert.match(read('client/src/utils/auditReportExcel.js'),/Seller & Manager Changes/);
@@ -72,4 +77,5 @@ test('Phase 9 QA plan uses only read-only SQL and no unsupported triggers',()=>{
  assert.match(sql,/seller_manager_replacements/);
  assert.match(sql,/lot_project_assigned_seller_changes/);
 });
+
 

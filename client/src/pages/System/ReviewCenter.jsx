@@ -29,7 +29,7 @@ import { matchSnapshotRecords, RECORD_STATE_STYLES, sameValue } from '../../util
 import { getReviewRecordLink } from '../../utils/reviewRecordLinks'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { getDoubleCheckNotice, useFetch, useFetchPatch, useFetchPost, useFetchPost as postWorkflow } from '../../utils/useFetch'
-import { DEPARTMENT_HEAD_ROLE, DEPARTMENT_STAFF_ROLES, ROLE_LABELS, PERMISSIONS, hasPermission } from '../../config/permissions'
+import { DEPARTMENT_HEAD_ROLE, DEPARTMENT_STAFF_ROLES, ROLE_LABELS } from '../../config/permissions'
 
 const REVIEW_CENTER_ROLES = new Set(['super_admin','system_admin','auditor','marketing_head','sales_head','accounting_head','operations_head', ...DEPARTMENT_STAFF_ROLES])
 

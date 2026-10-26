@@ -197,6 +197,10 @@ export const buildFinalizedPayrollSnapshot = (payroll) => ({
   attendance_breakdown: (payroll.attendance_breakdown || []).map((row) => ({
     ...attendanceRowSnapshot(row),
     ...(row.night_differential_minutes !== undefined ? { night_differential_minutes: n(row.night_differential_minutes) } : {}),
+    // Additional receipt metrics are frozen with the original payroll snapshot.
+    ...(row.total_worked_minutes !== undefined ? { total_worked_minutes: n(row.total_worked_minutes) } : {}),
+    ...(row.scheduled_attendance_minutes !== undefined ? { scheduled_attendance_minutes: n(row.scheduled_attendance_minutes) } : {}),
+    ...(row.unclassified_extra_minutes !== undefined ? { unclassified_extra_minutes: n(row.unclassified_extra_minutes) } : {}),
   })),
   payroll_multipliers: payroll.payroll_settings_snapshot || {
     settings_revision: null,

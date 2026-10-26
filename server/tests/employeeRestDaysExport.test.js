@@ -36,13 +36,19 @@ test('employees UI requires multiple Rest Day selection and shows Rest Days', ()
   assert.match(modal, /Rest Day\(s\) \*/)
   assert.match(modal, /Monday/)
   assert.match(modal, /Sunday/)
-  assert.match(modal, /rest_days_effective_from/)
+  // The effective date for edits is selected on the server at save time, not entered by the employee.
+  assert.doesNotMatch(modal, /rest_days_effective_from/)
   // Keep the clear, nontechnical wording while testing multi-day selection.
   assert.match(modal, /Choose the days this employee is normally off\./)
   assert.match(modal, /const toggleRestDay = \(day\) =>/)
   assert.match(modal, /rest_days: current\.rest_days\.includes\(day\)/)
   assert.match(modal, /checked=\{checked\} onChange=\{\(\) => toggleRestDay\(value\)\}/)
-  assert.match(modal, /Rest Days Start Date/)
+  assert.doesNotMatch(modal, /Rest Days Start Date/)
+  const employeeController = read('server/controllers/System/Employees/EmployeesSimple.controller.js')
+  assert.match(employeeController, /const today = getManilaDateTime\(\)\.date/)
+  assert.match(employeeController, /const restDaysEffectiveFrom = today/)
+  assert.match(employeeController, /effectiveFrom: restDaysEffectiveFrom/)
+  assert.doesNotMatch(employeeController, /effectiveFrom: payload\.restDaysEffectiveFrom/)
   assert.match(employees, /Rest Days/)
 })
 
@@ -78,6 +84,7 @@ test('attendance export uses saved settings by default but still allows temporar
   assert.doesNotMatch(workbook, /remark: 'RD OT'/)
   assert.match(workbook, /\[h\]:mm:ss/)
 })
+
 
 
 
