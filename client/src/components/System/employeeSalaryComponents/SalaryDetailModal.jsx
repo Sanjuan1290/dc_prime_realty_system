@@ -9,8 +9,9 @@ import CorrectPayrollModal from './CorrectPayrollModal'
 import PayrollSettingsModal from './PayrollSettingsModal'
 import SignedSalaryReceiptsModal from './SignedSalaryReceiptsModal'
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
-import { decimalHours, employmentLabel, formatPayrollDate, money, payrollStatusLabel, payrollStatusTone } from './payrollFormatters'
+import { employmentLabel, formatPayrollDate, money, payrollStatusLabel, payrollStatusTone } from './payrollFormatters'
 import PayrollRateExplanation from './PayrollRateExplanation'
+import { formatPayrollDuration } from './payrollTimeFormat.mjs'
 
 const Metric = ({ label, value, hint }) => <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[11px] font-black uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 text-base font-black text-slate-950">{value}</p>{hint ? <p className="mt-1 text-xs font-semibold text-slate-500">{hint}</p> : null}</div>
 
@@ -54,15 +55,15 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
 
   const breakdown = payroll?.attendance_breakdown || []
   const attendance = useMemo(() => payroll ? [
-    ['Expected Work Hours', decimalHours(payroll.expected_regular_minutes)],
-    ['Hours Worked', decimalHours(payroll.regular_attended_minutes)],
-    ['Paid Time Off', decimalHours(payroll.pto_minutes)],
-    ['Regular Holiday Hours', decimalHours(payroll.regular_holiday_minutes)],
-    ['Special Holiday Hours', decimalHours(payroll.special_holiday_minutes)],
+    ['Expected Work Hours', formatPayrollDuration(payroll.expected_regular_minutes)],
+    ['Hours Worked', formatPayrollDuration(payroll.regular_attended_minutes)],
+    ['Paid Time Off', formatPayrollDuration(payroll.pto_minutes)],
+    ['Regular Holiday Hours', formatPayrollDuration(payroll.regular_holiday_minutes)],
+    ['Special Holiday Hours', formatPayrollDuration(payroll.special_holiday_minutes)],
     ['Late / Absent Time', `${Number(payroll.tardiness_absence_minutes || 0).toLocaleString('en-PH')} mins`],
-    ['Overtime', decimalHours(payroll.overtime_minutes)],
-    ['Rest Day Overtime', decimalHours(payroll.rest_day_overtime_minutes)],
-    ['Night Differential', decimalHours(payroll.night_differential_minutes)],
+    ['Overtime', formatPayrollDuration(payroll.overtime_minutes)],
+    ['Rest Day Overtime', formatPayrollDuration(payroll.rest_day_overtime_minutes)],
+    ['Night Differential', formatPayrollDuration(payroll.night_differential_minutes)],
   ] : [], [payroll])
 
   return (
@@ -164,10 +165,10 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
             <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4"><p className="text-sm font-black text-blue-900">Attendance source for {payroll.period_label}</p><p className="mt-1 text-xs font-semibold leading-5 text-blue-800">{officialStatus ? 'These attendance records were used to finalize this salary. Later attendance changes do not change this pay period.' : 'These attendance records were used for the draft. Recalculate the draft after fixing attendance.'}</p></section>
             <div className="overflow-x-auto rounded-2xl border border-slate-200">
               <table className="min-w-[1200px] w-full text-sm">
-                <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Date', 'Day Type', 'Status', 'Time In', 'Time Out', 'Regular Hrs', 'Late Mins', 'OT Hrs', 'Rest Day OT', 'Regular Holiday', 'Special Holiday'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
+                <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Date', 'Day Type', 'Status', 'Time In', 'Time Out', 'Regular Time', 'Late (min)', 'Overtime', 'Rest Day OT', 'Regular Holiday', 'Special Holiday'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {!breakdown.length ? <tr><td colSpan={11} className="px-5 py-12 text-center font-semibold text-slate-500">No attendance rows were recorded for this calculation range.</td></tr> : null}
-                  {breakdown.map((row) => <tr key={row.date} className="hover:bg-slate-50"><td className="px-4 py-3 font-black text-slate-900">{formatPayrollDate(row.date, { short: true })}</td><td className="px-4 py-3 font-semibold text-slate-700">{dayTypeLabel(row.day_type)}</td><td className="px-4 py-3 font-semibold text-slate-700">{stateLabel(row)}</td><td className="px-4 py-3 font-mono text-xs font-semibold text-slate-700">{row.time_in || '—'}</td><td className="px-4 py-3 font-mono text-xs font-semibold text-slate-700">{row.time_out || '—'}</td><td className="px-4 py-3 font-semibold text-slate-700">{decimalHours(row.regular_attended_minutes)}</td><td className="px-4 py-3 font-semibold text-slate-700">{Number(row.late_minutes || 0)}</td><td className="px-4 py-3 font-semibold text-slate-700">{decimalHours(row.overtime_minutes)}</td><td className="px-4 py-3 font-semibold text-slate-700">{decimalHours(row.rest_day_overtime_minutes)}</td><td className="px-4 py-3 font-semibold text-slate-700">{decimalHours(row.regular_holiday_minutes)}</td><td className="px-4 py-3 font-semibold text-slate-700">{decimalHours(row.special_holiday_minutes)}</td></tr>)}
+                  {breakdown.map((row) => <tr key={row.date} className="hover:bg-slate-50"><td className="px-4 py-3 font-black text-slate-900">{formatPayrollDate(row.date, { short: true })}</td><td className="px-4 py-3 font-semibold text-slate-700">{dayTypeLabel(row.day_type)}</td><td className="px-4 py-3 font-semibold text-slate-700">{stateLabel(row)}</td><td className="px-4 py-3 font-mono text-xs font-semibold text-slate-700">{row.time_in || '—'}</td><td className="px-4 py-3 font-mono text-xs font-semibold text-slate-700">{row.time_out || '—'}</td><td className="px-4 py-3 font-semibold text-slate-700">{formatPayrollDuration(row.regular_attended_minutes)}</td><td className="px-4 py-3 font-semibold text-slate-700">{Number(row.late_minutes || 0).toLocaleString('en-PH')} min</td><td className="px-4 py-3 font-semibold text-slate-700">{formatPayrollDuration(row.overtime_minutes)}</td><td className="px-4 py-3 font-semibold text-slate-700">{formatPayrollDuration(row.rest_day_overtime_minutes)}</td><td className="px-4 py-3 font-semibold text-slate-700">{formatPayrollDuration(row.regular_holiday_minutes)}</td><td className="px-4 py-3 font-semibold text-slate-700">{formatPayrollDuration(row.special_holiday_minutes)}</td></tr>)}
                 </tbody>
               </table>
             </div>
