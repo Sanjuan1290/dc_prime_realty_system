@@ -240,7 +240,7 @@ test('Manual attendance controller covers required employee/date/reason/time, ch
   assert.match(controller, /Employee and attendance date are required/)
   assert.match(controller, /A reason is required for manual attendance/)
   assert.match(controller, /Time In is required for manual attendance/)
-  assert.match(controller, /Time Out cannot be earlier than Time In/)
+  assert.match(controller, /Time In and Time Out must be within 16 hours/)
   assert.match(controller, /Attendance already exists for this employee and date/)
   assert.match(controller, /employee_attendance_corrections/)
   assert.match(controller, /Added manual attendance/)
@@ -290,5 +290,6 @@ test('Automatic Time Out only closes open attendance records and labels source a
   assert.match(job, /attendance_event_id IS NULL/)
   assert.match(job, /a\.actual_time_in <= \?/)
 })
+
 
 

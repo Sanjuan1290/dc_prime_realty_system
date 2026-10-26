@@ -1,6 +1,7 @@
 import { dateOnly } from '../controllers/System/Employees/employeeModule.shared.js';
 import { enumerateDateRange, getAttendanceRuntimeSettings } from '../controllers/System/Employees/attendanceLite.shared.js';
 import { getEmployeeRestDaysAsOf, getRestDayAssignmentsForRange } from './employeeRestDay.service.js';
+import { getAttendanceShift, getNightShiftSeconds, getShiftBreakSeconds } from './nightShiftTime.service.js';
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const validDayTypes = new Set(['regular', 'double_pay', 'regular_holiday', 'special_holiday']);
@@ -10,14 +11,6 @@ const secondsFromTime = (value) => {
   const match = String(value).slice(0, 8).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (!match) return null;
   return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3] || 0);
-};
-
-const breakOverlapSeconds = ({ timeInSeconds, timeOutSeconds, breakStart, breakMinutes }) => {
-  if (timeInSeconds === null || timeOutSeconds === null || timeOutSeconds <= timeInSeconds) return 0;
-  const breakStartSeconds = secondsFromTime(breakStart);
-  if (breakStartSeconds === null) return 0;
-  const breakEndSeconds = breakStartSeconds + Number(breakMinutes || 0) * 60;
-  return Math.max(Math.min(timeOutSeconds, breakEndSeconds) - Math.max(timeInSeconds, breakStartSeconds), 0);
 };
 
 const normalizeDayType = (value) => validDayTypes.has(String(value || '')) ? String(value) : 'regular';
@@ -31,7 +24,7 @@ const activeRestDaysForDate = (employeeId, date, assignments, fallback = []) => 
   return historical.length ? historical : fallback;
 };
 
-export const calculateAttendancePayrollRow = ({ date, attendance, restDays, daySetting, schedule }) => {
+export const calculateAttendancePayrollRow = ({ date, attendance, restDays, daySetting, schedule, nightDifferentialMode = 'automatic' }) => {
   const weekdayKey = DAY_KEYS[new Date(`${date}T00:00:00Z`).getUTCDay()];
   const dayType = normalizeDayType(attendance?.day_type || daySetting?.day_type || 'regular');
   const hasEvent = Boolean(attendance?.attendance_event_id);
@@ -40,6 +33,7 @@ export const calculateAttendancePayrollRow = ({ date, attendance, restDays, dayS
   const timeIn = attendance?.actual_time_in || null;
   const timeOut = attendance?.actual_time_out || null;
   const isExplicitAbsent = String(attendance?.attendance_status || '').toLowerCase() === 'absent';
+  const shift = getAttendanceShift(timeIn, timeOut);
   const regularWorkingSeconds = Number(schedule.regularWorkingMinutes || 600) * 60;
   // A missed scan is not proof the employee was absent. Existing explicit
   // absent records are considered recorded; missing/incomplete punches need review.
@@ -47,7 +41,7 @@ export const calculateAttendancePayrollRow = ({ date, attendance, restDays, dayS
   // A single punch needs correction even on a rest day, holiday, or an
   // explicitly absent entry. Blank rest days/holidays/events do not need review.
   const reviewIssue = hasAnyPunch
-    ? (!timeIn || !timeOut ? 'incomplete' : null)
+    ? (!timeIn || !timeOut || !shift ? 'incomplete' : null)
     : (!isRestDay && !isHoliday && !hasEvent && !isExplicitAbsent ? 'missing' : null);
 
   const base = {
@@ -66,7 +60,13 @@ export const calculateAttendancePayrollRow = ({ date, attendance, restDays, dayS
     regularHolidaySeconds: 0,
     specialHolidaySeconds: 0,
     doublePaySeconds: 0,
-    nightDifferentialSeconds: Number(attendance?.night_differential_seconds || 0),
+    // Derive night hours from verified times, including next-day Time Out.
+    // Never double-count a stale stored night_differential_seconds value.
+    nightDifferentialSeconds: nightDifferentialMode === 'legacy'
+      ? Number(attendance?.night_differential_seconds || 0)
+      : shift ? getNightShiftSeconds({
+          timeIn, timeOut, breakStart: schedule.breakStart, breakMinutes: schedule.breakMinutes,
+        }) : 0,
   };
 
   if (isRestDay && !timeIn && !timeOut) return { ...base, state: 'rest_day' };
@@ -80,16 +80,11 @@ export const calculateAttendancePayrollRow = ({ date, attendance, restDays, dayS
   const scheduledOut = secondsFromTime(schedule.scheduledTimeOut);
   const lateAfter = secondsFromTime(schedule.lateAfter || schedule.scheduledTimeIn || '09:00:00');
   let totalWorkedSeconds = 0;
-  if (timeInSeconds !== null && timeOutSeconds !== null && timeOutSeconds >= timeInSeconds) {
-    totalWorkedSeconds = Math.max(
-      (timeOutSeconds - timeInSeconds) - breakOverlapSeconds({
-        timeInSeconds,
-        timeOutSeconds,
-        breakStart: schedule.breakStart || '12:00:00',
-        breakMinutes: schedule.breakMinutes ?? 60,
-      }),
-      0
-    );
+  if (shift) {
+    totalWorkedSeconds = Math.max(shift.lengthSeconds - getShiftBreakSeconds({
+      shift, breakStart: schedule.breakStart || '12:00:00',
+      breakMinutes: schedule.breakMinutes ?? 60,
+    }), 0);
   }
 
   if (isRestDay) {
@@ -102,7 +97,7 @@ export const calculateAttendancePayrollRow = ({ date, attendance, restDays, dayS
   }
 
   if (isHoliday) {
-    const lateSeconds = timeInSeconds !== null && lateAfter !== null ? Math.max(timeInSeconds - lateAfter, 0) : 0;
+    const lateSeconds = shift?.overnight ? 0 : timeInSeconds !== null && lateAfter !== null ? Math.max(timeInSeconds - lateAfter, 0) : 0;
     return {
       ...base,
       state: 'holiday_work',
@@ -115,7 +110,7 @@ export const calculateAttendancePayrollRow = ({ date, attendance, restDays, dayS
   }
 
   if (hasEvent) {
-    const overtimeSeconds = timeOutSeconds !== null && scheduledOut !== null
+    const overtimeSeconds = !shift?.overnight && timeOutSeconds !== null && scheduledOut !== null
       ? Math.min(Math.max(timeOutSeconds - scheduledOut, 0), totalWorkedSeconds)
       : 0;
     return {
@@ -128,8 +123,9 @@ export const calculateAttendancePayrollRow = ({ date, attendance, restDays, dayS
     };
   }
 
-  const lateSeconds = timeInSeconds !== null && lateAfter !== null ? Math.max(timeInSeconds - lateAfter, 0) : 0;
-  const rawOvertime = timeOutSeconds !== null && scheduledOut !== null ? Math.max(timeOutSeconds - scheduledOut, 0) : 0;
+  const lateSeconds = shift?.overnight ? 0 : timeInSeconds !== null && lateAfter !== null ? Math.max(timeInSeconds - lateAfter, 0) : 0;
+  // The default daytime scheduled-out clock cannot classify overnight OT.
+  const rawOvertime = !shift?.overnight && timeOutSeconds !== null && scheduledOut !== null ? Math.max(timeOutSeconds - scheduledOut, 0) : 0;
   const overtimeSeconds = Math.min(rawOvertime, totalWorkedSeconds);
   return {
     ...base,
@@ -170,7 +166,7 @@ export const summarizeAttendancePayrollRows = ({ rows, regularWorkingMinutes }) 
   };
 };
 
-export const getPayrollAttendanceSummary = async (connection, { employeeId, dateFrom, dateTo, paidWorkMinutesOverride = null }) => {
+export const getPayrollAttendanceSummary = async (connection, { employeeId, dateFrom, dateTo, paidWorkMinutesOverride = null, nightDifferentialMode = 'automatic' }) => {
   const dates = enumerateDateRange(dateFrom, dateTo);
   if (!dates.length) throw Object.assign(new Error('Attendance range is invalid.'), { statusCode: 400 });
 
@@ -224,6 +220,7 @@ export const getPayrollAttendanceSummary = async (connection, { employeeId, date
     restDays: activeRestDaysForDate(employeeId, date, assignments, fallbackRestDays),
     daySetting: daySettingByDate.get(date) || null,
     schedule,
+    nightDifferentialMode,
   }));
 
   return {

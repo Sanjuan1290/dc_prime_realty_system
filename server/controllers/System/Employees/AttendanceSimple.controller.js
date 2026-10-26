@@ -9,6 +9,7 @@ import {
   normalizeClockTime,
 } from './attendanceLite.shared.js';
 import { isValidAttendanceBarcode } from './attendanceBarcode.shared.js';
+import { getAttendanceShift, isValidOvernightAttendance } from '../../../services/nightShiftTime.service.js';
 
 const dayTypes = new Set(['regular', 'double_pay', 'regular_holiday', 'special_holiday']);
 const eventTreatments = new Set(['full_day', 'custom_time', 'record_only']);
@@ -21,7 +22,10 @@ const getErrorMessage = (error) => {
 const normalizeDayType = (value) => dayTypes.has(String(value || '')) ? String(value) : 'regular';
 const normalizeTreatment = (value) => eventTreatments.has(String(value || '')) ? String(value) : 'record_only';
 const normalizeEmployeeIds = (value) => Array.from(new Set((Array.isArray(value) ? value : []).map(Number).filter(Boolean)));
-const isTimeOutBeforeTimeIn = (timeIn, timeOut) => Boolean(timeIn && timeOut && timeOut < timeIn);
+// Earlier Time Out is permitted only as next-day Time Out, within 16 hours.
+const isEventTimeOutBeforeTimeIn = (timeIn, timeOut) => Boolean(timeIn && timeOut && timeOut < timeIn);
+const invalidAttendanceClockRange = (timeIn, timeOut) => Boolean(timeIn && timeOut && !getAttendanceShift(timeIn, timeOut));
+const previousDate = (day) => new Date(Date.parse(`${day}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
 
 const getEmployeeByBarcode = async (connection, barcode) => {
   const [rows] = await connection.query(`
@@ -336,11 +340,18 @@ export const scanAttendance = async (req, res) => {
       [employee.employee_id]
     );
 
-    const attendance = await getAttendanceForUpdate(
+    let attendance = await getAttendanceForUpdate(
       connection,
       employee.employee_id,
       now.date
     );
+    // Overnight barcode Time Out belongs to the original Time In date.
+    // Only attach an open previous-day punch if the elapsed shift is <= 16h.
+    if (action === 'time_out' && !attendance?.actual_time_in) {
+      const prior = await getAttendanceForUpdate(connection, employee.employee_id, previousDate(now.date));
+      if (prior?.actual_time_in && !prior.actual_time_out && !prior.attendance_event_id
+        && isValidOvernightAttendance(prior.actual_time_in, now.time)) attendance = prior;
+    }
 
     if (action === 'time_in') {
       if (attendance?.attendance_event_id) {
@@ -503,20 +514,22 @@ export const scanAttendance = async (req, res) => {
       attendance.employee_attendance_id,
     ]);
 
+    const attendanceStartDate = dateOnly(attendance.attendance_date);
     await writeAuditLog(connection, req, {
       actor: req.authUser,
       action: 'update',
       module: 'Attendance',
       entityType: 'employee_attendance',
       entityId: String(attendance.employee_attendance_id),
-      entityLabel: `${employee.employee_code} - ${now.date}`,
+      entityLabel: `${employee.employee_code} - ${attendanceStartDate}`,
       title: 'Employee timed out',
       description: `${employee.full_name} timed out at ${now.time}.`,
 
       metadata: {
         employeeId: employee.employee_id,
         employeeCode: employee.employee_code,
-        attendanceDate: now.date,
+        attendanceDate: attendanceStartDate,
+        actualTimeOutDate: now.date,
         timeOut: now.time,
       },
     });
@@ -530,7 +543,8 @@ export const scanAttendance = async (req, res) => {
       data: {
         employee,
         attendanceId: attendance.employee_attendance_id,
-        date: now.date,
+        date: attendanceStartDate,
+        timeOutDate: now.date,
         time: now.time,
         action,
       },
@@ -1037,14 +1051,14 @@ export const createManualAttendance = async (req, res) => {
     }
 
     if (
-      isTimeOutBeforeTimeIn(
+      invalidAttendanceClockRange(
         actualTimeIn,
         actualTimeOut
       )
     ) {
       return res.status(400).json({
         message:
-          'Time Out cannot be earlier than Time In.',
+          'Time In and Time Out must be within 16 hours. For an overnight shift, enter the next-day Time Out clock time.',
       });
     }
 
@@ -1263,14 +1277,14 @@ export const correctAttendanceRecord = async (req, res) => {
     }
 
     if (
-      isTimeOutBeforeTimeIn(
+      invalidAttendanceClockRange(
         actualTimeIn,
         actualTimeOut
       )
     ) {
       return res.status(400).json({
         message:
-          'Time Out cannot be earlier than Time In.',
+          'Time In and Time Out must be within 16 hours. For an overnight shift, enter the next-day Time Out clock time.',
       });
     }
 
@@ -1834,7 +1848,7 @@ const validateEventPayload = (body = {}, runtime = {}) => {
   }
 
   if (
-    isTimeOutBeforeTimeIn(
+    isEventTimeOutBeforeTimeIn(
       payload.timeIn,
       payload.timeOut
     )
@@ -2798,5 +2812,6 @@ export const getAttendanceCorrections = async (req, res) => {
     connection.release();
   }
 };
+
 
 

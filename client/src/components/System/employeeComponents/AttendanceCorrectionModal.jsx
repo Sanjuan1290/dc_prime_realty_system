@@ -263,16 +263,21 @@ const AttendanceCorrectionModal = ({
       return
     }
 
-    if (
-      form.actual_time_in &&
-      form.actual_time_out &&
-      form.actual_time_out < form.actual_time_in
-    ) {
+    if (form.actual_time_in && form.actual_time_out) {
+      const [inH, inM] = form.actual_time_in.split(':').map(Number)
+      const [outH, outM] = form.actual_time_out.split(':').map(Number)
+      const start = inH * 60 + inM
+      const end = outH * 60 + outM
+      const duration = end - start + (end < start ? 1440 : 0)
+      if (duration > 0 && duration <= 16 * 60) {
+        mutation.mutate()
+        return
+      }
       setNotice({
         type: 'warning',
 
         message:
-          'Time Out cannot be earlier than Time In.',
+          'Enter a valid shift up to 16 hours. For an overnight shift, Time Out is on the next day.',
       })
 
       return
@@ -514,6 +519,7 @@ const AttendanceCorrectionModal = ({
               />
             </label>
           </div>
+          <p className="text-xs font-semibold text-slate-500">Night shift: choose the Time In date above, then enter next-day Time Out (for example 10:00 PM to 6:00 AM). Maximum 16 hours.</p>
 
           <label className="grid gap-2">
             <span className="text-sm font-black text-slate-700">
@@ -562,5 +568,6 @@ const AttendanceCorrectionModal = ({
 }
 
 export default AttendanceCorrectionModal
+
 
 

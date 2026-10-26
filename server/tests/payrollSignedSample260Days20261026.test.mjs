@@ -39,7 +39,7 @@ test('draft generation explicitly applies the 8-hour override; Attendance master
   const payroll = readFileSync(new URL('../services/employeePayroll.service.js', import.meta.url), 'utf8')
   const attendance = readFileSync(new URL('../services/payrollAttendance.service.js', import.meta.url), 'utf8')
   assert.match(payroll, /paidWorkMinutesOverride: PAYROLL_PAID_WORK_MINUTES/)
-  assert.match(payroll, /employee-salary-260days-8hours-v1/)
+  assert.match(payroll, /employee-salary-260days-8hours-night-v2/)
   assert.match(attendance, /paidWorkMinutesOverride \?\? runtime\.regularWorkingMinutes/)
   assert.match(attendance, /regularWorkingMinutes: schedule\.regularWorkingMinutes/)
 })

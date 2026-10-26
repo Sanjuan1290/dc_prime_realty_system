@@ -41,4 +41,3 @@ export const getCompanyProfitError = (rate = {}, { maxPercentOfPool = DEFAULT_MA
   return ''
 }
 
-

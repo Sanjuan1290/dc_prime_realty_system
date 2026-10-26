@@ -86,6 +86,9 @@ const buildLiveAttendance = async (connection, payroll, today) => {
     dateTo: attendanceThrough,
     // New payroll uses 8 paid hours; historical payroll keeps its original clock basis.
     paidWorkMinutesOverride: /^employee-salary-260days-8hours-/.test(String(payroll.calculation_version || '')) ? PAYROLL_PAID_WORK_MINUTES : null,
+    // Previous payroll versions used the saved night seconds; do not make
+    // unchanged attendance appear edited merely because this engine was upgraded.
+    nightDifferentialMode: /^employee-salary-260days-8hours-night-/.test(String(payroll.calculation_version || '')) ? 'automatic' : 'legacy',
   });
   const payload = buildPayrollAttendanceFingerprintPayload({
     attendanceCalculatedThrough: attendanceThrough,
@@ -190,7 +193,11 @@ export const buildFinalizedPayrollSnapshot = (payroll) => ({
     regularWorkingMinutes: payroll.regular_working_minutes_snapshot,
     attendanceCalculatedThrough: payroll.attendance_calculated_through,
   }),
-  attendance_breakdown: (payroll.attendance_breakdown || []).map(attendanceRowSnapshot),
+  // Keep legacy fingerprint rows unchanged; persist night minutes in new official snapshots only.
+  attendance_breakdown: (payroll.attendance_breakdown || []).map((row) => ({
+    ...attendanceRowSnapshot(row),
+    ...(row.night_differential_minutes !== undefined ? { night_differential_minutes: n(row.night_differential_minutes) } : {}),
+  })),
   payroll_multipliers: payroll.payroll_settings_snapshot || {
     settings_revision: null,
     regular_ot_multiplier: null,

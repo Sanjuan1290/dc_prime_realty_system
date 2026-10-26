@@ -76,7 +76,7 @@ test('attendance scanner enforces time-in before time-out and supports automatic
   assert.match(job, /time_out_source = 'automatic'/);
   assert.match(job, /attendance_default_time_out|defaultTimeOut/);
   assert.match(job, /a\.actual_time_in <= \?/);
-  assert.match(controller, /Time Out cannot be earlier than Time In/);
+  assert.match(controller, /Time In and Time Out must be within 16 hours/);
 });
 
 test('attendance supports admin corrections, day classification and company events', () => {
@@ -128,6 +128,7 @@ test('Super Admin receives real Employees and Attendance routes while cash advan
   assert.doesNotMatch(projects, /Add House & Lot Project/);
   assert.doesNotMatch(dashboard, /label: 'House & Lot Projects'/);
 });
+
 
 
 

@@ -9,7 +9,7 @@ import { getPayrollSettingsSnapshot } from './payrollSettings.service.js';
 import { getEmployeeRestDaysAsOf } from './employeeRestDay.service.js';
 import { computeNewHireWorkdayFraction } from './payrollNewHireProration.service.js';
 
-export const PAYROLL_CALCULATION_VERSION = 'employee-salary-260days-8hours-v1';
+export const PAYROLL_CALCULATION_VERSION = 'employee-salary-260days-8hours-night-v2';
 let payrollSchemaReady = false;
 
 const parseJson = (value, fallback = null) => {
@@ -566,6 +566,7 @@ export const calculateAndStoreDraftPayroll = async (connection, {
       rest_day_overtime_minutes: Math.round(Number(row.restDayOvertimeSeconds || 0) / 60),
       regular_holiday_minutes: Math.round(Number(row.regularHolidaySeconds || 0) / 60),
       special_holiday_minutes: Math.round(Number(row.specialHolidaySeconds || 0) / 60),
+      night_differential_minutes: Math.round(Number(row.nightDifferentialSeconds || 0) / 60),
     })),
   };
 
