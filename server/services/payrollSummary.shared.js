@@ -2,6 +2,15 @@ const officialStatuses = new Set(['finalized', 'corrected', 'released']);
 
 const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 const numberValue = (value) => Number(value || 0);
+const paymentState = (status) => status === 'released' ? 'released'
+  : ['finalized', 'corrected'].includes(status) ? 'awaiting_release'
+  : 'draft';
+const dateString = (value) => {
+  if (!value) return null;
+  const valueString = typeof value === 'string' ? value : (value instanceof Date ? value.toISOString() : String(value));
+  const date = valueString.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+};
 
 export const buildPayrollSummaryFromRows = ({ rows = [], period }) => {
   const includedRows = (Array.isArray(rows) ? rows : [])
@@ -18,13 +27,17 @@ export const buildPayrollSummaryFromRows = ({ rows = [], period }) => {
       const adjustments = roundMoney(holidayPay + nightDifferential + manualAdjustments);
       const calculatedNet = roundMoney(basic - attendanceDeduction + overtime + restDayOvertime + allowances + adjustments);
       const net = roundMoney(row.net_fund_release);
+      const status = String(row.payroll_status || '').toLowerCase();
       return {
+        payment_state: paymentState(status),
+        release_date: status === 'released' ? dateString(row.released_date) : null,
+        scheduled_payday: dateString(row.scheduled_release_date),
         employee_payroll_id: Number(row.employee_payroll_id || 0),
         employee_id: Number(row.employee_id || 0),
         employee_code: row.employee_code || null,
         employee_name: row.employee_name_snapshot || '',
         position: row.position_snapshot || '',
-        payroll_status: String(row.payroll_status || '').toLowerCase(),
+        payroll_status: status,
         basic,
         deduction: attendanceDeduction,
         overtime,
@@ -51,6 +64,12 @@ export const buildPayrollSummaryFromRows = ({ rows = [], period }) => {
     total_manual_adjustments: summary.total_manual_adjustments + row.manual_adjustments,
     total_adjustments: summary.total_adjustments + row.adjustments,
     total_fund_release: summary.total_fund_release + row.net,
+    total_released: summary.total_released + (row.payment_state === 'released' ? row.net : 0),
+    total_awaiting_release: summary.total_awaiting_release + (row.payment_state === 'awaiting_release' ? row.net : 0),
+    total_draft: summary.total_draft + (row.payment_state === 'draft' ? row.net : 0),
+    released_count: summary.released_count + (row.payment_state === 'released' ? 1 : 0),
+    awaiting_release_count: summary.awaiting_release_count + (row.payment_state === 'awaiting_release' ? 1 : 0),
+    draft_count: summary.draft_count + (row.payment_state === 'draft' ? 1 : 0),
   }), {
     employee_count: 0,
     total_basic: 0,
@@ -63,10 +82,16 @@ export const buildPayrollSummaryFromRows = ({ rows = [], period }) => {
     total_manual_adjustments: 0,
     total_adjustments: 0,
     total_fund_release: 0,
+    total_released: 0,
+    total_awaiting_release: 0,
+    total_draft: 0,
+    released_count: 0,
+    awaiting_release_count: 0,
+    draft_count: 0,
   });
 
   Object.keys(totals).forEach((key) => {
-    if (key !== 'employee_count') totals[key] = roundMoney(totals[key]);
+    if (!['employee_count', 'released_count', 'awaiting_release_count', 'draft_count'].includes(key)) totals[key] = roundMoney(totals[key]);
   });
 
   const statusCounts = includedRows.reduce((counts, row) => {
@@ -74,6 +99,11 @@ export const buildPayrollSummaryFromRows = ({ rows = [], period }) => {
     return counts;
   }, {});
   const reconciliationIssues = includedRows.filter((row) => Math.abs(row.reconciliation_difference) >= 0.01);
+  const reconciliationRecords = reconciliationIssues.map((row) => ({
+    employee_payroll_id: row.employee_payroll_id,
+    employee_name: row.employee_name,
+    difference: row.reconciliation_difference,
+  }));
 
   return {
     period,
@@ -81,15 +111,18 @@ export const buildPayrollSummaryFromRows = ({ rows = [], period }) => {
     status_counts: statusCounts,
     rows: includedRows,
     totals,
+    can_export: reconciliationIssues.length === 0 && includedRows.length > 0,
+    reconciliation_issues: reconciliationRecords,
     warnings: [
       ...(includedRows.some((row) => row.payroll_status === 'draft')
         ? ['This period contains Draft payroll. The summary is operational and not an official final fund-release summary.']
         : []),
       ...(reconciliationIssues.length
-        ? [`${reconciliationIssues.length} payroll record(s) do not reconcile to the summary formula and should be reviewed before export.`]
+        ? [`${reconciliationIssues.length} payroll record(s) do not reconcile with the saved payroll amounts. Correct the issue before exporting.`]
         : []),
     ],
   };
 };
+
 
 

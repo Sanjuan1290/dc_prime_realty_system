@@ -121,7 +121,9 @@ test('PDF-only payroll summary uses the planned columns and totals', () => {
     assert.match(summaryPrint, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
   assert.match(exportUtility, /Total Holiday Pay/)
-  assert.match(exportUtility, /TOTAL FUND RELEASE/)
+  assert.match(exportUtility, /Total Payroll/)
+  assert.match(summaryPrint, /Payment Status \/ Date/)
+  assert.match(exportModal, /Awaiting release/)
   assert.match(exportUtility, /XLSX\.writeFile/)
   assert.match(exportUtility, /text\/csv/)
   assert.doesNotMatch(exportModal, /downloadPayrollSummaryCsv|downloadPayrollSummaryExcel|>CSV<|>Excel</)
@@ -133,7 +135,7 @@ test('PDF summary is a black-and-white A4 landscape accounting table and whole-p
   assert.match(exportModal, /pageSize: 'A4 landscape'/)
   assert.match(summaryPrint, /border border-black/)
   assert.match(summaryPrint, /bg-\[#d9d9d9\]/)
-  assert.match(exportModal, /Includes all employees in this pay period/)
+  assert.match(exportModal, /Includes all payroll records for this period/)
   assert.match(salaryPage, /<FiDownload \/>Export Summary/)
   assert.match(salaryPage, /PERMISSIONS\.PAYROLL_SUMMARY_EXPORT/)
 })
@@ -162,6 +164,7 @@ test('final QA still reproduces the supplied Fund Release receipt benchmark exac
   assert.equal(receipt.total_deduction, 1031.61)
   assert.equal(receipt.total, 6468.39)
 })
+
 
 
 
