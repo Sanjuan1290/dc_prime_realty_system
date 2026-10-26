@@ -77,8 +77,8 @@ test('role defaults including later additive migrations match every non-owner cu
   assert.match(batch12, /DELETE FROM `role_permission_defaults`[\s\S]*workflow\.review_center\.view/);
   assert.match(batch13, /INSERT INTO `role_permission_defaults`[\s\S]*workflow\.review_center\.view/);
   assert.match(batch13, /INSERT INTO `user_permissions`[\s\S]*marketing_staff/);
-  assert.deepEqual(addedDefaultGrants.get('accounting_staff'), ['lot_project.commissions.change_seller']);
-  assert.deepEqual(addedDefaultGrants.get('accounting_head'), ['lot_project.commissions.change_seller']);
+  assert.deepEqual(addedDefaultGrants.get('accounting_staff'), ['lot_project.commissions.change_seller', 'company_finances.view', 'company_finances.record', 'company_finances.edit_manual']);
+  assert.deepEqual(addedDefaultGrants.get('accounting_head'), ['lot_project.commissions.change_seller', 'company_finances.view', 'company_finances.record', 'company_finances.edit_manual', 'company_finances.categories.manage', 'company_finances.opening_balance.manage']);
   assert.deepEqual(addedDefaultGrants.get('marketing_staff'), ['system.seller_groups.members.deactivate_empty_manager']);
   assert.deepEqual(addedDefaultGrants.get('marketing_head'), ['system.seller_groups.members.deactivate_empty_manager']);
   for (const role of CONFIGURABLE_SYSTEM_ROLES.filter((r) => r !== 'system_admin')) {
@@ -120,6 +120,8 @@ test('seed skips roles saved from Role & Access Control and never overwrites or 
   assert.doesNotMatch(sql, /ON DUPLICATE KEY UPDATE/);
   assert.doesNotMatch(sql, /user_permissions/);
 });
+
+
 
 
 

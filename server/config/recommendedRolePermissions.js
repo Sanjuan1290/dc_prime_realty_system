@@ -44,6 +44,7 @@ const BASE_ROLE_PERMISSIONS = Object.freeze({
   accounting_staff: Object.freeze([
     PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW,
     PERMISSIONS.SYSTEM_DASHBOARD_VIEW, PERMISSIONS.SYSTEM_REPORTS_VIEW, PERMISSIONS.SYSTEM_REPORTS_EXPORT,
+    PERMISSIONS.COMPANY_FINANCES_VIEW, PERMISSIONS.COMPANY_FINANCES_RECORD, PERMISSIONS.COMPANY_FINANCES_EDIT,
     PERMISSIONS.SYSTEM_PROJECTS_VIEW, PERMISSIONS.SYSTEM_PROJECTS_PRINT_PRICE_LIST,
     PERMISSIONS.SYSTEM_ACCREDITED_VIEW, PERMISSIONS.SYSTEM_ACCREDITED_PRINT, PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF,
     PERMISSIONS.EMPLOYMENT_HISTORY_VIEW,
@@ -98,13 +99,16 @@ export const RECOMMENDED_ROLE_PERMISSIONS = Object.freeze({
   system_admin: Object.freeze([...new Set([
     ...(BASE_ROLE_PERMISSIONS.system_admin || []),
     ...systemAdminExtras,
+    PERMISSIONS.COMPANY_FINANCES_VIEW, PERMISSIONS.COMPANY_FINANCES_RECORD, PERMISSIONS.COMPANY_FINANCES_EDIT, PERMISSIONS.COMPANY_FINANCES_CATEGORIES, PERMISSIONS.COMPANY_FINANCES_OPENING_BALANCE,
   ])]),
   auditor: Object.freeze(getAuditorEnforcedPermissions()),
   marketing_head: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.marketing_staff || []), ...headExtras])]),
   sales_head: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.sales_staff || []), ...headExtras])]),
-  accounting_head: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.accounting_staff || []), ...headExtras])]),
+  accounting_head: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.accounting_staff || []), ...headExtras, PERMISSIONS.COMPANY_FINANCES_CATEGORIES, PERMISSIONS.COMPANY_FINANCES_OPENING_BALANCE])]),
   operations_head: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.operations_staff || []), ...headExtras])]),
 });
+
+
 
 
 

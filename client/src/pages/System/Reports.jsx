@@ -345,6 +345,7 @@ const Reports = () => {
   const { data: currentUserData } = useCurrentUser()
   const currentUser = currentUserData?.user || {}
   const canExport = hasPermission(currentUser, PERMISSIONS.SYSTEM_REPORTS_EXPORT)
+  const canViewCompanyFinances = hasPermission(currentUser, PERMISSIONS.COMPANY_FINANCES_VIEW)
   const role = currentUser.role || 'super_admin'
   const isSystemAdmin = role === 'system_admin'
   const isSuperAdmin = role === 'super_admin'
@@ -361,6 +362,11 @@ const Reports = () => {
   const longRangeKey = `${fromDate}:${toDate}`
   const administratorNeedsConfirmation = (isSuperAdmin || isSystemAdmin) && dateRange === 'custom' && isLongerThanTwelveMonths && approvedLongRangeKey !== longRangeKey
   const canLoadRange = !hasInvalidOrder && !administratorNeedsConfirmation
+  const financeQuery = useQuery({
+    queryKey: ['company-finances',fromDate,toDate],
+    queryFn: () => useFetch(`/company-finances/overview?${new URLSearchParams({from:fromDate,to:toDate})}`),
+    enabled: canViewCompanyFinances && canLoadRange,
+  })
 
   const resetApproval = () => setApprovedLongRangeKey('')
 
@@ -655,6 +661,20 @@ const Reports = () => {
         daySpan={selectedDaySpan}
       />
 
+      {canViewCompanyFinances ? (
+        <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-label="Company cash summary">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-lg font-black text-slate-900">Company Cash Summary</h2><p className="text-sm text-slate-500">Actual received and paid money from the company finance tracker.</p></div><Link to={`${roleBasePath}/company-finances`} className="text-sm font-bold text-blue-700 hover:underline">Open Company Finances</Link></div>
+          {financeQuery.isError ? <p className="text-sm font-semibold text-amber-700">Company cash summary unavailable: {financeQuery.error?.message}</p> : financeQuery.isLoading ? <p className="text-sm text-slate-500">Loading company cash…</p> : !financeQuery.data?.data?.configured ? <p className="text-sm font-semibold text-amber-700">Opening balance not set. Set it in Company Finances first.</p> : <>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">Money In</p><p className="mt-1 text-xl font-black text-emerald-700">{money(financeQuery.data.data.money_in)}</p></div>
+              <div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">Money Out</p><p className="mt-1 text-xl font-black text-rose-700">{money(financeQuery.data.data.money_out)}</p></div>
+              <div className="rounded-xl bg-blue-50 p-4"><p className="text-sm text-blue-800">Available Cash</p><p className="mt-1 text-xl font-black text-blue-950">{financeQuery.data.data.balance_verified ? money(financeQuery.data.data.available_balance) : 'Needs Review'}</p></div>
+            </div>
+            {(financeQuery.data.data.warnings||[]).map(w=><p key={w} className="mt-2 text-sm font-semibold text-amber-800">⚠ {w}</p>)}
+          </>}
+        </section>
+      ) : null}
+
       {hasInvalidOrder ? <StatusAlert type="error" message="The From date must be earlier than or equal to the To date." /> : null}
       {administratorNeedsConfirmation ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 shadow-sm">
@@ -830,6 +850,8 @@ const Reports = () => {
 }
 
 export default Reports
+
+
 
 
 

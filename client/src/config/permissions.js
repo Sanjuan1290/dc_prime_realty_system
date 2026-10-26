@@ -3,6 +3,11 @@
 export const PERMISSIONS = Object.freeze({
   SYSTEM_DASHBOARD_VIEW: 'system.dashboard.view',
   SYSTEM_REPORTS_VIEW: 'system.reports.view',
+  COMPANY_FINANCES_VIEW: 'company_finances.view',
+  COMPANY_FINANCES_RECORD: 'company_finances.record',
+  COMPANY_FINANCES_EDIT: 'company_finances.edit_manual',
+  COMPANY_FINANCES_CATEGORIES: 'company_finances.categories.manage',
+  COMPANY_FINANCES_OPENING_BALANCE: 'company_finances.opening_balance.manage',
   SYSTEM_REPORTS_EXPORT: 'system.reports.export',
   SYSTEM_PROJECTS_VIEW: 'system.projects.view',
   SYSTEM_PROJECTS_CREATE: 'system.projects.create',
@@ -387,6 +392,8 @@ export const hasProjectScope = (user = {}, projectSlug = '') => {
   const normalizedSlug = String(projectSlug).trim().toLowerCase()
   return projects.some((project) => String(project?.slug || project?.lot_project_slug || '').trim().toLowerCase() === normalizedSlug)
 }
+
+
 
 
 

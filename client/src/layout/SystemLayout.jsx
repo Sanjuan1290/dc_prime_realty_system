@@ -110,6 +110,11 @@ const SystemLayout = () => {
         ],
       },
       {
+        title: "FINANCE",
+        description: "Money received and spent",
+        items: [{ label: "Company Finances", pathname: "company-finances", icon: FiDollarSign, permission: PERMISSIONS.COMPANY_FINANCES_VIEW }],
+      },
+      {
         title: "PROJECTS",
         description: "Project setup and configuration",
         items: [{ label: "Projects", pathname: "projects", icon: FiMap, permission: PERMISSIONS.SYSTEM_PROJECTS_VIEW }],
@@ -437,6 +442,8 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
+
+
 
 
 

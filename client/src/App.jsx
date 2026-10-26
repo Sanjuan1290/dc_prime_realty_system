@@ -61,6 +61,7 @@ const AccessDenied = lazy(() => import('./pages/System/AccessDenied'))
 const Employees = lazy(() => import('./pages/System/Employees'))
 const Attendance = lazy(() => import('./pages/System/Attendance'))
 const EmployeeSalary = lazy(() => import('./pages/System/EmployeeSalary'))
+const CompanyFinances = lazy(() => import('./pages/System/CompanyFinances'))
 const AttendanceKiosk = lazy(() => import('./pages/Public/AttendanceKiosk'))
 
 const LotDashboard = lazy(() => import('./pages/Lot_Projects/Dashboard'))
@@ -121,6 +122,7 @@ const systemRoleRoutes = SYSTEM_USER_ROLES.map((role) => (
     <Route index element={protect(PERMISSIONS.SYSTEM_DASHBOARD_VIEW, <Dashboard />)} />
     <Route path="dashboard" element={<Navigate to={`/portal/${role}`} replace />} />
     <Route path="reports" element={protect(PERMISSIONS.SYSTEM_REPORTS_VIEW, <Reports />)} />
+    <Route path="company-finances" element={protect(PERMISSIONS.COMPANY_FINANCES_VIEW, <CompanyFinances />)} />
     <Route path="projects" element={protect(PERMISSIONS.SYSTEM_PROJECTS_VIEW, <Projects />)} />
     <Route path="lot-projects" element={protect(PERMISSIONS.LOT_PROJECT_VIEW, <ProjectWorkspaceList type="lot" />)} />
     <Route path="documents" element={protect(PERMISSIONS.SYSTEM_DOCUMENTS_VIEW, <Documents />)} />
@@ -237,6 +239,8 @@ const App = () => {
 }
 
 export default App
+
+
 
 
 
