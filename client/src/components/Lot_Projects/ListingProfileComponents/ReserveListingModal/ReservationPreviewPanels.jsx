@@ -188,8 +188,11 @@ export const ReservationPaymentPreview = ({ contractPricing = {}, paymentForm = 
           <PreviewCard label="Reservation Applied to DP" value={money(paymentPreview.reservationFeeDownpaymentCredit)} tone={paymentPreview.reservationFeeAppliedToDownpayment ? 'amber' : 'slate'} />
           <PreviewCard label="Remaining DP Payable" value={money(paymentPreview.dpNet)} />
           <PreviewCard label="DP Amount per Term" value={money(paymentPreview.dpAmountPerTerm)} tone="emerald" />
-          <PreviewCard label="Balance" value={money(paymentPreview.balance)} tone="blue" />
+          <PreviewCard label="Financed Principal (After DP)" value={money(paymentPreview.balance)} tone="blue" />
           <PreviewCard label="Monthly" value={money(paymentPreview.monthlyAmortization)} tone="emerald" />
+          <p className="col-span-full text-sm leading-relaxed text-slate-600">
+            Financed principal uses the full downpayment target, not just the cash still payable after the reservation credit. The SOA outstanding balance decreases when payments and approved discounts are recorded.
+          </p>
         </div>
       )}
     </SectionCard>
@@ -197,6 +200,7 @@ export const ReservationPaymentPreview = ({ contractPricing = {}, paymentForm = 
 }
 
 export { PreviewCard }
+
 
 
 
