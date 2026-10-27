@@ -39,6 +39,8 @@ const WebsiteSiteCoordinator = lazy(() => import('./website/pages/SiteCoordinato
 const WebsiteSellers = lazy(() => import('./website/pages/Sellers'))
 const WebsiteContactUs = lazy(() => import('./website/pages/ContactUs'))
 const WebsiteNotFound = lazy(() => import('./website/pages/NotFound'))
+const WebsiteOpportunities = lazy(() => import('./website/pages/Opportunities'))
+const WebsiteBookTripping = lazy(() => import('./website/pages/BookTripping'))
 
 const Dashboard = lazy(() => import('./pages/System/Dashboard'))
 const Reports = lazy(() => import('./pages/System/Reports'))
@@ -165,6 +167,8 @@ const App = () => {
           <Route path="site-coordinator" element={<WebsiteSiteCoordinator />} />
           <Route path="sellers" element={<WebsiteSellers />} />
           <Route path="contact-us" element={<WebsiteContactUs />} />
+          <Route path="opportunities" element={<WebsiteOpportunities />} />
+          <Route path="book-tripping" element={<WebsiteBookTripping />} />
           <Route path="saved-projects" element={<WebsiteSavedProjects />} />
           <Route path="visit-checklist" element={<WebsiteVisitChecklist />} />
           <Route path="payment-estimator" element={<WebsitePaymentEstimator />} />
@@ -239,6 +243,7 @@ const App = () => {
 }
 
 export default App
+
 
 
 

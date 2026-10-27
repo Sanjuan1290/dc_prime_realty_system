@@ -1,36 +1,18 @@
-import { Outlet, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
 import WebsiteHeader from '../components/WebsiteHeader'
 import WebsiteFooter from '../components/WebsiteFooter'
-import MobileActionBar from '../components/MobileActionBar'
-import ScrollReveal from '../components/ScrollReveal'
-import { ProjectPreferencesProvider } from '../context/ProjectPreferencesContext'
 
-const WebsiteLayout = () => {
-  const location = useLocation()
-  useEffect(() => {
-    if (location.hash) {
-      const timer = window.setTimeout(() => document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
-      return () => window.clearTimeout(timer)
-    }
-    window.scrollTo({ top: 0, behavior: 'auto' })
-    return undefined
-  }, [location.pathname, location.hash])
-
-  return (
-    <ProjectPreferencesProvider>
-      <div className="website-shell min-h-screen bg-[#f8f6f0] text-[#302e29]">
-        <a href="#main-content" className="sr-only z-[100] rounded-lg bg-white px-4 py-3 text-[#17130a] focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Skip to main content</a>
-        <WebsiteHeader />
-        <ScrollReveal />
-        <main id="main-content" key={location.pathname} className="website-page-enter"><Outlet /></main>
-        <WebsiteFooter />
-        <MobileActionBar />
-      </div>
-    </ProjectPreferencesProvider>
-  )
+export default function WebsiteLayout(){
+ const location=useLocation()
+ useEffect(()=>{
+  if(location.hash){ const el=document.getElementById(location.hash.slice(1)); el?.scrollIntoView({behavior:'smooth'}); }
+  else window.scrollTo({top:0,behavior:'instant'})
+ },[location.pathname,location.hash])
+ return <div className="website-shell">
+  <a href="#main-content" className="dc-skip">Skip to content</a>
+  <WebsiteHeader />
+  <main id="main-content"><Outlet /></main>
+  <WebsiteFooter />
+ </div>
 }
-
-export default WebsiteLayout
-
-

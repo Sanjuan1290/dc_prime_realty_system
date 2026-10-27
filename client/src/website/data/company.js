@@ -27,7 +27,6 @@ export const siteNavigation = [
       { label: 'All Properties', to: '/properties', description: 'View current and upcoming D&C Prime Realty projects.' },
       { label: 'Luntiang Aguinaldo', to: '/properties/luntiang-aguinaldo-bailen', description: 'Available lots in Bailen, Cavite.', logo: '/website/images/project-logos/luntiang-aguinaldo.svg' },
       { label: 'Prime Enclave', to: '/properties/prime-enclave-maragondon', description: 'Available lots in Maragondon, Cavite.', logo: '/website/images/project-logos/prime-enclave.svg' },
-      { label: 'General Trias', to: '/properties/general-trias-coming-soon', description: 'New project information coming soon.', logo: '/website/images/project-logos/general-trias.svg' },
     ],
   },
   { label: 'Tripping', to: '/properties#book-tripping' },
@@ -53,5 +52,6 @@ export const siteNavigation = [
 ]
 
 export const flattenNavigation = siteNavigation.flatMap((item) => item.children || [item])
+
 
 

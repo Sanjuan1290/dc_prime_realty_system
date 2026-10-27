@@ -74,36 +74,9 @@ export const projects = [
     seoTitle: 'Prime Enclave Lots in Maragondon, Cavite | D&C Prime Realty',
     seoDescription: 'View Prime Enclave project information, aerial footage and tripping details for available lots in Maragondon, Cavite.',
   },
-  {
-    slug: 'general-trias-coming-soon',
-    name: 'General Trias',
-    shortName: 'General Trias',
-    location: 'General Trias, Cavite',
-    type: 'Residential property project',
-    status: 'coming_soon',
-    statusLabel: 'Coming Soon',
-    bookingEnabled: false,
-    logo: '/website/images/project-logos/general-trias.svg',
-    coverImage: '/website/images/general-trias/coming-soon.svg',
-    lastUpdated: 'July 2026',
-    visitNote: 'Tripping and exact project information are not yet available.',
-    overview: 'A new D&C Prime Realty project in General Trias, Cavite. Project information, pricing, site photos and viewing schedules will be announced soon.',
-    features: ['Project announcement', 'Details pending', 'Booking not open'],
-    highlights: [
-      'Located in General Trias, Cavite',
-      'Project details to be announced',
-      'Availability and pricing coming soon',
-      'Tripping is not yet open',
-    ],
-    progress: [
-      { date: 'Coming Soon', title: 'Project information in preparation', description: 'Approved details, images and viewing schedules will be published when ready.' },
-    ],
-    gallery: [],
-    seoTitle: 'General Trias Project Coming Soon | D&C Prime Realty',
-    seoDescription: 'A new D&C Prime Realty property project in General Trias, Cavite is coming soon. Contact the team for future project updates.',
-  },
 ]
 
 export const getProjectBySlug = (slug) => projects.find((project) => project.slug === slug)
+
 
 

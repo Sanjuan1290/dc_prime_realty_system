@@ -10,7 +10,7 @@ const getOrCreateMeta = (name, attribute = 'name') => {
   return element
 }
 
-const usePageMeta = ({ title, description, image = '/website/images/bailen/luntiang-aguinaldo-cover.jpg', type = 'website', schema = null }) => {
+const usePageMeta = ({ title, description, image = '/website/images/redesign/scenic-hero-placeholder.jpg', type = 'website', schema = null }) => {
   useEffect(() => {
     const pageTitle = title || 'D&C Prime Realty'
     const pageUrl = `${window.location.origin}${window.location.pathname}`
@@ -48,5 +48,6 @@ const usePageMeta = ({ title, description, image = '/website/images/bailen/lunti
 }
 
 export default usePageMeta
+
 
 
