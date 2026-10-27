@@ -55,12 +55,35 @@ test('every requested public page has content, metadata, and static-first design
  assert.match(contact,/type="email"/)
 })
 
-test('illustrative imagery is labeled, locally included, and portal entry not exposed',()=>{
+test('real Maragondon media, truthful fallbacks, and public navigation remain intact',()=>{
  const header=read('client/src/website/components/WebsiteHeader.jsx')
  const footer=read('client/src/website/components/WebsiteFooter.jsx')
  const photo=read('client/src/website/components/StaticSiteUI.jsx')
+ const home=read('client/src/website/pages/Home.jsx')
+ const hero=read('client/src/website/components/HeroBackgroundVideo.jsx')
+ const data=read('client/src/website/data/staticSite.js')
+
+ // Authentic project photography has replaced the earlier illustrative homepage hero.
+ assert.match(home,/<HeroBackgroundVideo poster=\{brand\.hero\} src=\{brand\.heroVideo\}/)
+ assert.match(home,/Actual Prime Enclave footage and photography/)
+ assert.doesNotMatch(home,/Illustrative landscape image/)
+ assert.match(data,/hero: '\/website\/images\/drive\/maragondon\/prime-enclave-aerial\.webp'/)
+ assert.match(data,/heroVideo: '\/website\/images\/drive\/maragondon\/prime-enclave-hero-loop\.mp4'/)
+ for(const name of ['prime-enclave-aerial.webp','prime-enclave-hero-loop.mp4']) {
+   const file=`client/public/website/images/drive/maragondon/${name}`
+   assert.ok(exists(file),`Missing Maragondon homepage media: ${file}`)
+   assert.ok(fs.statSync(path.join(root,file)).size>10000,`Empty media: ${file}`)
+ }
+
+ // If a real image fails to load, the UI must identify the fallback as illustrative.
  assert.match(photo,/Illustrative image/)
- assert.match(read('client/src/website/pages/Home.jsx'),/Illustrative landscape image/)
- for(const image of ['scenic-hero-placeholder.jpg','scenic-maragondon-placeholder.jpg','scenic-bailen-placeholder.jpg','scenic-guide-placeholder.jpg']) assert.ok(exists(`client/public/website/images/redesign/${image}`))
+ assert.match(photo,/onError=/)
+ assert.match(photo,/setSample\(true\)/)
+ assert.match(hero,/poster=\{poster\}/)
+ for(const name of ['scenic-maragondon-placeholder.webp','scenic-bailen-placeholder.webp']) {
+   assert.ok(exists(`client/public/website/images/redesign/${name}`),`Missing fallback: ${name}`)
+ }
+ // Public navigation must not expose the authenticated employee/realty portal.
  assert.doesNotMatch(header+footer,/to="\/portal"/)
 })
+
