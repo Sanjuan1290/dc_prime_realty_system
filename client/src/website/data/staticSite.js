@@ -5,7 +5,12 @@ export const brand = {
   address: "Unit D, Mia's Commercial Building, Indang, Cavite 4122",
   facebook: 'https://www.facebook.com/dcprimerealtyOfficial',
   logo: '/website/images/redesign/dc-prime-logo-gold.png',
-  hero: '/website/images/redesign/scenic-hero-placeholder.jpg',
+  hero: '/website/images/drive/maragondon/prime-enclave-aerial.webp',
+}
+
+export const companyMedia = {
+  team: '/website/images/drive/company/team-collage.webp',
+  event: '/website/images/drive/company/team-event.webp',
 }
 
 export const navigation = [
@@ -28,8 +33,14 @@ export const staticProjects = [
     eyebrow: 'PRIME ENCLAVE · MARAGONDON',
     subtitle: 'A quieter place for your next chapter.',
     intro: 'Countryside lots with open views and space for long-term plans. Explore the surroundings, ask about available lots and schedule a guided site visit.',
-    image: '/website/images/maragondon/prime-enclave-cover.jpg',
-    fallback: '/website/images/redesign/scenic-maragondon-placeholder.jpg',
+    image: '/website/images/drive/maragondon/prime-enclave-aerial.webp',
+    gallery: [
+      { src: '/website/images/drive/maragondon/prime-enclave-aerial.webp', alt: 'Aerial greenery and access road in the Maragondon project media', caption: 'Maragondon · Aerial surroundings' },
+      { src: '/website/images/drive/maragondon/prime-enclave-lot-view.webp', alt: 'Overhead view of terrain in the Maragondon project media', caption: 'Maragondon · Land and terrain' },
+      { src: '/website/images/drive/maragondon/prime-enclave-sunset.webp', alt: 'Sunset above farmland in the Maragondon project media', caption: 'Maragondon · Sunset view' },
+    ],
+    video: {src:'/website/images/drive/maragondon/prime-enclave-tour.mp4', label:'Maragondon project video', note:'Project video supplied by D&C Prime Realty. Locations and any on-screen diagrams are informational; confirm lot boundaries and access during a site visit.'},
+    fallback: '/website/images/redesign/scenic-maragondon-placeholder.webp',
     features: ['Countryside setting', 'Mountain views', 'Site visits by appointment', 'Lot-only property options'],
     points: [
       { number: '01', title: 'A natural setting', detail: 'Experience the open countryside and views around Pantihan IV.' },
@@ -46,8 +57,18 @@ export const staticProjects = [
     eyebrow: 'LUNTIANG AGUINALDO · BAILEN',
     subtitle: 'Open spaces. A fresh perspective.',
     intro: 'Explore lot-only property options in Bailen, Cavite, with natural surroundings and guided visits by arrangement.',
-    image: '/website/images/bailen/luntiang-aguinaldo-cover.jpg',
-    fallback: '/website/images/redesign/scenic-bailen-placeholder.jpg',
+    image: '/website/images/drive/bailen/luntiang-site-road.webp',
+    gallery: [
+      { src: '/website/images/drive/bailen/luntiang-site-road.webp', alt: 'Earth access road in Bailen project media', caption: 'Bailen · Access road' },
+      { src: '/website/images/drive/bailen/luntiang-hillside.webp', alt: 'Green hills and countryside in Bailen project media', caption: 'Bailen · Hillside terrain' },
+      { src: '/website/images/drive/bailen/luntiang-aerial.webp', alt: 'Aerial view of a hillside track and greenery in Bailen project media', caption: 'Bailen · Aerial view' },
+      { src: '/website/images/drive/bailen/luntiang-trail.webp', alt: 'Steep green hillside and track from Bailen media', caption: 'Bailen · Land view' },
+      { src: '/website/images/drive/bailen/bailen-waterfall.webp', alt: 'Waterfall in the Bailen area media collection', caption: 'Bailen area · Waterfall surroundings' },
+      { src: '/website/images/drive/bailen/bailen-rock-river.webp', alt: 'Rocky river in the Bailen area media collection', caption: 'Bailen area · River scenery' },
+      { src: '/website/images/drive/bailen/bailen-river-pool.webp', alt: 'Natural pool in the Bailen area media collection', caption: 'Bailen area · River pool' },
+    ],
+    video: {src:'/website/images/drive/bailen/luntiang-aerial-tour.mp4', label:'Bailen aerial property video', note:'Footage from the Bailen project media folder. Nearby scenery is not presented as a project amenity.'},
+    fallback: '/website/images/redesign/scenic-bailen-placeholder.webp',
     features: ['Lot-only options', 'Natural surroundings', 'Project information on request', 'Scheduled site visits'],
     points: [
       { number: '01', title: 'Land to consider', detail: 'Review the current property options and intended lot uses.' },

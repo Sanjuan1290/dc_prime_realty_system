@@ -8,6 +8,12 @@ export default function WebsiteHeader() {
   const [open,setOpen] = useState(false)
   const location=useLocation()
   useEffect(()=>setOpen(false),[location.pathname])
+  useEffect(()=>{
+   if(!open)return undefined
+   const close=e=>{if(e.key==='Escape')setOpen(false)}
+   window.addEventListener('keydown',close)
+   return ()=>window.removeEventListener('keydown',close)
+  },[open])
   return <header className="dc-header">
     <div className="dc-container dc-header-inner">
       <BrandLogo />
