@@ -36,7 +36,9 @@ test('printed receipt preserves original printed form headings, grid, totals and
   for(const phrase of ['Acknowledgement Receipt for Fund Release','PAYEE','Description','# of Hours','Pay Period:','Position','Half-month Basic','Total Regular Hours Attended','Total Deduction','Total Amount:','Received by:','Witness:','Signature and Date']) assert.ok(receipt.includes(phrase),phrase)
   assert.match(receipt,/w-\[794px\]/)
   assert.match(receipt,/table-fixed border-collapse/)
-  assert.match(receipt,/min-h-\[1123px\]/)
+  assert.match(receipt,/min-h-\[1080px\]/)
+  assert.match(receipt,/min-height: 0 !important/)
+  assert.doesNotMatch(receipt,/min-h-\[1123px\]/)
 })
 test('signed payroll upload requires released final salary and caps active receipt copies at five',()=>{
   assert.match(controller,/MAX_SIGNED_PAYROLL_FILES = 5/)
@@ -70,4 +72,3 @@ test('API protects access and upload separately and browser uses reviewed mutati
   assert.match(modal,/Print/)
   assert.match(modal,/Download/)
 })
-

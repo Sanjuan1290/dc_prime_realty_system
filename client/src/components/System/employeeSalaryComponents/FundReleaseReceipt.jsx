@@ -45,7 +45,33 @@ const FundReleaseReceipt = ({ receipt }) => {
   ]
 
   return (
-    <article style={{ fontFamily: 'Arial, Helvetica, sans-serif' }} className="fund-release-receipt print-export-page mx-auto min-h-[1123px] w-[794px] bg-white px-[40px] py-[58px] text-black shadow-xl print:shadow-none">
+    <article style={{ fontFamily: 'Arial, Helvetica, sans-serif' }} className="fund-release-receipt print-export-page mx-auto min-h-[1080px] w-[794px] bg-white px-[40px] py-[36px] text-black shadow-xl print:shadow-none">
+      {/* Included in the cloned print window as well as the in-app preview. */}
+      <style>{`
+        @media print {
+          .fund-release-receipt.print-export-page {
+            width: 210mm !important;
+            max-width: 210mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            padding: 10mm 12mm !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            break-after: auto !important;
+            page-break-after: auto !important;
+          }
+          .fund-release-receipt tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .fund-release-receipt__signatures,
+          .fund-release-receipt__amount,
+          .fund-release-receipt__note {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+        }
+      `}</style>
       {!receipt.official ? (
         <div className="mb-5 border-2 border-dashed border-black px-4 py-2 text-center text-[12px] font-black uppercase tracking-[0.18em]">
           Preview Only — Draft Payroll — Not Official
@@ -71,54 +97,54 @@ const FundReleaseReceipt = ({ receipt }) => {
         </thead>
         <tbody>
           <tr>
-            <td rowSpan={rows.length + 1} className="border border-black px-2 py-3 align-top text-[12px] font-black uppercase leading-tight">
+            <td rowSpan={rows.length + 1} className="border border-black px-2 py-2 align-top text-[12px] font-black uppercase leading-tight">
               <div>{receipt.employee_name || '—'}</div>
               <div className="mt-10 text-right text-[11px] font-medium normal-case">Summary:</div>
             </td>
-            <td colSpan={3} className="border border-black px-3 py-3 text-center text-[13px] font-medium">
+            <td colSpan={3} className="border border-black px-3 py-2 text-center text-[13px] font-medium">
               Pay Period: {formatPayrollDate(receipt.pay_period?.start)} - {formatPayrollDate(receipt.pay_period?.end)}
             </td>
           </tr>
           {rows.map((row) => (
             <tr key={row.key}>
-              <td className={`border border-black px-2.5 py-2 align-middle text-[12px] leading-tight ${row.emphasized ? 'font-bold' : 'font-medium'} ${row.italic ? 'italic' : ''}`}>{row.label}</td>
-              <td className={`border border-black px-2.5 py-2 align-middle text-[12px] leading-tight ${row.custom ? 'text-left' : 'text-right'} ${row.emphasized ? 'font-bold' : 'font-medium'}`}>
+              <td className={`border border-black px-2.5 py-1 align-middle text-[12px] leading-tight ${row.emphasized ? 'font-bold' : 'font-medium'} ${row.italic ? 'italic' : ''}`}>{row.label}</td>
+              <td className={`border border-black px-2.5 py-1 align-middle text-[12px] leading-tight ${row.custom ? 'text-left' : 'text-right'} ${row.emphasized ? 'font-bold' : 'font-medium'}`}>
                 {row.custom ? <><div>{position}</div><div>({status})</div></> : row.value}
               </td>
               <td className="border border-black px-2.5 py-1.5 align-middle text-[12px] font-medium leading-tight">{row.unit || ''}</td>
             </tr>
           ))}
           <tr>
-            <td className="border border-black px-2 py-3 text-[13px] font-black underline">TOTAL</td>
-            <td className="border border-black px-2 py-3" />
-            <td className="border border-black px-2 py-3 text-right text-[14px] font-black underline">{amount(receipt.total)}</td>
-            <td className="border border-black px-2 py-3" />
+            <td className="border border-black px-2 py-2 text-[13px] font-black underline">TOTAL</td>
+            <td className="border border-black px-2 py-2" />
+            <td className="border border-black px-2 py-2 text-right text-[14px] font-black underline">{amount(receipt.total)}</td>
+            <td className="border border-black px-2 py-2" />
           </tr>
         </tbody>
       </table>
 
       {receipt.unclassified_extra_minutes > 0 ? (
-        <p className="mt-3 text-[11px] font-semibold leading-snug">
+        <p className="fund-release-receipt__note mt-3 text-[11px] font-semibold leading-snug">
           Attendance includes {durationLabel(receipt.unclassified_extra_minutes)} outside the current regular-pay and premium-hour categories.
           Review the applicable pay arrangement before finalizing. These hours are not automatically added as overtime.
         </p>
       ) : null}
-      <p className="mt-5 text-[13px] font-medium leading-snug">
+      <p className="fund-release-receipt__amount mt-4 text-[13px] font-medium leading-snug">
         <span className="mr-1">Total Amount:</span>
         <span className="font-bold uppercase">{receipt.amount_in_words}</span>
         <span className="ml-1 font-bold">(PHP {amount(receipt.total)})</span>
       </p>
 
-      <div className="mt-10 grid grid-cols-2 gap-14 text-[13px]">
+      <div className="fund-release-receipt__signatures mt-6 grid grid-cols-2 gap-10 text-[13px]">
         <section>
-          <p className="mb-16 font-medium">Received by:</p>
+          <p className="mb-9 font-medium">Received by:</p>
           <div className="pt-1">
             <p className="font-black uppercase">{receipt.employee_name || '—'}</p>
             <p className="mt-1 font-medium">Signature and Date</p>
           </div>
         </section>
         <section>
-          <p className="mb-16 font-medium">Witness:</p>
+          <p className="mb-9 font-medium">Witness:</p>
           <div className="pt-1">
             <p className="font-black uppercase">{receipt.witness_name || '\u00a0'}</p>
             <p className="mt-1 font-medium">Signature and Date</p>
@@ -130,8 +156,3 @@ const FundReleaseReceipt = ({ receipt }) => {
 }
 
 export default FundReleaseReceipt
-
-
-
-
-
