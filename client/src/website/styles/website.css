@@ -332,3 +332,51 @@
 .dc-video-frame span{display:block;padding:8px 5px 2px;font-size:12px;color:#dce4dc}
 @media(max-width:950px){.dc-media-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}.dc-video-grid{grid-template-columns:1fr;gap:25px}}
 @media(max-width:670px){.dc-media-gallery{grid-template-columns:1fr;gap:14px}.dc-media-figure .dc-photo{height:235px}.dc-project-video-section{padding:56px 0}}
+
+
+/* 2026-10-27 — Minimalist Prime Enclave homepage with accessible aerial-video hero */
+.dc-home-hero{min-height:560px;height:min(650px,calc(100svh - 72px));background:#13251e}
+.dc-home-hero:after{background:linear-gradient(90deg,rgba(8,18,17,.90) 0%,rgba(8,18,17,.75) 32%,rgba(8,18,17,.34) 62%,rgba(8,18,17,.13) 100%),linear-gradient(0deg,rgba(8,18,17,.28),transparent 28%)}
+.dc-hero-media,.dc-hero-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 47%;z-index:-2}
+.dc-hero-video{opacity:0;pointer-events:none;transition:opacity .65s ease}
+.dc-hero-video-active{opacity:1}
+.dc-home-hero-inner{align-items:center;justify-content:flex-start;padding-top:0}
+.dc-home-hero-copy{width:min(100%,660px);max-width:660px;padding:0 0 16px}
+.dc-home-hero h1{font-size:clamp(46px,5.1vw,68px);line-height:1.11;letter-spacing:-.044em;max-width:650px;margin-bottom:23px;font-weight:700}
+.dc-home-hero h1 span{display:block;color:#e0ba70}
+.dc-home-hero .dc-eyebrow{font-size:12px!important;letter-spacing:.15em;color:#f0d49c;margin-bottom:19px!important}
+.dc-hero-lead{font-size:17px;max-width:515px;line-height:1.78;color:#f0f0eb;margin-bottom:28px}
+.dc-home-hero .dc-actions{gap:12px}
+.dc-home-hero .dc-btn{min-height:50px}
+.website-shell .dc-hero-location{font-size:13px;color:#e1e6e1;display:flex;align-items:center;gap:8px;margin-top:24px;line-height:1.6}
+.dc-hero-location svg{width:15px;height:15px;color:#e3bb76}
+.dc-hero-image-label{font-size:11px;bottom:19px;color:rgba(255,255,255,.82);max-width:calc(100% - 270px)}
+.dc-hero-playback{position:absolute;z-index:2;right:max(32px,calc((100vw - 1240px)/2));bottom:18px;display:flex;align-items:center;gap:10px;min-height:42px;padding:10px 14px;border:1px solid rgba(255,255,255,.42);background:rgba(13,28,23,.60);color:#fff;font:600 12px/1.25 'Manrope',Arial,sans-serif;backdrop-filter:blur(10px);border-radius:5px;cursor:pointer;transition:background .2s ease,border-color .2s ease}
+.dc-hero-playback svg{width:16px;height:16px}
+.dc-hero-playback:hover{background:rgba(13,28,23,.86);border-color:#e0ba70}
+.dc-hero-playback:focus-visible{outline:3px solid #e0ba70;outline-offset:4px}
+@media(max-width:950px){
+ .dc-home-hero{height:610px}
+ .dc-home-hero h1{font-size:clamp(44px,6vw,60px)}
+ .dc-hero-playback{right:24px}
+}
+@media(max-width:670px){
+ .dc-home-hero{height:auto;min-height:590px;max-height:none}
+ .dc-home-hero-inner{min-height:590px;padding-top:65px;padding-bottom:82px}
+ .dc-home-hero:after{background:linear-gradient(90deg,rgba(7,20,17,.86),rgba(7,20,17,.51) 100%),linear-gradient(0deg,rgba(7,20,17,.5),transparent 50%)}
+ .dc-hero-media,.dc-hero-video{object-position:60% center}
+ .dc-home-hero-copy{padding:0}
+ .dc-home-hero h1{font-size:clamp(40px,9.9vw,55px);letter-spacing:-.045em}
+ .dc-home-hero .dc-eyebrow{font-size:11px!important;letter-spacing:.1em;margin-bottom:16px!important}
+ .dc-hero-lead{font-size:15px;line-height:1.7;margin-bottom:22px}
+ .website-shell .dc-hero-location{margin-top:22px;font-size:12px}
+ .dc-home-hero .dc-actions{margin-top:23px}
+ .dc-home-hero .dc-btn{min-height:49px}
+ .dc-hero-image-label{left:18px;right:18px;bottom:13px;max-width:calc(100% - 145px);font-size:9px;line-height:1.5}
+ .dc-hero-playback{right:18px;bottom:10px;min-height:41px;padding:9px 12px}
+ .dc-hero-playback span{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+ .dc-hero-video{transition:none}
+ .dc-hero-video:not(.dc-hero-video-active){display:none}
+}

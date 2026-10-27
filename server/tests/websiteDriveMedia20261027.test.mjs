@@ -10,7 +10,7 @@ const mediaPath=url=>path.join(root,'client/public',url.replace(/^\//,''));
 const { brand,companyMedia,staticProjects } = await import('data:text/javascript;base64,'+Buffer.from(read('client/src/website/data/staticSite.js')).toString('base64'));
 const files=[];
 for(const project of staticProjects){files.push(project.image,project.video.src,...project.gallery.map(i=>i.src));}
-files.push(brand.logo,brand.hero,companyMedia.team,companyMedia.event);
+files.push(brand.logo,brand.hero,companyMedia.team,companyMedia.event,brand.heroVideo);
 
 test('all website media assets exist in the packaged public folder',()=>{
  for(const url of files){assert.ok(url.startsWith('/website/images/'),`web asset path: ${url}`);assert.ok(fs.existsSync(mediaPath(url)),`missing asset: ${url}`);assert.ok(fs.statSync(mediaPath(url)).size>10000,`empty media: ${url}`);}
@@ -19,6 +19,7 @@ test('Prime Enclave remains first and references only Maragondon assets',()=>{
  const [prime]=staticProjects;assert.equal(prime.name,'Prime Enclave');assert.match(prime.city,/Maragondon/);
  for(const url of [prime.image,prime.video.src,...prime.gallery.map(x=>x.src)])assert.match(url,/\/drive\/maragondon\//);
  assert.equal(brand.hero,prime.image);
+ assert.match(brand.heroVideo,/\/drive\/maragondon\//);
 });
 test('Bailen references only Bailen assets with a separate video',()=>{
  const bailen=staticProjects[1];assert.match(bailen.city,/Bailen/);
@@ -28,7 +29,7 @@ test('Bailen references only Bailen assets with a separate video',()=>{
 test('photo placeholders are no longer the primary media of live pages',()=>{
  const home=read('client/src/website/pages/Home.jsx');const detail=read('client/src/website/pages/PropertyDetails.jsx');
  assert.doesNotMatch(home,/Illustrative landscape image · Replace/);
- assert.match(home,/src=\{brand.hero\}/);
+ assert.match(home,/<HeroBackgroundVideo poster=\{brand.hero\} src=\{brand.heroVideo\}/);
  assert.match(detail,/project.gallery.map/);
  assert.doesNotMatch(detail,/SitePhoto alwaysSample/);
 });

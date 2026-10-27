@@ -5,7 +5,8 @@ export const brand = {
   address: "Unit D, Mia's Commercial Building, Indang, Cavite 4122",
   facebook: 'https://www.facebook.com/dcprimerealtyOfficial',
   logo: '/website/images/redesign/dc-prime-logo-gold.png',
-  hero: '/website/images/drive/maragondon/prime-enclave-aerial.webp',
+  hero: '/website/images/drive/maragondon/prime-enclave-aerial.webp', // Still-image poster and fallback
+  heroVideo: '/website/images/drive/maragondon/prime-enclave-hero-loop.mp4', // Short, silent clip from the approved Maragondon tour
 }
 
 export const companyMedia = {

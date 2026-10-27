@@ -13,9 +13,10 @@ test('featured Prime Enclave has location-first landing copy, eager hero and sam
  const home=src('pages/Home.jsx')
  assert.match(home,/Own land in/)
  assert.match(home,/Maragondon, Cavite/)
- assert.match(home,/fetchPriority="high"/)
- assert.match(home,/loading="eager"/)
- assert.match(home,/Illustrative landscape image/)
+ const media=src('components/HeroBackgroundVideo.jsx')
+ assert.match(media,/fetchPriority="high"/)
+ assert.match(media,/loading="eager"/)
+ assert.match(home,/HeroBackgroundVideo/)
  assert.doesNotMatch(home,/Land for what/)
 })
 test('project page describes real verification process and does not promise available inventory',()=>{
@@ -49,7 +50,7 @@ test('optimized sample WebP files exist and main hero is referenced',()=>{
   assert.ok(has(img),img)
   assert.ok(fs.statSync(path.join(root,img)).size < 300_000,`large ${name}`)
  }
- assert.match(src('data/staticSite.js'),/scenic-hero-placeholder\.webp/)
+ assert.match(src('data/staticSite.js'),/prime-enclave-aerial\.webp/)
  assert.match(src('pages/Home.jsx'),/brand\.hero/)
 })
 test('internal portal paths are unchanged by public refinement',()=>{

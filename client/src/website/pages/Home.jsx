@@ -1,18 +1,30 @@
 import { Link } from 'react-router-dom'
-import { FiArrowRight, FiArrowUpRight, FiMapPin, FiCheck, FiCompass, FiShield, FiUsers } from 'react-icons/fi'
+import { FiArrowRight, FiArrowUpRight, FiCheck, FiCompass, FiShield, FiUsers, FiMapPin } from 'react-icons/fi'
 import { blogs } from '../data/blogs'
 import { benefits, brand, staticProjects } from '../data/staticSite'
 import { ProjectTile, SectionTitle, SiteCTA, SitePhoto } from '../components/StaticSiteUI'
 import usePageMeta from '../hooks/usePageMeta'
+import HeroBackgroundVideo from '../components/HeroBackgroundVideo'
 
 export default function Home(){
  usePageMeta({title:'D&C Prime Realty | Prime Enclave lots in Maragondon, Cavite',description:'Explore Prime Enclave in Maragondon and Luntiang Aguinaldo in Bailen, Cavite. Ask about available lots and schedule a site visit.'})
  const main=staticProjects[0],second=staticProjects[1]
  return <>
- <section className="dc-home-hero">
-  <img className="dc-hero-media" src={brand.hero} alt="Aerial landscape from D&C Prime Realty’s Prime Enclave media collection in Maragondon, Cavite" fetchPriority="high" loading="eager" decoding="async" width="1648" height="928" />
-  <div className="dc-container dc-home-hero-inner"><div className="dc-home-hero-copy"><p className="dc-eyebrow">D&C PRIME REALTY <span className="dc-eyebrow-dash"/> CAVITE, PHILIPPINES</p><h1>Own land in <span>Maragondon, Cavite.</span></h1><p className="dc-hero-lead">Explore Prime Enclave in Pantihan IV. Review the project, ask about current lots, and arrange a guided visit before you decide.</p><div className="dc-actions"><Link className="dc-btn dc-btn-gold" to={`/properties/${main.slug}`}>Explore Prime Enclave <FiArrowUpRight/></Link><Link className="dc-btn dc-btn-outline" to={`/book-tripping?project=${main.slug}`}>Book a Tripping <FiArrowRight/></Link></div></div><div className="dc-hero-project"><p>FEATURED LOT PROJECT</p><strong>Prime Enclave</strong><span><FiMapPin/> Pantihan IV, Maragondon, Cavite</span><Link to={`/properties/${main.slug}`} className="dc-circle-arrow" aria-label="View Prime Enclave"><FiArrowUpRight/></Link></div></div>
-  <span className="dc-hero-image-label">Prime Enclave · Image provided by D&C Prime Realty</span>
+ <section className="dc-home-hero" aria-label="Prime Enclave in Maragondon, Cavite">
+  <HeroBackgroundVideo poster={brand.hero} src={brand.heroVideo} />
+  <div className="dc-container dc-home-hero-inner">
+   <div className="dc-home-hero-copy">
+    <p className="dc-eyebrow">PRIME ENCLAVE <span className="dc-eyebrow-dash"/> MARAGONDON, CAVITE</p>
+    <h1>Own land in <span>Maragondon.</span></h1>
+    <p className="dc-hero-lead">Explore Prime Enclave in Pantihan IV, Cavite. See the real surroundings, review project details, and arrange a guided site visit.</p>
+    <div className="dc-actions">
+     <Link className="dc-btn dc-btn-gold" to={`/properties/${main.slug}`}>Explore Prime Enclave <FiArrowUpRight/></Link>
+     <Link className="dc-btn dc-btn-outline" to={`/book-tripping?project=${main.slug}`}>Book a Tripping <FiArrowRight/></Link>
+    </div>
+    <p className="dc-hero-location"><FiMapPin aria-hidden="true" /> Pantihan IV, Maragondon, Cavite</p>
+   </div>
+  </div>
+  <span className="dc-hero-image-label">Actual Prime Enclave footage and photography · D&C Prime Realty</span>
  </section>
  <div className="dc-benefit-strip"><div className="dc-container dc-benefit-grid">{benefits.map(([num,name,detail])=><div className="dc-benefit" key={num}><b>{num}</b><div><strong>{name}</strong><span>{detail}</span></div></div>)}</div></div>
  <section className="dc-section dc-container"><SectionTitle eyebrow="OUR PROJECTS" title="Places worth considering." description="Two projects in Cavite, each with its own setting and possibilities." action="View all projects" to="/properties"/><div className="dc-project-grid">{staticProjects.map((p,i)=><ProjectTile key={p.slug} project={p} featured={i===0}/>)}</div></section>
