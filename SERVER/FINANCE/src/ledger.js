@@ -78,7 +78,7 @@ export async function listTransactions(query={}) {
   if(status!=='all'){where+=' AND t.status=?';values.push(status);}
   if(query.category_id){where+=' AND t.category_id=?';values.push(positiveId(query.category_id));}
   const [count]=await getPool().execute('SELECT COUNT(*) AS total FROM finance_transactions t'+where,values);
-  const [rows]=await getPool().execute(`SELECT t.id,DATE_FORMAT(t.transaction_date,'%Y-%m-%d') AS transaction_date,t.kind,t.amount,t.description,t.notes,t.status,t.source_system,t.source_transaction_id,t.corrected_from_transaction_id,t.void_reason,t.created_at,c.name AS category_name,c.id AS category_id FROM finance_transactions t JOIN finance_categories c ON c.id=t.category_id ${where} ORDER BY t.transaction_date DESC,t.id DESC LIMIT ? OFFSET ?`,[...values,pageSize,(page-1)*pageSize]);
+  const [rows]=await getPool().execute(`SELECT t.id,DATE_FORMAT(t.transaction_date,'%Y-%m-%d') AS transaction_date,t.kind,t.amount,t.description,t.notes,t.status,t.source_system,t.source_transaction_id,t.corrected_from_transaction_id,t.void_reason,t.created_at,c.name AS category_name,c.id AS category_id FROM finance_transactions t JOIN finance_categories c ON c.id=t.category_id ${where} ORDER BY t.transaction_date DESC,t.id DESC LIMIT ${pageSize} OFFSET ${(page-1)*pageSize}`,[...values]);
   return {transactions:rows,total:Number(count[0].total),page,page_size:pageSize};
 }
 export async function getDashboard(query={}) {
@@ -101,3 +101,4 @@ export async function listAudit(query={}) {
   const [rows]=await getPool().execute('SELECT id,actor_user_id,action,entity_type,entity_id,metadata_json,created_at FROM finance_audit_logs ORDER BY id DESC LIMIT 50 OFFSET ?',[(page-1)*50]);
   return {items:rows,page};
 }
+

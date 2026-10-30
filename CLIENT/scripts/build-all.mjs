@@ -9,7 +9,7 @@ const apps = [
   { name: 'WEBSITE', output: '', api: {} },
   { name: 'SYSTEM', output: 'system', api: { VITE_API_URL: '/api/v1' } },
   { name: 'FINANCE', output: 'finance', api: { VITE_FINANCE_API_URL: '/finance-api' } },
-  { name: 'HR', output: 'hr', api: { VITE_HR_API_URL: '/hr-api/api/v1', VITE_HR_STAGING_WRITES: 'false', VITE_HR_KIOSK_ENABLED: 'false' } },
+  { name: 'HR', output: 'hr', api: { VITE_HR_API_URL: '/hr-api/api/v1', VITE_HR_STAGING_WRITES: process.env.VITE_HR_STAGING_WRITES === 'true' ? 'true' : 'false', VITE_HR_KIOSK_ENABLED: 'false' } },
 ]
 rmSync(dist, { recursive: true, force: true })
 mkdirSync(dist, { recursive: true })

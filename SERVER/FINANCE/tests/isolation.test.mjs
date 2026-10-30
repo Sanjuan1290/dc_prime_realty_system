@@ -14,3 +14,12 @@ test('Finance schema has only finance-owned tables',()=>{
 test('No delete transaction endpoint; manual adjustments are auditable',()=>{const src=read('src/server.js');assert.doesNotMatch(src,/app\.delete\(/);assert.match(src,/transactions\/:id\/void/);assert.match(src,/transactions\/:id\/correct/);});
 test('Protected finance endpoints authenticate and authorize',()=>{const s=read('src/server.js');assert.match(s,/app\.use\(prefix,requireUser\)/);assert.match(s,/requireRole\('admin','accountant'\)/);assert.match(s,/requireRole\('admin'\)/);assert.match(s,/CSRF_ORIGIN/);});
 test('Bootstrap refuses existing users',()=>{assert.match(read('scripts/create-admin.mjs'),/COUNT\(\*\) AS n/);assert.match(read('scripts/create-admin.mjs'),/Bootstrap refused/);});
+
+
+test('Finance transaction pagination uses validated integer literals without raw user SQL interpolation',()=>{
+ const ledger=read('src/ledger.js')
+ assert.match(ledger,/Number\.isSafeInteger\(page\)/)
+ assert.match(ledger,/Number\.isSafeInteger\(pageSize\)/)
+ assert.match(ledger,/LIMIT \$\{pageSize\} OFFSET \$\{\(page-1\)\*pageSize\}/)
+ assert.match(read('src/server.js'),/sqlState:err\.sqlState/)
+})

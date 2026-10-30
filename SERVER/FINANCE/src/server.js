@@ -66,9 +66,10 @@ app.post(`${prefix}/imports/:id/commit`,requireRole('admin'),requireImportEnable
 app.get(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.json({users:await listUsers()})));
 app.post(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.status(201).json(await createUser(req.body,req.financeUser))));
 app.use((req,res)=>res.status(404).json({error:{code:'NOT_FOUND',message:'Finance endpoint not found.'}}));
-app.use((err,req,res,next)=>{const status=err.status|| (err.code==='ER_DUP_ENTRY'?409:500);if(status>=500)console.error('Finance request failed',err.code||err.name);res.status(status).json({error:{code:err.code==='ER_DUP_ENTRY'?'DUPLICATE':(status>=500?'SERVER_ERROR':err.code||'BAD_REQUEST'),message:status>=500?'Finance request failed.':err.message}});});
+app.use((err,req,res,next)=>{const status=err.status|| (err.code==='ER_DUP_ENTRY'?409:500);if(status>=500)console.error('[Finance API error]',{method:req.method,path:req.path,code:err.code||err.name,errno:err.errno||null,sqlState:err.sqlState||null});res.status(status).json({error:{code:err.code==='ER_DUP_ENTRY'?'DUPLICATE':(status>=500?'SERVER_ERROR':err.code||'BAD_REQUEST'),message:status>=500?'Finance request failed.':err.message}});});
 if(process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])){
   try {assertSafeDatabase();const port=Number(process.env.PORT||5103);app.listen(port,()=>console.log(`Finance staging server listening on ${port}`));}
   catch(e){console.error(e.code||e.message);process.exitCode=1;}
 }
 export default app;
+

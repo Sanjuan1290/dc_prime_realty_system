@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import { db } from '../db/connect.js';
 import { authenticateUser,createHrToken,HR_COOKIE } from '../middleware/auth.middleware.js';
 const router = express.Router();
-const cookieOptions = () => ({ httpOnly:true,secure:process.env.NODE_ENV === 'production',sameSite:'lax',path:'/api/v1',maxAge:8*3600000 });
+const cookieOptions = () => ({ httpOnly:true,secure:process.env.HR_COOKIE_SECURE === 'true' || process.env.NODE_ENV === 'production',sameSite:'lax',path:'/api/v1',maxAge:8*3600000 });
 // Staging only. Provision identities through a separate approved administrative process.
 const attempts = new Map();
 router.post('/login',async (req,res,next)=> {
@@ -27,3 +27,4 @@ router.post('/login',async (req,res,next)=> {
 router.post('/logout',(_req,res)=>{res.clearCookie(HR_COOKIE,{...cookieOptions(),maxAge:undefined});res.json({success:true});});
 router.get('/me',authenticateUser,(req,res)=>res.json({success:true,user:{id:req.authUser.id,displayName:req.authUser.displayName,permissions:[...req.authUser.permissions]}}));
 export default router;
+

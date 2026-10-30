@@ -7,7 +7,7 @@ const LOCKOUT_MS = 15 * 60 * 1000;
 
 const failedAttempts = new Map();
 
-const isProduction = process.env.NODE_ENV === 'production';
+const isProduction = process.env.HR_COOKIE_SECURE === 'true' || process.env.NODE_ENV === 'production';
 
 const clean = (value) => String(value ?? '').trim();
 
@@ -169,6 +169,7 @@ export const requireAttendanceKiosk = (req, res, next) => {
   };
   return next();
 };
+
 
 
 

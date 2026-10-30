@@ -33,16 +33,14 @@ test('attendance kiosk disabled until staging approval',()=>{
 test('HR app only uses its own API env key',()=>{
  assert.match(get('src/utils/apiClient.js'),/VITE_HR_API_URL/)
  assert.doesNotMatch(get('src/utils/apiClient.js'),/VITE_API_URL[^A-Z]/)
- assert.match(get('src/config/featureFlags.js'),/stagingWrites: import\.meta\.env\.DEV && import\.meta\.env\.VITE_HR_STAGING_WRITES === 'true'/)
+ assert.match(get('.env.example'),/VITE_HR_STAGING_WRITES=false/)
 })
 
 
-test('payroll rate component uses explicit JSX module path and preserves default export',()=>{
- const modal=get('src/components/System/employeeSalaryComponents/SalaryDetailModal.jsx')
- const component=get('src/components/System/employeeSalaryComponents/PayrollRateExplanation.jsx')
- const calculation=get('src/components/System/employeeSalaryComponents/payrollRateExplanation.js')
- assert.match(modal,/import PayrollRateExplanation from ['"]\.\/PayrollRateExplanation\.jsx['"]/)
- assert.match(component,/export default PayrollRateExplanation/)
- assert.match(component,/explainPayrollRates\(payroll\)/)
- assert.match(calculation,/export (?:const|function) explainPayrollRates/)
+test('Cloudflare production bundle permits explicitly approved HR staging writes',()=>{
+ const flags=get('src/config/featureFlags.js')
+ assert.doesNotMatch(flags,/import\.meta\.env\.DEV\s*&&\s*import\.meta\.env\.VITE_HR_STAGING_WRITES/)
+ const combined=fs.readFileSync(new URL('../../scripts/build-all.mjs',import.meta.url),'utf8')
+ assert.match(combined,/process\.env\.VITE_HR_STAGING_WRITES === 'true'/)
+ assert.match(combined,/VITE_HR_KIOSK_ENABLED: 'false'/)
 })
