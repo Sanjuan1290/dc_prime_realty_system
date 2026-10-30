@@ -28,9 +28,12 @@ if (process.env.NODE_ENV === 'production') throw new Error('Batch 6 HR backend m
 if (process.env.HR_STAGING_ONLY !== 'true') throw new Error('Batch 6 HR server is staging-only until migration, finance and storage contracts pass. Set HR_STAGING_ONLY=true in an isolated staging environment.');
 if (!process.env.HR_JWT_SECRET || process.env.HR_JWT_SECRET.length < 32) throw new Error('HR_JWT_SECRET must be at least 32 characters.');
 await db.query('SELECT 1');
-const port=Number(process.env.HR_PORT || 5102);
-app.listen(port,'127.0.0.1',()=>{
-  console.log(`HR staging API running on 127.0.0.1:${port} (writes: ${writesAllowed ? 'enabled on staging' : 'disabled'})`);
+
+const port = Number(
+  process.env.PORT || process.env.HR_PORT || 5102
+)
+app.listen(port, '0.0.0.0', () => {
+  console.log(`HR staging API running on 0.0.0.0:${port} (writes: ${writesAllowed ? 'enabled on staging' : 'disabled'})`);
   if (process.env.HR_ENABLE_JOBS==='true' && writesAllowed) startAttendanceAutoTimeoutScheduler();
   if (process.env.HR_ENABLE_SALARY_DELIVERY==='true' && writesAllowed) startSalaryOutboxWorker();
 });
