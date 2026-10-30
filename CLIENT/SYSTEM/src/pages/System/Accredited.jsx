@@ -223,7 +223,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
       setRangeAlert({ type: "error", message: "The print preview could not be prepared because browser storage is unavailable. Allow site storage or try another browser." });
       return;
     }
-    window.open("/portal/accredited/proof-of-income/range/print", "_blank");
+    window.open(`${import.meta.env.BASE_URL.replace(/\/$/, '')}/portal/accredited/proof-of-income/range/print`, "_blank");
   };
 
   const printAllSignedReceipts = () => {
@@ -502,7 +502,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated, canPrint = fa
       setLocalAlert({ type: "error", message: "The print preview could not be prepared because browser storage is unavailable. Allow site storage or try another browser." });
       return;
     }
-    window.open("/portal/accredited/proof-of-income/print", "_blank");
+    window.open(`${import.meta.env.BASE_URL.replace(/\/$/, '')}/portal/accredited/proof-of-income/print`, "_blank");
   };
 
   const openSignedReceiptForPrint = (receipt) => {

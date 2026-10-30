@@ -17,7 +17,7 @@ export const isMaintenanceError = (error) => error?.code === 'MAINTENANCE_MODE'
 export const resolveHrApiBase = (raw) => {
   const value = String(raw || '').trim().replace(/\/+$/, '')
   if (!value) throw new ApiError('HR API URL is not configured.', { code: 'HR_API_URL_REQUIRED' })
-  if (/^\/\//.test(value) || !(/^(https:\/\/[^/]+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?|\/api\/v1)(?:\/api\/v1)?$/i.test(value))) {
+  if (/^\/\//.test(value) || !(/^(https:\/\/[^/]+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?|\/api\/v1|\/hr-api\/api\/v1)(?:\/api\/v1)?$/i.test(value))) {
     throw new ApiError('Invalid HR API URL. Configure the HR-specific API hostname or the staging proxy.', { code: 'INVALID_HR_API_URL' })
   }
   return value

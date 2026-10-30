@@ -96,13 +96,14 @@ export const isServerUnavailableError = (error) =>
 
 const redirectToAvailabilityPage = (target, state = {}) => {
   if (typeof window === 'undefined') return
-  if (window.location.pathname === target) return
+  const siteBase = import.meta.env.BASE_URL.replace(/\/$/, '')
+  if (window.location.pathname === `${siteBase}${target}`) return
   try {
     window.sessionStorage.setItem('dc_prime_availability_state', JSON.stringify({ ...state, savedAt: Date.now() }))
   } catch {
     // Navigation still works when browser storage is unavailable.
   }
-  window.location.replace(target)
+  window.location.replace(`${siteBase}${target}`)
 }
 
 const parseResponseBody = async (response) => {

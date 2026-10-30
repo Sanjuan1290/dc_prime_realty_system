@@ -1,0 +1,8 @@
+{
+  "name": "@dc-prime/cloudflare-combined-client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:all": "node scripts/build-all.mjs"
+  }
+}

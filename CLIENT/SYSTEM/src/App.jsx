@@ -180,7 +180,8 @@ const App = () => {
         <Route path="/portal/lot-projects/:projectSlug/price-list/print" element={protect(PERMISSIONS.SYSTEM_PROJECTS_PRINT_PRICE_LIST, <ProjectPriceListPrintPage />, { projectScoped: true })} />
         <Route path="/portal/reports/print" element={protect(PERMISSIONS.SYSTEM_REPORTS_EXPORT, <ReportsPrintPage />)} />
       </>
-    )
+    ),
+    { basename: import.meta.env.BASE_URL.replace(/\/$/, '') || '/' }
   )
 
   return (

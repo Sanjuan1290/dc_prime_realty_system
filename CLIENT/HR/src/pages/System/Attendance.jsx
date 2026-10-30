@@ -354,7 +354,7 @@ const Attendance = () => {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader title="Attendance" description="Barcode Time In/Time Out, calendar-based day management, manual corrections, and attendance history." icon={FiClock} />
         <div className="flex flex-wrap gap-2">
-          <a href="/attendance" className="inline-flex h-11 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 transition hover:bg-emerald-100">
+          <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/attendance`} className="inline-flex h-11 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 transition hover:bg-emerald-100">
             <FiExternalLink />Open Attendance Kiosk
           </a>
           {canManage ? <button type="button" onClick={() => setShowSettings(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><FiSettings />Attendance Settings</button> : null}
