@@ -1,8 +1,7 @@
-const DEFAULT_RENDER_ORIGIN = 'https://dc-prime-realty-api.onrender.com'
 const PROXY_TIMEOUT_MS = 190_000
 
 const normalizeOrigin = (value) =>
-  String(value || DEFAULT_RENDER_ORIGIN).trim().replace(/\/+$/, '')
+  String(value || '').trim().replace(/\/+$/, '')
 
 const jsonResponse = (payload, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -15,7 +14,8 @@ const jsonResponse = (payload, status = 200) =>
 
 export const onRequest = async ({ request, env }) => {
   const incomingUrl = new URL(request.url)
-  const renderOrigin = normalizeOrigin(env.RENDER_API_ORIGIN)
+  const renderOrigin = normalizeOrigin(env.SYSTEM_API_ORIGIN)
+  if (!renderOrigin) return jsonResponse({ code: 'UPSTREAM_NOT_CONFIGURED', message: 'SYSTEM API origin is not configured.' }, 503)
   const targetUrl = `${renderOrigin}${incomingUrl.pathname}${incomingUrl.search}`
 
   const headers = new Headers(request.headers)

@@ -10,7 +10,7 @@ This is an overlay for the **provided** `DC_PRIME_REALTY` code snapshot. Do not 
 - Build command: `npm run build:all`
 - Build output: `dist`
 - Build variable: `NODE_VERSION=22` (or a compatible Node 22.x release supported by Vite 8)
-- Runtime variables: `RENDER_API_ORIGIN=https://dc-prime-realty-system.onrender.com`, `FINANCE_API_ORIGIN=https://dc-prime-realty-finance.onrender.com`, `HR_API_ORIGIN=https://dc-prime-realty-hr.onrender.com` (replace if actual URLs differ)
+- Runtime variables: `SYSTEM_API_ORIGIN=https://dc-prime-realty-system.onrender.com`, `FINANCE_API_ORIGIN=https://dc-prime-realty-finance.onrender.com`, `HR_API_ORIGIN=https://dc-prime-realty-hr.onrender.com` (replace if actual URLs differ)
 
 The build script installs and builds each application independently and assembles their output in `CLIENT/dist`. Build-time Vite API paths are controlled by the script, so do **not** set conflicting `VITE_HR_API_URL` or `VITE_FINANCE_API_URL` variables in Cloudflare.
 
