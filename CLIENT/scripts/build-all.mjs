@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -16,11 +16,24 @@ mkdirSync(dist, { recursive: true })
 for (const { name, output, api } of apps) {
   const cwd = join(client, name)
   const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  const install = existsSync(join(cwd, 'package-lock.json')) ? ['ci'] : ['install']
+  const lockfile = join(cwd, 'package-lock.json')
+  const hasLockfile = existsSync(lockfile)
+  if (hasLockfile) {
+    const lock = JSON.parse(readFileSync(lockfile, 'utf8'))
+    if (Number(lock.lockfileVersion) < 1 || !lock.packages) {
+      throw new Error(`${name}: invalid package-lock.json: ${lockfile}`)
+    }
+  }
+  const install = hasLockfile ? ['ci'] : ['install']
   function run(args) {
-    console.log(`\n> ${name}: npm ${args.join(' ')}`)
-    const result = spawnSync(npm, args, {
-      cwd, stdio: 'inherit', env: { ...process.env, DC_MULTI_APP_BUILD: '1', ...api },
+    // Always specify the child app explicitly: Cloudflare runs this script
+    // through npm at CLIENT/, which can leave parent npm settings in the environment.
+    console.log(`\n> ${name}: npm --prefix ${cwd} ${args.join(' ')}`)
+    const childEnv = { ...process.env, DC_MULTI_APP_BUILD: '1', ...api }
+    delete childEnv.npm_config_local_prefix
+    delete childEnv.NPM_CONFIG_LOCAL_PREFIX
+    const result = spawnSync(npm, ['--prefix', cwd, ...args], {
+      cwd: client, stdio: 'inherit', env: childEnv,
     })
     if (result.status !== 0) process.exit(result.status || 1)
   }
@@ -39,3 +52,4 @@ for (const { name, output, api } of apps) {
 // Avoid root-level 404.html: Pages' default SPA behavior serves the website
 // on its own client-side routes. Subapps use their own Pages Functions.
 console.log('Combined Pages output ready:', dist)
+
