@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { markVisibleInternalNotificationsRead } from '../services/internalNotificationRead.service.js'
 
-const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
+const read = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8')
 const visibility = {
   join: 'LEFT JOIN operational_reviews nr ON nr.operational_review_id=n.operational_review_id',
   sql: '(nr.status = ? AND n.notification_type = ?)',
@@ -93,5 +93,6 @@ test('authenticated PATCH route and UI provide individual and bulk controls, wit
   assert.match(client, /if \(row\.operational_review_id\) navigate/)
   assert.doesNotMatch(client.slice(client.indexOf('const ReviewCenter = () => {')), /markAllRead\.mutate\([^)]*status/)
 })
+
 
 

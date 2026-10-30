@@ -6,7 +6,7 @@ import { getPayrollAttendanceReviewDays, sameReviewedDates, validateAttendanceFi
 import { PERMISSIONS } from '../config/permissions.js';
 import { RECOMMENDED_ROLE_PERMISSIONS } from '../config/recommendedRolePermissions.js';
 
-const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
+const read = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
 const schedule = { regularWorkingMinutes: 480, scheduledTimeIn: '09:00:00', scheduledTimeOut: '20:00:00', lateAfter: '09:00:00', breakStart: '12:00:00', breakMinutes: 60 };
 const row = (attendance = null, opts = {}) => calculateAttendancePayrollRow({ date: opts.date || '2026-10-14', attendance, restDays: opts.restDays || [], daySetting: opts.daySetting || { day_type: 'regular' }, schedule });
 
@@ -93,6 +93,7 @@ test('new compressed shift uses 10-hour attendance for Final Review and prefligh
   assert.match(finalization, /paidWorkMinutesOverride: \/\^employee-salary-260days-8hours-/);
   assert.doesNotMatch(readiness, /paidWorkMinutesOverride: PAYROLL_PAID_WORK_MINUTES/);
 });
+
 
 
 

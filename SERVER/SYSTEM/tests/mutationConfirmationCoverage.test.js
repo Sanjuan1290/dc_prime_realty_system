@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(dirname, '..', '..', '..')
-const clientRoot = path.join(root, 'client', 'src')
+const clientRoot = path.join(root, 'CLIENT', 'SYSTEM', 'src')
 
 const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
   const full = path.join(dir, entry.name)
@@ -60,6 +60,7 @@ test('direct browser mutations are limited to signed external upload URLs', () =
   assert.equal(isApprovedUpload({ rel: 'CLIENT/SYSTEM/src/components/System/employeeSalaryComponents/SignedSalaryReceiptsModal.jsx', target: '/api/payrolls', method: 'POST' }), false)
   assert.equal(isApprovedUpload({ rel: 'CLIENT/SYSTEM/src/components/System/employeeSalaryComponents/SignedSalaryReceiptsModal.jsx', target: 'signed.uploadUrl', method: 'DELETE' }), false)
 })
+
 
 
 

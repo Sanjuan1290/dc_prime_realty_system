@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { resolveReviewRecordLocation } from '../services/reviewRecordLocation.service.js'
 import { getReviewRecordLink } from '../../../CLIENT/SYSTEM/src/utils/reviewRecordLinks.js'
 import { dismissReviewRecordQuery } from '../../../CLIENT/SYSTEM/src/utils/reviewRecordNavigation.js'
-const source = filename => readFileSync(new URL(`../../${filename}`,import.meta.url),'utf8')
+const source = filename => readFileSync(new URL(`../../../${filename}`,import.meta.url),'utf8')
 const base = { lot_project_slug:'sample',lot_project_id:10 }
 
 test('View Record selects the exact form section instead of only its parent page',()=>{
@@ -60,4 +60,5 @@ test('listing profile checks exact account, listing and record identity before s
  assert.match(listing,/reviewScheduleId === reviewTargetId/)
  assert.match(listing,/setActiveTab\(reviewTab\)/)
 })
+
 

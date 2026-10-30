@@ -12,7 +12,7 @@ import {
 } from '../services/sellerIdentity.service.js';
 import { analyzeNetworkMemberImport } from '../controllers/System/networkMemberImport.service.js';
 
-const readProjectFile = (relativePath) => readFile(new URL(`../../${relativePath}`, import.meta.url), 'utf8');
+const readProjectFile = (relativePath) => readFile(new URL(`../../../${relativePath}`, import.meta.url), 'utf8');
 const allocation = (pool, cp) => validateGroupFixedRateStructure({ seller_group_pool_rate: pool, company_profit_rate: cp }, {});
 
 test('Company Profit cap defaults to 50% of the Pool Rate and allows 4 decimals', () => {
@@ -108,6 +108,7 @@ test('Network page offers Export Members in the import layout and gates Import M
   assert.match(page, /canImportMembers=\{canImportMembers\}/);
   assert.match(util, /NETWORK_MEMBER_EXCEL_HEADERS/);
 });
+
 
 
 

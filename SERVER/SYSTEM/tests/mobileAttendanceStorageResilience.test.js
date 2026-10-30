@@ -8,13 +8,15 @@ const dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(dirname, '..', '..', '..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
 
-test('public Attendance boots independently from the portal and website app graph', () => {
-  const main = read('CLIENT/SYSTEM/src/main.jsx')
-  assert.match(main, /const App = lazy\(\(\) => import\('\.\/App\.jsx'\)\)/)
-  assert.match(main, /const AttendanceKiosk = lazy\(\(\) => import\('\.\/pages\/Public\/AttendanceKiosk\.jsx'\)\)/)
-  assert.match(main, /normalizedPathname === '\/attendance'/)
-  assert.match(main, /isStandaloneAttendance[\s\S]*<AttendanceKiosk \/>/)
-  assert.doesNotMatch(main, /import App from '\.\/App\.jsx'/)
+test('Attendance kiosk is hosted by HR and disabled until approved', () => {
+  const system = read('CLIENT/SYSTEM/src/App.jsx')
+  const hr = read('CLIENT/HR/src/App.jsx')
+  const flags = read('CLIENT/HR/src/config/featureFlags.js')
+  assert.doesNotMatch(system, /AttendanceKiosk/)
+  assert.match(hr, /const Kiosk=lazy\(\(\)=>import\('\.\/pages\/Public\/AttendanceKiosk'\)\)/)
+  assert.match(hr, /path:'\/kiosk'/)
+  assert.match(hr, /HR_FEATURE_FLAGS\.kiosk/)
+  assert.match(flags, /kiosk: import\.meta\.env\.DEV/)
 })
 
 test('safe storage never requires direct access to localStorage or sessionStorage to succeed', () => {
@@ -27,11 +29,12 @@ test('safe storage never requires direct access to localStorage or sessionStorag
 })
 
 test('public website preference writes use safe storage instead of direct localStorage access', () => {
-  const preferences = read('CLIENT/SYSTEM/src/website/context/ProjectPreferencesContext.jsx')
+  const preferences = read('CLIENT/WEBSITE/src/website/context/ProjectPreferencesContext.jsx')
   assert.match(preferences, /safeLocalStorage\.getItem/)
   assert.match(preferences, /safeLocalStorage\.setItem/)
   assert.doesNotMatch(preferences, /window\.localStorage/)
 })
+
 
 
 

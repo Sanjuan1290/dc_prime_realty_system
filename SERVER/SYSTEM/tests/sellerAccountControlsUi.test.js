@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const readProjectFile = (relativePath) =>
-  readFile(new URL(`../../${relativePath}`, import.meta.url), 'utf8');
+  readFile(new URL(`../../../${relativePath}`, import.meta.url), 'utf8');
 
 test('system-user creation no longer exposes a temporary password field', async () => {
   const source = await readProjectFile('CLIENT/SYSTEM/src/components/System/userComponents/CreateSystemUserModal.jsx');
@@ -25,6 +25,7 @@ test('System Users removes the redundant Reset Password action because login has
   assert.doesNotMatch(source, /Resend Login Credentials\?/);
   assert.doesNotMatch(source, /Generate & Send Credentials/);
 });
+
 
 
 

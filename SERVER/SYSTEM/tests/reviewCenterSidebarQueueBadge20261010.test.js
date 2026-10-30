@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
+const read = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
 const hook = read('CLIENT/SYSTEM/src/utils/useWorkflowBadge.js');
 const layout = read('CLIENT/SYSTEM/src/layout/SystemLayout.jsx');
 const controller = read('SERVER/SYSTEM/controllers/System/workflow.controller.js');
@@ -46,6 +46,7 @@ test('the backend applies per-role review scopes, including the heads department
   assert.match(controller, /pending_auditor_review/);
   assert.match(controller, /returned_for_correction/);
 });
+
 
 
 

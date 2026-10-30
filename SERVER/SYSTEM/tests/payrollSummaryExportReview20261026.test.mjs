@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { buildPayrollSummaryFromRows } from '../services/payrollSummary.shared.js'
 
-const read = (relative) => readFileSync(new URL(`../../${relative}`, import.meta.url), 'utf8')
+const read = (relative) => readFileSync(new URL(`../../../${relative}`, import.meta.url), 'utf8')
 const period = { periodStart: '2026-10-01', periodEnd: '2026-10-15', periodLabel: 'October 1 - 15, 2026' }
 const makeRow = (id, status, net = 6957.48, extra = {}) => ({
   employee_payroll_id: id, employee_id: id, employee_code: `IT-${id}`,
@@ -100,4 +100,5 @@ test('CSV/XLSX helper columns and totals use consistent paid/unpaid language', (
   assert.match(source, /safe\.replaceAll/)
   assert.match(source, /A1:K1/)
 })
+
 

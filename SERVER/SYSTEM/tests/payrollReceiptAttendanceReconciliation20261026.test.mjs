@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildFundReleaseReceipt } from '../services/payrollReceipt.service.js';
 
-const src = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
+const src = (p) => readFileSync(new URL(`../../../${p}`, import.meta.url), 'utf8');
 const dates = ['02','03','04','05','09','10','11','12'];
 const worked = [600,600,600,600,590,590,580,0];
 const breakdown = dates.map((day,i)=>({
@@ -62,4 +62,5 @@ test('draft and finalized source persist original actual minutes and shift hours
   assert.match(client,/Total Regular Hours Attended \(credited/);
   assert.match(client,/not automatically added as overtime/);
 });
+
 

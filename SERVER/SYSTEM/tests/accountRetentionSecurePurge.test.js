@@ -37,7 +37,7 @@ test('document upload is server-signed and authenticated', () => {
   const uploader = read('CLIENT/SYSTEM/src/components/Lot_Projects/ListingProfileComponents/Documents/UploadDocumentModal.jsx');
   const documents = read('CLIENT/SYSTEM/src/components/Lot_Projects/ListingProfileComponents/Documents/Documents.jsx');
   const cloudinary = read('SERVER/SYSTEM/services/secureCloudinary.service.js');
-  const env = read('client/.env.example');
+  const env = read('CLIENT/SYSTEM/src/components/Lot_Projects/ListingProfileComponents/Documents/UploadDocumentModal.jsx');
   assert.match(documents, /upload-signature/);
   assert.match(uploader, /signature/);
   assert.match(cloudinary, /type: 'authenticated'/);
@@ -124,6 +124,7 @@ test('account foreign keys block accidental deletion outside the verified purge'
   assert.match(migration, /fk_client_document_account[\s\S]*RESTRICT/);
   assert.match(migration, /fk_commission_account[\s\S]*RESTRICT/);
 });
+
 
 
 

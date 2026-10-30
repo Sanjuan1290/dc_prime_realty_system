@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const read = (relativePath) => readFile(new URL(`../../${relativePath}`, import.meta.url), 'utf8');
+const read = (relativePath) => readFile(new URL(`../../../${relativePath}`, import.meta.url), 'utf8');
 
 test('Create System User loads the role policy into the permission grid and summarizes cross-department access', async () => {
   const modal = await read('CLIENT/SYSTEM/src/components/System/userComponents/CreateSystemUserModal.jsx');
@@ -51,6 +51,7 @@ test('Role & Access Control explains role defaults, cross-department grants, own
   assert.match(roleAccess, /Discard and switch/);
   assert.match(roleAccess, /sticky bottom-0/);
 });
+
 
 
 

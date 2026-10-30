@@ -120,14 +120,18 @@ test('Super Admin receives real Employees and Attendance routes while cash advan
   const layout = read('CLIENT/SYSTEM/src/layout/SystemLayout.jsx');
   const projects = read('CLIENT/SYSTEM/src/pages/System/Projects.jsx');
   const dashboard = read('CLIENT/SYSTEM/src/pages/System/Dashboard.jsx');
-  assert.match(app, /path="employees" element=\{protect\(PERMISSIONS\.EMPLOYEES_VIEW, <Employees \/>\)\}/);
-  assert.match(app, /path="attendance" element=\{protect\(PERMISSIONS\.ATTENDANCE_VIEW, <Attendance \/>\)\}/);
+  const hr = read('CLIENT/HR/src/App.jsx');
+  assert.doesNotMatch(app, /path="employees"/);
+  assert.doesNotMatch(app, /path="attendance"/);
+  assert.match(hr, /path:'employees'/);
+  assert.match(hr, /path:'attendance-records'/);
   assert.doesNotMatch(app, /path="cash-advances"/);
   assert.doesNotMatch(layout, /Cash Advances/);
   assert.doesNotMatch(layout, /House & Lot Projects/);
   assert.doesNotMatch(projects, /Add House & Lot Project/);
   assert.doesNotMatch(dashboard, /label: 'House & Lot Projects'/);
 });
+
 
 
 

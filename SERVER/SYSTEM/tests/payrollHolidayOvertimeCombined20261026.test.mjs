@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { findUnsupportedHolidayOvertime, holidayOvertimeWarning } from '../services/payrollHolidayOvertimeGuard.service.js';
-const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
+const read = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
 const holiday = (date, kind, minutes) => ({date, [kind]:minutes});
 test('holiday overtime guard permits up to 8 paid hours for normal and special holiday',()=>{
   assert.deepEqual(findUnsupportedHolidayOvertime([
@@ -42,6 +42,7 @@ test('Salary Detail hides unsupported settings while preserving four displayed r
   assert.doesNotMatch(review,/label="Regular Holiday OT Multiplier"|label="Special Holiday OT Multiplier"/);
   assert.match(settings,/role="switch"/);
 });
+
 
 
 

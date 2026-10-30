@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { REVIEW_ACTIONS } from '../config/reviewActions.js';
 import { activeNotificationSql, REVIEW_ACTION_NOTIFICATION_STAGES, settleReviewNotifications } from '../services/internalNotification.service.js';
 
-const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
+const read = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
 
 test('Head audit-case access check uses the actor id (no undefined variable)', () => {
   const controller = read('SERVER/SYSTEM/controllers/System/workflow.controller.js');
@@ -114,6 +114,7 @@ test('Listings page has no imports from recharts internal type paths', () => {
   const listings = read('CLIENT/SYSTEM/src/pages/Lot_Projects/Listings.jsx');
   assert.doesNotMatch(listings, /from 'recharts\/types\//);
 });
+
 
 
 

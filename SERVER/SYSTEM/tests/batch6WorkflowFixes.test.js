@@ -10,7 +10,7 @@ import { resolveAuditCaseResponders } from '../services/auditCaseResponder.servi
 import { authorizeGovernedAction } from '../services/governedAction.service.js';
 import { REVIEW_ACTIONS } from '../config/reviewActions.js';
 
-const readProjectFile = (relativePath) => readFile(new URL(`../../${relativePath}`, import.meta.url), 'utf8');
+const readProjectFile = (relativePath) => readFile(new URL(`../../../${relativePath}`, import.meta.url), 'utf8');
 
 // Minimal mysql2-style fake: each handler is [regex, (sql, params) => result].
 const fakeConnection = (handlers = []) => {
@@ -168,6 +168,7 @@ test('Review Center makes post-action checks explicit and keeps correction contr
   assert.match(page, /responders\?\.canRespond/);
   assert.match(page, /approvalStatus/);
 });
+
 
 
 

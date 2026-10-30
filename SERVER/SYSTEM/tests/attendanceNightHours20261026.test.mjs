@@ -5,7 +5,7 @@ import { getNightShiftSeconds, getAttendanceShift, isValidOvernightAttendance } 
 import { calculateAttendancePayrollRow, summarizeAttendancePayrollRows } from '../services/payrollAttendance.service.js';
 import { calculateConfiguredPayrollEarnings } from '../services/payrollCalculation.service.js';
 
-const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
+const read = (p) => readFileSync(new URL(`../../../${p}`, import.meta.url), 'utf8');
 const schedule = {
   scheduledTimeIn: '09:00:00', scheduledTimeOut: '20:00:00',
   lateAfter: '09:00:00', breakStart: '12:00:00', breakMinutes: 60,
@@ -126,5 +126,6 @@ test('drafts persist night minutes per date while finalization fingerprints reta
   assert.match(salaryView, /Night Hrs/);
   assert.match(salaryView, /formatPayrollDuration\(row\.night_differential_minutes\)/);
 });
+
 
 

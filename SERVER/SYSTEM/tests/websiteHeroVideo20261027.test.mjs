@@ -5,11 +5,11 @@ import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..')
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8')
-const home=read('CLIENT/SYSTEM/src/website/pages/Home.jsx')
-const hero=read('CLIENT/SYSTEM/src/website/components/HeroBackgroundVideo.jsx')
-const css=read('CLIENT/SYSTEM/src/website/styles/website.css')
-const data=read('CLIENT/SYSTEM/src/website/data/staticSite.js')
-const clip='client/public/website/images/drive/maragondon/prime-enclave-hero-loop.mp4'
+const home=read('CLIENT/WEBSITE/src/website/pages/Home.jsx')
+const hero=read('CLIENT/WEBSITE/src/website/components/HeroBackgroundVideo.jsx')
+const css=read('CLIENT/WEBSITE/src/website/styles/website.css')
+const data=read('CLIENT/WEBSITE/src/website/data/staticSite.js')
+const clip='CLIENT/WEBSITE/public/website/images/drive/maragondon/prime-enclave-hero-loop.mp4'
 
 test('homepage uses Maragondon video and retains a first-priority real poster image',()=>{
  assert.match(home,/<HeroBackgroundVideo poster=\{brand.hero\} src=\{brand.heroVideo\} \/>/)
@@ -53,6 +53,8 @@ test('only the public homepage, its assets and supporting tests are affected',()
  const app=read('CLIENT/SYSTEM/src/App.jsx')
  assert.match(app,/\/portal/)
  assert.match(app,/path="company-finances"/)
- assert.match(app,/path="employee-salary"/)
+ const hr=read('CLIENT/HR/src/App.jsx')
+ assert.match(hr,/path:'payroll'/)
 })
+
 

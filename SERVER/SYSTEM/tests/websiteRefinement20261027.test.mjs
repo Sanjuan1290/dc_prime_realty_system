@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..')
 const read=file=>fs.readFileSync(path.join(root,file),'utf8')
 const has=file=>fs.existsSync(path.join(root,file))
-const src=file=>read(`CLIENT/SYSTEM/src/website/${file}`)
+const src=file=>read(`CLIENT/WEBSITE/src/website/${file}`)
 
 test('featured Prime Enclave has location-first landing copy, eager hero and sample disclaimer',()=>{
  const home=src('pages/Home.jsx')
@@ -46,7 +46,7 @@ test('reduced motion, responsive typography and accessible forms are preserved',
 test('optimized sample WebP files exist and main hero is referenced',()=>{
  const paths=['scenic-hero-placeholder','scenic-maragondon-placeholder','scenic-bailen-placeholder','scenic-guide-placeholder']
  for(const name of paths){
-  const img=`client/public/website/images/redesign/${name}.webp`
+  const img=`CLIENT/WEBSITE/public/website/images/redesign/${name}.webp`
   assert.ok(has(img),img)
   assert.ok(fs.statSync(path.join(root,img)).size < 300_000,`large ${name}`)
  }
@@ -57,6 +57,8 @@ test('internal portal paths are unchanged by public refinement',()=>{
  const app=read('CLIENT/SYSTEM/src/App.jsx')
  assert.match(app,/path="\/portal" element=\{<Login \/>\}/)
  assert.match(app,/path="company-finances"/)
- assert.match(app,/path="employee-salary"/)
+ const hr=read('CLIENT/HR/src/App.jsx')
+ assert.match(hr,/path:'payroll'/)
 })
+
 

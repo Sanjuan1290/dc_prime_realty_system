@@ -9,7 +9,7 @@ import PayrollSettingsModal from './PayrollSettingsModal'
 import SignedSalaryReceiptsModal from './SignedSalaryReceiptsModal'
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
 import { employmentLabel, formatPayrollDate, money, payrollStatusLabel, payrollStatusTone } from './payrollFormatters'
-import PayrollRateExplanation from './PayrollRateExplanation'
+import PayrollRateExplanation from './PayrollRateExplanation.jsx'
 import { formatPayrollDuration } from './payrollTimeFormat.mjs'
 
 const Metric = ({ label, value, hint }) => <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[11px] font-black uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 text-base font-black text-slate-950">{value}</p>{hint ? <p className="mt-1 text-xs font-semibold text-slate-500">{hint}</p> : null}</div>
@@ -195,6 +195,7 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
 }
 
 export default SalaryDetailModal
+
 
 
 

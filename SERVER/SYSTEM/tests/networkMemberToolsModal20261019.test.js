@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
-const read = (name) => fs.readFileSync(new URL(`../../${name}`, import.meta.url), 'utf8')
+const read = (name) => fs.readFileSync(new URL(`../../../${name}`, import.meta.url), 'utf8')
 
 test('member tools are consolidated and remain permission-gated', () => {
   const page = read('CLIENT/SYSTEM/src/pages/System/SellerGroupDetails.jsx')
@@ -41,4 +41,5 @@ test('latest multiple-DM UI remains intact and the old header actions do not ret
   assert.doesNotMatch(page, /onClick=\{\(\) => setShowImportHistory\(true\)\}/)
   assert.equal((page.match(/<SellerSetupCheck\b/g) || []).length, 1)
 })
+
 

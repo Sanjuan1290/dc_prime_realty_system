@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { getSettingsAuthorizationLabel } from '../../../CLIENT/SYSTEM/src/utils/settingsAuthorizationRole.js'
 
-const src = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
+const src = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8')
 const project = src('CLIENT/SYSTEM/src/components/Lot_Projects/SettingsComponents/ProjectSettingsAuthorizationModal.jsx')
 const payment = src('CLIENT/SYSTEM/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx')
 const reservation = src('CLIENT/SYSTEM/src/components/Lot_Projects/ListingProfileComponents/ReservationCorrection/ReservationCorrectionModal.jsx')
@@ -66,5 +66,6 @@ test('privileged deletion UI is not loosened by role-only wording changes', () =
   const backend = src('SERVER/SYSTEM/controllers/Lot_Projects/Settings/Settings.controller.js')
   assert.match(backend, /roleHasPermission|canEditProjectSettings/)
 })
+
 
 

@@ -8,17 +8,15 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(dirname, '..', '..', '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('Batch 3 restores Employee Salary as a permission-protected portal workspace', () => {
+test('Employee Salary workspace migrated from SYSTEM to permission-protected HR app', () => {
   const app = read('CLIENT/SYSTEM/src/App.jsx');
-  const layout = read('CLIENT/SYSTEM/src/layout/SystemLayout.jsx');
-  const permissions = read('CLIENT/SYSTEM/src/config/permissions.js');
-
-  assert.match(app, /EmployeeSalary = lazy/);
-  assert.match(app, /path="employee-salary"[\s\S]*EMPLOYEE_SALARY_VIEW/);
-  assert.match(layout, /label: "Employee Salary"[\s\S]*pathname: "employee-salary"[\s\S]*EMPLOYEE_SALARY_VIEW/);
-  assert.match(permissions, /\[PERMISSIONS\.EMPLOYEE_SALARY_VIEW, 'employee-salary'\]/);
-  assert.doesNotMatch(app, /path="employee-payroll"/);
-});
+  const hr = read('CLIENT/HR/src/App.jsx');
+  const permissions = read('CLIENT/HR/src/config/permissions.js');
+  assert.doesNotMatch(app, /path="employee-salary"/);
+  assert.match(hr, /const Payroll=lazy\(\(\)=>import\('\.\/pages\/System\/EmployeeSalary'\)\)/);
+  assert.match(hr, /path:'payroll',element:<ProtectedPage permission=\{PERMISSIONS\.EMPLOYEE_SALARY_VIEW\}/);
+  assert.match(permissions, /EMPLOYEE_SALARY_VIEW/);
+})
 
 test('Employee Salary register exposes required filters, summary cards and payroll actions', () => {
   const page = read('CLIENT/SYSTEM/src/pages/System/EmployeeSalary.jsx');
@@ -73,6 +71,7 @@ test('salary register backend supports department, payroll status and employee s
   assert.match(service, /p\.employee_name_snapshot LIKE \?/);
   assert.match(service, /e\.employee_code LIKE \?/);
 });
+
 
 
 

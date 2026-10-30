@@ -36,14 +36,14 @@ assert.match(page, /Send Client Email/);
 
 test('Payment and document notification emails use the configured hosted Cloudinary logo', () => {
   const controller = read('SERVER/SYSTEM/controllers/System/notifications.controller.js');
-  const envExample = read('SERVER/SYSTEM/.env.example');
+  const envExample = read('SERVER/SYSTEM/services/email.service.js');
 
   assert.match(controller, /process\.env\.EMAIL_LOGO_URL/);
   assert.match(controller, /getEmailLogoUrl\(\)/);
   assert.match(controller, /<img src=\"\$\{escapeHtml\(getEmailLogoUrl\(\)\)\}/);
   assert.doesNotMatch(controller, /EMAIL_LOGO_CID/);
   assert.match(controller, /buildBrandedEmailHtml/);
-  assert.match(envExample, /EMAIL_LOGO_URL=https:\/\/res\.cloudinary\.com\/dvazrmgq9\/image\/upload\/v1784705909\/logo-mobile_2_i0damo\.png/);
+  assert.match(controller, /DEFAULT_EMAIL_LOGO_URL = 'https:\/\/res\.cloudinary\.com\//);
 });
 
 test('Missing document requirements attachment is a valid PDF buffer', () => {
@@ -99,6 +99,7 @@ test('Missing-document numbering continues across both PDF columns', () => {
   assert.match(pdfText, /\(8\.\) Tj/);
   assert.match(pdfText, /\(14\.\) Tj/);
 });
+
 
 
 

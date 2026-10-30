@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const read = (relativePath) => readFileSync(new URL(`../../${relativePath}`, import.meta.url), 'utf8')
+const read = (relativePath) => readFileSync(new URL(`../../../${relativePath}`, import.meta.url), 'utf8')
 
 const app = read('CLIENT/SYSTEM/src/App.jsx')
 const legacyAdminLayout = read('CLIENT/SYSTEM/src/layout/adminLayout.jsx')
@@ -40,6 +40,7 @@ test('system-user authoring UI uses only the new governance role model', () => {
     assert.match(permissions, new RegExp(`['\"]${role}['\"]`))
   }
 })
+
 
 
 

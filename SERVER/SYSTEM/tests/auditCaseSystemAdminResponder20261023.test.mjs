@@ -19,7 +19,7 @@ const fakeConnection = (users = {}) => ({
     throw new Error(`Unexpected query: ${sql}`);
   },
 });
-const source = (relative) => readFileSync(new URL(`../../${relative}`, import.meta.url), 'utf8');
+const source = (relative) => readFileSync(new URL(`../../../${relative}`, import.meta.url), 'utf8');
 
 test('Super Admin direct entry: System Admin must explain; never Super Admin by default', async () => {
   const db = fakeConnection({ activeAdmins: [22, 24] });
@@ -83,4 +83,5 @@ test('UI labels, queue permissions, reassignment options, and notifications all 
   assert.match(script,/!present\.has\(id\)/);
   assert.match(script,/process\.argv\.includes\('--apply'\)/);
 });
+
 

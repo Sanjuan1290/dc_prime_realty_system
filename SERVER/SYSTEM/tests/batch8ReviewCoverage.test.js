@@ -5,7 +5,7 @@ import { COMMISSION_STAGE_HEAD_APPROVAL_BEFORE, REVIEW_ACTIONS } from '../config
 import { PERMISSIONS } from '../config/permissions.js';
 import { getStaticRolePolicy } from '../config/rolePolicies.js';
 
-const readProjectFile = (relativePath) => readFile(new URL(`../../${relativePath}`, import.meta.url), 'utf8');
+const readProjectFile = (relativePath) => readFile(new URL(`../../../${relativePath}`, import.meta.url), 'utf8');
 
 const batch1SalesActions = Object.freeze({
   'reservation.create': { department: 'sales', entityType: 'lot_project_account', headApprovalBefore: false },
@@ -255,6 +255,7 @@ test('Review Center routes Operations and Marketing records and marks destructiv
   for (const workflow of ['listing_documents_update_review', 'listing_import_review', 'network_rates_review', 'network_edit_review', 'seller_edit_review']) assert.match(source, new RegExp(workflow));
   for (const key of ['listing.delete', 'listing.import', 'listing.import_undo', 'network.members.import']) assert.match(source, new RegExp(key.replaceAll('.', '\\.')));
 });
+
 
 
 

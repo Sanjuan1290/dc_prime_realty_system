@@ -9,7 +9,7 @@ const read = (relativePath) => readFileSync(new URL(`../${relativePath}`, import
 const migration = read('migrations/20261006_batch8_role_default_cleanup.sql');
 const sql = migration.replace(/\/\*[\s\S]*?\*\//g, '');
 const accessControl = read('controllers/System/accessControl.controller.js');
-const createSystemUser = read('../CLIENT/SYSTEM/src/components/System/userComponents/CreateSystemUserModal.jsx');
+const createSystemUser = read('../../CLIENT/SYSTEM/src/components/System/userComponents/CreateSystemUserModal.jsx');
 
 const keptKeys = (role) => {
   const match = sql.match(new RegExp(`WHERE role = '${role}'\\s+AND permission_key NOT IN \\(([^)]*)\\)`));
@@ -50,6 +50,7 @@ test('Create System User starts every configurable role from its saved default a
   assert.doesNotMatch(createSystemUser, /plus \$\{rolePolicy\.required\.length\} required/);
   assert.match(createSystemUser, /Role default permissions are still loading/);
 });
+
 
 
 

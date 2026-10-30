@@ -6,7 +6,7 @@ const read = (relativePath) => readFileSync(new URL(`../${relativePath}`, import
 
 test('Payments & SOA integrity summary counts payment records and exposes SOA row count', () => {
   const controller = read('controllers/System/dataIntegrity.controller.js');
-  const page = read('../CLIENT/SYSTEM/src/pages/System/DataIntegrity.jsx');
+  const page = read('../../CLIENT/SYSTEM/src/pages/System/DataIntegrity.jsx');
 
   assert.match(controller, /paymentsSoa:\s*\{[^}]*checked:\s*0[^}]*soaChecked:\s*0/);
   assert.match(controller, /summary\.categories\.paymentsSoa\.checked \+= Number\(report\.counts\?\.payments \|\| 0\)/);
@@ -15,6 +15,7 @@ test('Payments & SOA integrity summary counts payment records and exposes SOA ro
   assert.match(page, /soaChecked/);
   assert.match(page, /SOA rows also validated/);
 });
+
 
 
 

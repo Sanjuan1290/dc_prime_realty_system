@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs'
 import {validateExactBulkRecipients,isLiveBulkStageEligible,countPendingBulkRecipients} from '../services/inHouseBulkReleasePolicy.js'
 import {getNetworkProfitReleaseCalendar} from '../services/networkProfitReleaseCalendar.js'
 import {validateReleaseReceiptDetails} from '../services/releaseReceiptDetails.js'
-const read = (p)=>readFileSync(new URL(`../../${p}`,import.meta.url),'utf8')
+const read = (p)=>readFileSync(new URL(`../../../${p}`,import.meta.url),'utf8')
 const controller=read('SERVER/SYSTEM/controllers/Lot_Projects/Commissions/InHouseBulkRelease.controller.js')
 const releaseController=read('SERVER/SYSTEM/controllers/Lot_Projects/Commissions/Commissions.controller.js')
 const panel=read('CLIENT/SYSTEM/src/components/Lot_Projects/CommissionComponents/NetworkCompanyProfitPanel.jsx')
@@ -71,4 +71,5 @@ test('frontend filters to the selected profit Network ID and server enforces mem
   assert.match(releaseController,/acs\.seller_group_id AS current_seller_group_id/)
   assert.match(controller,/s\.seller_group_id=\?/)
 })
+
 

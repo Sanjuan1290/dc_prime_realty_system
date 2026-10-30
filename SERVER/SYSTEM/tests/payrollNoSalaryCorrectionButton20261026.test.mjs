@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
+const read = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
 const detail = read('CLIENT/SYSTEM/src/components/System/employeeSalaryComponents/SalaryDetailModal.jsx');
 const page = read('CLIENT/SYSTEM/src/pages/System/EmployeeSalary.jsx');
 const history = read('CLIENT/SYSTEM/src/components/System/employeeSalaryComponents/SalaryHistoryModal.jsx');
@@ -27,4 +27,5 @@ test('Normal payroll flow and historical audit remain available', () => {
   assert.match(detail, /This finalized salary remains unchanged/);
   assert.match(page, /Salary History/);
 });
+
 

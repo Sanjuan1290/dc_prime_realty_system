@@ -10,7 +10,7 @@ import {
   getPendingAuditCorrectionCase,
 } from '../services/auditCaseAuthorization.service.js';
 
-const readProjectFile = (relativePath) => readFile(new URL(`../../${relativePath}`, import.meta.url), 'utf8');
+const readProjectFile = (relativePath) => readFile(new URL(`../../../${relativePath}`, import.meta.url), 'utf8');
 
 const fakeConnection = (handlers = []) => {
   const calls = [];
@@ -135,6 +135,7 @@ test('Review Center explains correction ownership and gives original Staff a Cor
   assert.match(page, /correctionRoleLabel/);
   assert.match(page, /An open Audit Case does not prevent permitted changes/);
 });
+
 
 
 

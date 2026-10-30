@@ -9,7 +9,7 @@ import { PERMISSIONS, roleHasPermission } from '../config/permissions.js'
 import { getExactAuditReferences, parseAuditReportFilters, redactReportMetadata } from '../utils/auditReportValidation.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const read = (file) => fs.readFileSync(path.resolve(here, '../../',file),'utf8')
+const read = (file) => fs.readFileSync(path.resolve(here, '../../../',file),'utf8')
 
 test('Audit Report routes require separate export permission; archived history has separate authority', () => {
   const route=read('SERVER/SYSTEM/routers/System/auditLogs.router.js')
@@ -113,6 +113,7 @@ test('Workbook generator retains full modal details and maps documented changes 
   assert.match(wb.Sheets['Technical Details']['L2'].v,/\[REDACTED\]/)
   assert.doesNotMatch(wb.Sheets['Technical Details']['L2'].v,/hidden/)
 })
+
 
 
 

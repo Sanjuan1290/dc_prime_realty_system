@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { getSettingsAuthorizationLabel } from '../../../CLIENT/SYSTEM/src/utils/settingsAuthorizationRole.js'
 
-const source = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
+const source = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8')
 
 test('System Settings password label reflects the current signed-in role', () => {
   assert.equal(getSettingsAuthorizationLabel('super_admin'), 'Super Admin')
@@ -35,5 +35,6 @@ test('Server requires each signed-in owner account to enter their own password',
   assert.match(middleware, /req\.authUser\?\.password_hash/)
   assert.match(middleware, /bcrypt\.compare\(password, passwordHash\)/)
 })
+
 
 

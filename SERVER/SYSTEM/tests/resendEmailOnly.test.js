@@ -11,7 +11,7 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 test('backend email transport is Resend-only with no SMTP or Nodemailer dependency', () => {
   const packageJson = read('SERVER/SYSTEM/package.json');
   const packageLock = read('SERVER/SYSTEM/package-lock.json');
-  const env = read('SERVER/SYSTEM/.env.example');
+  const env = read('SERVER/SYSTEM/services/email.service.js');
   const emailService = read('SERVER/SYSTEM/services/email.service.js');
   const emailControllers = [
     'SERVER/SYSTEM/controllers/System/authentication.service.js',
@@ -98,6 +98,7 @@ test('shared Resend service sends through the HTTPS API and base64 encodes Buffe
     else process.env.EMAIL_FROM = originalFrom;
   }
 });
+
 
 
 

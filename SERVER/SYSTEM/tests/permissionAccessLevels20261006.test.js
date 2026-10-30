@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { PERMISSIONS } from '../config/permissions.js';
 
 const read = (relativePath) => readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
-const matrix = read('../CLIENT/SYSTEM/src/components/System/userComponents/PermissionMatrix.jsx');
-const meta = read('../CLIENT/SYSTEM/src/utils/permissionMeta.js');
+const matrix = read('../../CLIENT/SYSTEM/src/components/System/userComponents/PermissionMatrix.jsx');
+const meta = read('../../CLIENT/SYSTEM/src/utils/permissionMeta.js');
 const accessControl = read('controllers/System/accessControl.controller.js');
 
 const catalogKeys = () => {
@@ -63,6 +63,7 @@ test('catalog splits Reservations and Document Templates into their own modules 
     assert.ok(PERMISSIONS[name], name);
   }
 });
+
 
 
 

@@ -6,7 +6,7 @@ import { calculateDraftPayrollMoney, calculatePayrollRates } from '../services/p
 import { buildFundReleaseReceipt } from '../services/payrollReceipt.service.js';
 import { explainPayrollRates } from '../../../CLIENT/SYSTEM/src/components/System/employeeSalaryComponents/payrollRateExplanation.js';
 
-const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
+const read = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
 const schedule = {
   scheduledTimeIn: '09:00:00', scheduledTimeOut: '20:00:00',
   breakStart: '12:00:00', breakMinutes: 60,
@@ -108,4 +108,5 @@ test('correction UI is a single form but history and stale-snapshot protection r
   assert.match(service, /INSERT INTO employee_payroll_corrections/);
   assert.match(service, /before_snapshot_json, after_snapshot_json/);
 });
+
 

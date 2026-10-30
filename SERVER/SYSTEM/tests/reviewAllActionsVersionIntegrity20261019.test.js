@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { getSavedReviewRevisions } from '../../../CLIENT/SYSTEM/src/utils/reviewRevisionHistory.js'
 import { REVIEW_ACTIONS } from '../config/reviewActions.js'
 
-const source = file => readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8')
+const source = file => readFileSync(new URL(`../../../${file}`, import.meta.url), 'utf8')
 const snapshot = (status, action, price = 858000) => ({unitCode:'LA-1806',status,netSellingPrice:price,statusTransitionAction:action})
 const entry = (from,to,revision,actionKey,oldActionKey,extras={}) => ({
   event_type: 'super_admin_updated_before_audit', actor_user_id: 12, created_at:'2026-10-19 08:10:00',
@@ -134,4 +134,5 @@ test('Audit Case corrections preserve prior saved evidence as a separate review 
   assert.equal(history[0].before.price,12)
   assert.equal(history[0].beforeEvidence,'prior-saved')
 })
+
 

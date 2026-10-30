@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { normalizePayrollSettingsSnapshot, validatePayrollSettingsPayload } from '../services/payrollSettings.service.js';
-const root = new URL('../../', import.meta.url);
+const root = new URL('../../../', import.meta.url);
 const read = path => readFileSync(new URL(path, root), 'utf8');
 test('new policy defaults are ON with existing server-approved policies', () => {
   assert.equal(normalizePayrollSettingsSnapshot({}).new_hire_proration_rule, 'scheduled_workdays');
@@ -43,4 +43,5 @@ test('holiday overtime multipliers remain independent and nullable',()=>{
   assert.equal(s.regular_holiday_ot_multiplier,null);
   assert.equal(s.special_holiday_ot_multiplier,null);
 });
+
 

@@ -14,8 +14,8 @@ import { getOwnerLevelPermissions, getStaticRolePolicy } from '../config/rolePol
 const read = (relativePath) => readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
 const migration = read('migrations/20261006_batch10_single_permission_model.sql');
 const sql = migration.replace(/\/\*[\s\S]*?\*\//g, '');
-const matrix = read('../CLIENT/SYSTEM/src/components/System/userComponents/PermissionMatrix.jsx');
-const createUser = read('../CLIENT/SYSTEM/src/components/System/userComponents/CreateSystemUserModal.jsx');
+const matrix = read('../../CLIENT/SYSTEM/src/components/System/userComponents/PermissionMatrix.jsx');
+const createUser = read('../../CLIENT/SYSTEM/src/components/System/userComponents/CreateSystemUserModal.jsx');
 const service = read('services/accessControl.service.js');
 const ALL = Object.values(PERMISSIONS);
 
@@ -82,6 +82,7 @@ test('Batch 10 converts data without changing access: drops ignored rows, stores
   // only INSERT IGNORE, so a re-run is a no-op
   assert.doesNotMatch(sql, /ON DUPLICATE KEY UPDATE/);
 });
+
 
 
 

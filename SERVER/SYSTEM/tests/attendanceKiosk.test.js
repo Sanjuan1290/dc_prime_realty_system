@@ -8,32 +8,27 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..', '..', '..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
 
-test('public /attendance route renders the attendance-only kiosk', () => {
-  const app = read('CLIENT/SYSTEM/src/App.jsx')
-  const kiosk = read('CLIENT/SYSTEM/src/pages/Public/AttendanceKiosk.jsx')
-  assert.match(app, /path="\/attendance" element={<AttendanceKiosk\s*\/>}/)
-  assert.match(kiosk, /attendance-kiosk\/unlock/)
-  assert.match(kiosk, /attendance-kiosk\/scan/)
-  assert.match(kiosk, /Scan with Camera/)
-  assert.doesNotMatch(kiosk, /Attendance-only station/)
-  assert.match(kiosk, /showTemporaryScanResult/)
-  assert.match(kiosk, /duration = 5000/)
-  assert.match(kiosk, /10-digit attendance barcode/)
+test('attendance kiosk is not mounted on Realty portal and remains feature-gated in HR', () => {
+ const system = read('CLIENT/SYSTEM/src/App.jsx')
+ const hr = read('CLIENT/HR/src/App.jsx')
+ const flags = read('CLIENT/HR/src/config/featureFlags.js')
+ const kiosk = read('CLIENT/HR/src/pages/Public/AttendanceKiosk.jsx')
+ assert.doesNotMatch(system, /path="\/attendance"/)
+ assert.match(hr, /path:'\/kiosk'/)
+ assert.match(hr, /HR_FEATURE_FLAGS\.kiosk/)
+ assert.match(flags, /kiosk: import\.meta\.env\.DEV/)
+ assert.match(kiosk, /attendance-kiosk\/unlock/)
+ assert.match(kiosk, /attendance-kiosk\/scan/)
 })
 
-test('attendance kiosk API is PIN gated and separate from admin attendance routes', () => {
-  const server = read('SERVER/SYSTEM/server.js')
-  const router = read('SERVER/SYSTEM/routers/attendanceKiosk.router.js')
-  const middleware = read('SERVER/SYSTEM/middleware/attendanceKiosk.middleware.js')
-  const env = read('SERVER/SYSTEM/.env.example')
-
-  assert.match(server, /app\.use\('\/api\/v1\/attendance-kiosk', attendanceKioskRouter\)/)
-  assert.match(router, /router\.post\('\/scan', requireAttendanceKiosk, scanAttendance\)/)
-  assert.match(router, /router\.post\('\/unlock'/)
-  assert.match(middleware, /timingSafeEqual/)
-  assert.match(middleware, /MAX_FAILED_ATTEMPTS = 5/)
-  assert.match(middleware, /ATTENDANCE_KIOSK_COOKIE/)
-  assert.match(env, /ATTENDANCE_PINCODE=123456/)
+test('kiosk API is owned by the independent HR server, gated until staging approval', () => {
+ const hr = read('SERVER/HR/server.js')
+ const middleware = read('SERVER/HR/middleware/attendanceKiosk.middleware.js')
+ const router = read('SERVER/HR/routers/attendanceKiosk.router.js')
+ assert.match(hr, /app\.use\('\/api\/v1\/attendance-kiosk',guard,kiosk\)/)
+ assert.match(hr, /HR_ENABLE_WRITES/)
+ assert.match(router, /requireAttendanceKiosk/)
+ assert.match(middleware, /ATTENDANCE_PINCODE/)
 })
 
 test('company event participants are paginated at ten employees per page', () => {
@@ -70,6 +65,7 @@ test('duplicate attendance scans use friendly Already Timed In / Already Timed O
   assert.match(kiosk, /title: 'Already Timed Out'/)
   assert.doesNotMatch(kiosk, />Attendance not recorded</)
 })
+
 
 
 

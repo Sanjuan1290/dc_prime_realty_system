@@ -58,7 +58,7 @@ test('record preview and secure signed-receipt routes enforce review permissions
   const root=new URL('../',import.meta.url)
   const router=fs.readFileSync(new URL('routers/System/workflow.routers.js',root),'utf8')
   const controller=fs.readFileSync(new URL('controllers/System/workflow.controller.js',root),'utf8')
-  const ui=fs.readFileSync(new URL('../CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx',root),'utf8')
+  const ui=fs.readFileSync(new URL('../../CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx',root),'utf8')
   assert.match(router,/reviews\/:id\/record-preview'.*requireReviewCenterRole.*WORKFLOW_REVIEW_CENTER_VIEW/)
   assert.match(router,/reviews\/:id\/signed-receipts\/:fileId\/content'.*requireReviewCenterRole.*WORKFLOW_REVIEW_CENTER_VIEW/)
   assert.match(controller,/getOperationalReviewRecordPreview[\s\S]*canActorViewReview/)
@@ -67,4 +67,5 @@ test('record preview and secure signed-receipt routes enforce review permissions
   assert.match(ui,/isExtraPreview \? <button/)
   assert.match(ui,/ReviewSignedReceiptFile/)
 })
+
 

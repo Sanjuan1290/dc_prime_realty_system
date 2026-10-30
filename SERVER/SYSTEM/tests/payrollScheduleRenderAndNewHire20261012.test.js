@@ -8,7 +8,7 @@ import { computeNewHireWorkdayFraction } from '../services/payrollNewHireProrati
 import { calculateDraftPayrollMoney } from '../services/payrollCalculation.service.js';
 import { validatePayrollReleaseInput } from '../services/payrollRelease.service.js';
 
-const root = new URL('../../', import.meta.url);
+const root = new URL('../../../', import.meta.url);
 const read = (name) => fs.readFileSync(new URL(name, root), 'utf8');
 const history = ({ from = '2026-10-12', to = null } = {}) => ({ employee_employment_history_id: 1, employee_id: 1, monthly_basic_salary: 15000, rice_allowance: 500, transportation_allowance: 500, effective_from: from, effective_to: to });
 const connection = (rows) => ({ query: async () => [rows] });
@@ -75,6 +75,7 @@ test('source enforces prehire Attendance exclusion, future-hire block, and relea
   assert.throws(() => validatePayrollReleaseInput({ payroll, releasedByUserId: 1, releaseDate: '2026-10-12' }), /before the payroll period ends/);
   assert.throws(() => validatePayrollReleaseInput({ payroll, releasedByUserId: 1, releaseDate: '2099-12-01' }), /cannot be in the future/);
 });
+
 
 
 

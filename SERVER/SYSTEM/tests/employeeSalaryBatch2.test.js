@@ -130,7 +130,14 @@ test('Batch 2 adds protected payroll API, historical compensation snapshots and 
   const migration = read('SERVER/SYSTEM/migrations/20260928_employee_salary_batch2_payroll_engine.sql');
   const permissions = read('SERVER/SYSTEM/config/permissions.js');
 
-  assert.match(server, /\/api\/v1\/employee-payroll/);
+  // HR now owns the payroll HTTP API; Realty retains historical payroll calculation
+  // services until the migration/cutover is completed.
+  const hrServer = read('SERVER/HR/server.js');
+  const hrRouter = read('SERVER/HR/routers/System/employeePayroll.routers.js');
+  assert.doesNotMatch(server, /app\.use\('\/api\/v1\/employee-payroll'/);
+  assert.match(hrServer, /app\.use\('\/api\/v1\/employee-payroll',guard,payroll\)/);
+  assert.match(hrRouter, /HR_ALLOW_PAYROLL_RELEASE/);
+
   assert.match(router, /EMPLOYEE_SALARY_VIEW/);
   assert.match(router, /PAYROLL_GENERATE/);
   assert.match(router, /PAYROLL_RECALCULATE_DRAFT/);
@@ -152,6 +159,7 @@ test('Batch 2 records premium hours without hard-coding money multipliers; later
   assert.match(calculator, /nightDifferentialPercentage === null \? 0/);
   assert.doesNotMatch(calculator, /const regularOtMultiplier = 1\.25|const restDayOtMultiplier = 1\.30|const regularHolidayMultiplier = 2\.00|const nightDifferentialPercentage = 10/);
 });
+
 
 
 

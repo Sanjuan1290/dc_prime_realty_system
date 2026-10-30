@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const read = (relativePath) => readFileSync(new URL(`../../${relativePath}`, import.meta.url), 'utf8')
+const read = (relativePath) => readFileSync(new URL(`../../../${relativePath}`, import.meta.url), 'utf8')
 const source = read('SERVER/SYSTEM/controllers/System/workflow.controller.js')
 const client = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx')
 
@@ -104,6 +104,7 @@ test('Client names History correctly and never temporarily displays queue rows a
   assert.doesNotMatch(client, /placeholderData:\s*\(previous\) => previous/)
   assert.doesNotMatch(client, /Waiting on you/)
 })
+
 
 
 

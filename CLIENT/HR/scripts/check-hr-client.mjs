@@ -24,5 +24,10 @@ for(const file of files){const rel=path.relative(src,file);const body=fs.readFil
 for(const [rel,text] of [['src/config/featureFlags.js','payrollRelease: false'],['src/config/featureFlags.js','signedReceipts: false'],['src/utils/useCurrentUser.js',"'/auth/me'"],['src/utils/apiClient.js','HR_READ_ONLY']]){
  if(!fs.readFileSync(path.join(root,rel),'utf8').includes(text))errors.push('Guard missing: '+rel+' -> '+text)
 }
+const detail=fs.readFileSync(path.join(src,'components/System/employeeSalaryComponents/SalaryDetailModal.jsx'),'utf8')
+const rateComponent=fs.readFileSync(path.join(src,'components/System/employeeSalaryComponents/PayrollRateExplanation.jsx'),'utf8')
+if(!detail.includes("from './PayrollRateExplanation.jsx'"))errors.push('Explicit JSX PayrollRateExplanation import missing; Vite may resolve .js')
+if(!rateComponent.includes('export default PayrollRateExplanation'))errors.push('PayrollRateExplanation JSX default export missing')
 if(errors.length){console.error(errors.join('\n'));process.exit(1)}
 console.log('HR frontend source isolation PASS; '+files.length+' source files validated.')
+

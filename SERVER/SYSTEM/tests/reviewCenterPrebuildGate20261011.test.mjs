@@ -7,12 +7,12 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
-const gate = path.join(root, 'client/scripts/check-review-center-scope.mjs')
+const gate = path.join(root, 'CLIENT/SYSTEM/scripts/check-review-center-scope.mjs')
 const reviewFile = path.join(root, 'CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx')
 const runGate = (file) => spawnSync(process.execPath, [gate, file], { encoding: 'utf8' })
 
 test('frontend build runs the Review Center scope guard before Vite', () => {
-  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'client/package.json'), 'utf8'))
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'CLIENT/SYSTEM/package.json'), 'utf8'))
   assert.equal(pkg.scripts.prebuild, 'node scripts/check-review-center-scope.mjs')
   assert.equal(pkg.scripts.build, 'vite build')
 })
@@ -54,6 +54,7 @@ test('guard rejects accidental notification or History feature removals', () => 
     } finally { fs.rmSync(temp, { recursive: true, force: true }) }
   }
 })
+
 
 
 

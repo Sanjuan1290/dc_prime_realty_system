@@ -13,9 +13,9 @@ const read = (relativePath) => readFileSync(new URL(`../${relativePath}`, import
 const workflowService = read('services/operationalReview.service.js');
 const projectAccess = read('services/projectAccess.service.js');
 const usersController = read('controllers/System/users.controllers.js');
-const clientPermissions = read('../CLIENT/SYSTEM/src/config/permissions.js');
-const createSystemUser = read('../CLIENT/SYSTEM/src/components/System/userComponents/CreateSystemUserModal.jsx');
-const usersPage = read('../CLIENT/SYSTEM/src/pages/System/Users.jsx');
+const clientPermissions = read('../../CLIENT/SYSTEM/src/config/permissions.js');
+const createSystemUser = read('../../CLIENT/SYSTEM/src/components/System/userComponents/CreateSystemUserModal.jsx');
+const usersPage = read('../../CLIENT/SYSTEM/src/pages/System/Users.jsx');
 
 // 2026-10-06 rule change: System Admin is the owner's right hand and has the
 // same access as Super Admin (full access, all projects, owner-only actions).
@@ -69,6 +69,7 @@ test('Super Admin, System Admin and Auditor are always scoped to All Projects', 
   assert.match(createSystemUser, /GLOBAL_PROJECT_ROLES = \['super_admin', 'system_admin', 'auditor'\]/);
   assert.match(usersPage, /\['super_admin','system_admin','auditor'\]\.includes\(user\.role\)/);
 });
+
 
 
 
