@@ -33,5 +33,6 @@ const router=createBrowserRouter([
     {path:'payroll',element:<ProtectedPage permission={PERMISSIONS.EMPLOYEE_SALARY_VIEW}><Payroll/></ProtectedPage>},
   ]},
   {path:'*',element:<Navigate to="/" replace/>}
-]), { basename: import.meta.env.BASE_URL.replace(/\/$/, '') || '/' })
+], { basename: import.meta.env.BASE_URL.replace(/\/$/, '') || '/' })
 export default function App(){return <Suspense fallback={<main className="p-8">Loading HR module…</main>}><RouterProvider router={router}/></Suspense>}
+

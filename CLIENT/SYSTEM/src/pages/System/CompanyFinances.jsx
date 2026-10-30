@@ -154,7 +154,7 @@ export default function CompanyFinances(){
         <button onClick={exportTransferCsv} disabled={exporting || !data.total_records || !data.transfer_export_ready} className={`${btn} border border-slate-300 bg-white text-slate-700`} title="Machine-readable CSV and checksum manifest; requires verified balance"><FiDownload/> Finance transfer CSV ZIP</button>
         <button onClick={exportTransferExcel} disabled={exporting || !data.total_records || !data.transfer_export_ready} className={`${btn} border border-slate-300 bg-white text-slate-700`} title="Machine-readable workbook; requires verified balance"><FiDownload/> Finance transfer Excel</button>
       </>:null}{['transactions','categories'].map(t=><button key={t} onClick={()=>{setTab(t);setError('')}} className={`${btn} ${tab===t?'bg-slate-900 text-white':'bg-slate-100 text-slate-600'}`}>{t==='transactions'?'Transactions':'Categories'}</button>)}</div>
-      {tab==='transactions' && !data.balance_verified?<p className="mt-2 text-xs font-semibold text-amber-700">Finance transfer files are unavailable while reconciliation warnings remain. Standard reports are still available.</p>:null>
+      {tab==='transactions' && !data.balance_verified?<p className="mt-2 text-xs font-semibold text-amber-700">Finance transfer files are unavailable while reconciliation warnings remain. Standard reports are still available.</p>:null}
       {tab==='transactions'?<Card>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-black text-slate-950">Transactions <span className="text-sm font-semibold text-slate-500">({pageInfo.total_records.toLocaleString('en-PH')} total)</span></h2>
@@ -202,5 +202,6 @@ export default function CompanyFinances(){
     {voidId?<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4" role="dialog" aria-modal="true"><div className="w-full max-w-md space-y-4 rounded-2xl bg-white p-5"><h2 className="text-lg font-black">Void this transaction?</h2><p className="text-sm text-slate-600">The record will remain in audit history, but will no longer count toward totals.</p><label className="block"><Label>Reason *</Label><textarea className={field} required minLength={5} maxLength={500} value={voidReason} onChange={e=>setVoidReason(e.target.value)} placeholder="Why is this transaction incorrect?"/></label><div className="flex justify-end gap-2"><button onClick={()=>setVoidId(null)} className={`${btn} bg-slate-100`}>Cancel</button><button disabled={voidReason.trim().length<5||mutation.isPending} onClick={()=>mutation.mutate({path:`/company-finances/transactions/${voidId}/void`,body:{reason:voidReason}})} className={`${btn} bg-red-600 text-white`}>Void Transaction</button></div></div></div>:null}
   </main>
 }
+
 
 
