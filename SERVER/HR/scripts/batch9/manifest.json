@@ -1,0 +1,565 @@
+{
+  "source_dump": "dc_prime_realty_full_backup_2026_27(1).sql",
+  "source_sql_sha256": "31659bb24ca833bb761dabd9e837d18cbc4c25970d123ec435058844f9a25ea4",
+  "source_database": "dc_prime_realty_system_db",
+  "target_database": "dc_prime_hr_db",
+  "table_copy_order": [
+    "employee_barcode_sequences",
+    "employees",
+    "attendance_day_settings",
+    "attendance_events",
+    "attendance_event_participants",
+    "employee_work_schedules",
+    "employee_rest_day_assignments",
+    "employee_employment_history",
+    "employee_attendance_records",
+    "employee_attendance_corrections",
+    "employee_payroll_periods",
+    "employee_payroll_settings",
+    "employee_cash_advances",
+    "employee_payrolls",
+    "employee_payroll_corrections",
+    "employee_cash_advance_deductions",
+    "employee_payroll_signed_receipts"
+  ],
+  "tables": {
+    "employee_barcode_sequences": {
+      "source_columns": [
+        "department",
+        "prefix",
+        "last_number",
+        "created_at",
+        "updated_at"
+      ],
+      "primary_key": [
+        "department"
+      ],
+      "ddl_sha256": "1f335c921a1534e5393a9c968906c7a41e1248325f946ac86b53e0539c32ea94",
+      "has_insert_in_dump": true,
+      "internal_fk": []
+    },
+    "employees": {
+      "source_columns": [
+        "employee_id",
+        "linked_user_id",
+        "employee_code",
+        "barcode_code",
+        "first_name",
+        "middle_name",
+        "last_name",
+        "email",
+        "contact_number",
+        "address",
+        "department",
+        "position",
+        "employment_type",
+        "hire_date",
+        "monthly_salary",
+        "payroll_divisor",
+        "attendance_grace_minutes",
+        "rice_allowance",
+        "transportation_allowance",
+        "attendance_bonus_amount",
+        "overtime_multiplier",
+        "night_differential_percent",
+        "employee_status",
+        "created_by_user_id",
+        "updated_by_user_id",
+        "created_at",
+        "updated_at"
+      ],
+      "primary_key": [
+        "employee_id"
+      ],
+      "ddl_sha256": "73795727b47a722d213565fcc9565d7f75b6d4a7804a3213d7c833025c551a33",
+      "has_insert_in_dump": true,
+      "internal_fk": []
+    },
+    "attendance_day_settings": {
+      "source_columns": [
+        "attendance_date",
+        "day_type",
+        "notes",
+        "source_event_id",
+        "updated_by_user_id",
+        "created_at",
+        "updated_at"
+      ],
+      "primary_key": [
+        "attendance_date"
+      ],
+      "ddl_sha256": "b6b206cbbfd3e6ae24ec8e6355151334d655d6622e60d3aac9e19873107b965f",
+      "has_insert_in_dump": false,
+      "internal_fk": []
+    },
+    "attendance_events": {
+      "source_columns": [
+        "attendance_event_id",
+        "event_name",
+        "start_date",
+        "end_date",
+        "location",
+        "attendance_treatment",
+        "event_time_in",
+        "event_time_out",
+        "day_type",
+        "notes",
+        "event_status",
+        "created_by_user_id",
+        "updated_by_user_id",
+        "created_at",
+        "updated_at"
+      ],
+      "primary_key": [
+        "attendance_event_id"
+      ],
+      "ddl_sha256": "bde199367431ad0ec07d2a611370671ba90e2b2c3bfd18a1e00a8bf1b5f46fe8",
+      "has_insert_in_dump": false,
+      "internal_fk": []
+    },
+    "attendance_event_participants": {
+      "source_columns": [
+        "attendance_event_participant_id",
+        "attendance_event_id",
+        "employee_id",
+        "created_at"
+      ],
+      "primary_key": [
+        "attendance_event_participant_id"
+      ],
+      "ddl_sha256": "c36b2349a61d9865d09895e746bc1b19e7373bf56c6caea0b5c3d49ff76f5c1f",
+      "has_insert_in_dump": false,
+      "internal_fk": [
+        {
+          "column": "attendance_event_id",
+          "parent": "attendance_events"
+        },
+        {
+          "column": "employee_id",
+          "parent": "employees"
+        }
+      ]
+    },
+    "employee_work_schedules": {
+      "source_columns": [
+        "employee_work_schedule_id",
+        "employee_id",
+        "weekday",
+        "is_work_day",
+        "shift_start",
+        "shift_end",
+        "break_minutes",
+        "created_at",
+        "updated_at"
+      ],
+      "primary_key": [
+        "employee_work_schedule_id"
+      ],
+      "ddl_sha256": "a10b1c66b25b3d87475d9d81bf16c24abd8b9bf733f9a2362682130a42a9e477",
+      "has_insert_in_dump": false,
+      "internal_fk": [
+        {
+          "column": "employee_id",
+          "parent": "employees"
+        }
+      ]
+    },
+    "employee_rest_day_assignments": {
+      "source_columns": [
+        "employee_rest_day_id",
+        "employee_id",
+        "day_of_week",
+        "effective_from",
+        "effective_to",
+        "created_by_user_id",
+        "updated_by_user_id",
+        "created_at",
+        "updated_at"
+      ],
+      "primary_key": [
+        "employee_rest_day_id"
+      ],
+      "ddl_sha256": "dc2e0c215b441139399048674dcbdc2e127b06d6c355ab46dbed052332b16754",
+      "has_insert_in_dump": true,
+      "internal_fk": [
+        {
+          "column": "employee_id",
+          "parent": "employees"
+        }
+      ]
+    },
+    "employee_employment_history": {
+      "source_columns": [
+        "employee_employment_history_id",
+        "employee_id",
+        "change_type",
+        "position",
+        "department",
+        "employment_type",
+        "monthly_basic_salary",
+        "rice_allowance",
+        "transportation_allowance",
+        "attendance_bonus",
+        "effective_from",
+        "effective_to",
+        "change_reason",
+        "previous_history_id",
+        "created_by_user_id",
+        "created_at",
+        "corrected_by_user_id",
+        "corrected_at",
+        "correction_reason"
+      ],
+      "primary_key": [
+        "employee_employment_history_id"
+      ],
+      "ddl_sha256": "b4981ea1b72c5b97c95b6f9c625cadd3a582fe152a8a7db7f311e53de0719c62",
+      "has_insert_in_dump": true,
+      "internal_fk": [
+        {
+          "column": "employee_id",
+          "parent": "employees"
+        }
+      ]
+    },
+    "employee_attendance_records": {
+      "source_columns": [
+        "employee_attendance_id",
+        "employee_id",
+        "attendance_event_id",
+        "attendance_date",
+        "scheduled_time_in",
+        "scheduled_time_out",
+        "actual_time_in",
+        "time_in_source",
+        "actual_time_out",
+        "time_out_source",
+        "regular_work_seconds",
+        "late_seconds",
+        "undertime_seconds",
+        "overtime_seconds",
+        "night_differential_seconds",
+        "bonus_late_violation",
+        "late_deduction",
+        "undertime_deduction",
+        "absence_deduction",
+        "attendance_status",
+        "notes",
+        "source",
+        "recorded_by_user_id",
+        "updated_by_user_id",
+        "created_at",
+        "updated_at"
+      ],
+      "primary_key": [
+        "employee_attendance_id"
+      ],
+      "ddl_sha256": "a3372ea54efbc1999b97b12700df711e3fa29a65bade77cb0472eaa71edfbb6b",
+      "has_insert_in_dump": true,
+      "internal_fk": [
+        {
+          "column": "employee_id",
+          "parent": "employees"
+        }
+      ]
+    },
+    "employee_attendance_corrections": {
+      "source_columns": [
+        "employee_attendance_correction_id",
+        "employee_attendance_id",
+        "previous_time_in",
+        "new_time_in",
+        "previous_time_out",
+        "new_time_out",
+        "reason",
+        "changed_by_user_id",
+        "created_at"
+      ],
+      "primary_key": [
+        "employee_attendance_correction_id"
+      ],
+      "ddl_sha256": "0b04d5dc1a8e95615212f82dd24515618d7283e96442bc96dc8ff78e65f9f46f",
+      "has_insert_in_dump": true,
+      "internal_fk": [
+        {
+          "column": "employee_attendance_id",
+          "parent": "employee_attendance_records"
+        }
+      ]
+    },
+    "employee_payroll_periods": {
+      "source_columns": [
+        "employee_payroll_period_id",
+        "period_label",
+        "period_start",
+        "period_end",
+        "release_date",
+        "release_day",
+        "period_type",
+        "witness_name",
+        "release_notes",
+        "payroll_status",
+        "finalized_by_user_id",
+        "finalized_at",
+        "created_at",
+        "updated_at",
+        "scheduled_release_date"
+      ],
+      "primary_key": [
+        "employee_payroll_period_id"
+      ],
+      "ddl_sha256": "7ce2b5581b085337932bf83ee13618c62e4654588206e9b33082bcfd60609a63",
+      "has_insert_in_dump": true,
+      "internal_fk": []
+    },
+    "employee_payroll_settings": {
+      "source_columns": [
+        "employee_payroll_settings_id",
+        "regular_ot_multiplier",
+        "rest_day_ot_multiplier",
+        "regular_holiday_multiplier",
+        "regular_holiday_ot_multiplier",
+        "special_holiday_multiplier",
+        "special_holiday_ot_multiplier",
+        "night_differential_percentage",
+        "mid_period_change_rule",
+        "settings_revision",
+        "updated_by_user_id",
+        "created_at",
+        "updated_at",
+        "first_half_payday",
+        "second_half_payday",
+        "new_hire_proration_rule",
+        "attendance_bonus_rule"
+      ],
+      "primary_key": [
+        "employee_payroll_settings_id"
+      ],
+      "ddl_sha256": "946020eb991425e4dbc36d92ee40bc49231f30c6bb9a5acb05fb86ee68f4eecc",
+      "has_insert_in_dump": true,
+      "internal_fk": []
+    },
+    "employee_cash_advances": {
+      "source_columns": [
+        "employee_cash_advance_id",
+        "employee_id",
+        "reference_number",
+        "request_date",
+        "amount",
+        "installment_count",
+        "deduction_per_payroll",
+        "start_deduction_date",
+        "remaining_balance",
+        "cash_advance_status",
+        "notes",
+        "approved_by_user_id",
+        "approved_at",
+        "created_by_user_id",
+        "updated_by_user_id",
+        "created_at",
+        "updated_at"
+      ],
+      "primary_key": [
+        "employee_cash_advance_id"
+      ],
+      "ddl_sha256": "aeaeea22b7a182a8523acb2e967ded7b66f58cf3f6425f12302630f84f3af512",
+      "has_insert_in_dump": false,
+      "internal_fk": [
+        {
+          "column": "employee_id",
+          "parent": "employees"
+        }
+      ]
+    },
+    "employee_payrolls": {
+      "source_columns": [
+        "employee_payroll_id",
+        "employee_payroll_period_id",
+        "employee_id",
+        "monthly_salary_snapshot",
+        "payroll_divisor_snapshot",
+        "month_work_days_snapshot",
+        "period_work_days",
+        "hourly_rate_snapshot",
+        "base_salary",
+        "scheduled_regular_seconds",
+        "regular_attended_seconds",
+        "paid_time_off_seconds",
+        "regular_holiday_seconds",
+        "special_holiday_seconds",
+        "late_seconds",
+        "late_deduction",
+        "undertime_seconds",
+        "undertime_deduction",
+        "absent_days",
+        "absence_deduction",
+        "overtime_seconds",
+        "overtime_pay",
+        "night_differential_seconds",
+        "night_differential_pay",
+        "rice_allowance",
+        "transportation_allowance",
+        "attendance_bonus",
+        "attendance_bonus_eligible",
+        "attendance_bonus_note",
+        "cash_advance_deduction",
+        "other_adjustments",
+        "gross_pay",
+        "net_pay",
+        "payroll_status",
+        "created_at",
+        "updated_at",
+        "employment_history_id",
+        "employee_name_snapshot",
+        "position_snapshot",
+        "department_snapshot",
+        "employment_status_snapshot",
+        "half_month_basic",
+        "daily_rate",
+        "minute_rate",
+        "regular_working_minutes_snapshot",
+        "attendance_calculated_through",
+        "expected_regular_minutes",
+        "regular_attended_minutes",
+        "pto_minutes",
+        "regular_holiday_minutes",
+        "special_holiday_minutes",
+        "late_minutes",
+        "absence_minutes",
+        "tardiness_absence_minutes",
+        "overtime_minutes",
+        "rest_day_overtime_minutes",
+        "night_differential_minutes",
+        "attendance_deduction",
+        "rest_day_overtime_pay",
+        "regular_holiday_pay",
+        "special_holiday_pay",
+        "manual_additions_total",
+        "manual_deductions_total",
+        "net_fund_release",
+        "calculation_version",
+        "calculation_warnings_json",
+        "attendance_breakdown_json",
+        "finalized_snapshot_json",
+        "finalized_attendance_fingerprint",
+        "finalized_by_user_id",
+        "finalized_at",
+        "released_date",
+        "released_at",
+        "released_by_user_id",
+        "release_reference",
+        "release_witness_name",
+        "release_notes",
+        "payroll_settings_snapshot_json"
+      ],
+      "primary_key": [
+        "employee_payroll_id"
+      ],
+      "ddl_sha256": "0fffa9f782f9e4d0d6366794585b8a8e2b398291bd2f86e0f169cf333acd30e0",
+      "has_insert_in_dump": true,
+      "internal_fk": [
+        {
+          "column": "employee_id",
+          "parent": "employees"
+        },
+        {
+          "column": "employee_payroll_period_id",
+          "parent": "employee_payroll_periods"
+        }
+      ]
+    },
+    "employee_payroll_corrections": {
+      "source_columns": [
+        "employee_payroll_correction_id",
+        "employee_payroll_id",
+        "reason",
+        "before_snapshot_json",
+        "after_snapshot_json",
+        "review_hash",
+        "created_by_user_id",
+        "created_at"
+      ],
+      "primary_key": [
+        "employee_payroll_correction_id"
+      ],
+      "ddl_sha256": "eafe16fcbb1486ce5422aa4ba7d43da5217ecb5ec305f15c8373a6af3df03d61",
+      "has_insert_in_dump": false,
+      "internal_fk": [
+        {
+          "column": "employee_payroll_id",
+          "parent": "employee_payrolls"
+        }
+      ]
+    },
+    "employee_cash_advance_deductions": {
+      "source_columns": [
+        "employee_cash_advance_deduction_id",
+        "employee_cash_advance_id",
+        "employee_payroll_id",
+        "deduction_date",
+        "amount",
+        "remaining_balance_after",
+        "notes",
+        "request_key",
+        "created_by_user_id",
+        "created_at"
+      ],
+      "primary_key": [
+        "employee_cash_advance_deduction_id"
+      ],
+      "ddl_sha256": "ffe794d3029e3bba367d33180aa90f4dbce2389aa8b463fe3d1cf66a971921bb",
+      "has_insert_in_dump": false,
+      "internal_fk": [
+        {
+          "column": "employee_cash_advance_id",
+          "parent": "employee_cash_advances"
+        },
+        {
+          "column": "employee_payroll_id",
+          "parent": "employee_payrolls"
+        }
+      ]
+    },
+    "employee_payroll_signed_receipts": {
+      "source_columns": [
+        "id",
+        "employee_payroll_id",
+        "employee_id",
+        "original_file_name",
+        "stored_file_name",
+        "mime_type",
+        "file_size_bytes",
+        "cloudinary_asset_id",
+        "cloudinary_public_id",
+        "cloudinary_resource_type",
+        "cloudinary_delivery_type",
+        "cloudinary_asset_folder",
+        "cloudinary_format",
+        "malware_scan_status",
+        "malware_scan_provider",
+        "malware_scan_reason",
+        "malware_scanned_at",
+        "status",
+        "uploaded_by_user_id",
+        "archived_by_user_id",
+        "archived_at",
+        "created_at"
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "ddl_sha256": "a780fde1c51fcc678961608e692baedf152aebacd14cd7aac1fe03b6f4fc041c",
+      "has_insert_in_dump": true,
+      "internal_fk": [
+        {
+          "column": "employee_payroll_id",
+          "parent": "employee_payrolls"
+        },
+        {
+          "column": "employee_id",
+          "parent": "employees"
+        }
+      ]
+    }
+  }
+}

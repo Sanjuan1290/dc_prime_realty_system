@@ -1,0 +1,79 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const read = (relativePath) => readFile(new URL(relativePath, import.meta.url), 'utf8');
+
+test('Price List remains printable from Export Listings rather than the Dashboard', async () => {
+  const [dashboard, details, listings, modal] = await Promise.all([
+    read('../../../CLIENT/SYSTEM/src/pages/Lot_Projects/Dashboard.jsx'),
+    read('../../../CLIENT/SYSTEM/src/components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal.jsx'),
+    read('../../../CLIENT/SYSTEM/src/pages/Lot_Projects/Listings.jsx'),
+    read('../../../CLIENT/SYSTEM/src/components/Lot_Projects/ListingComponents/ExportListingsModal.jsx'),
+  ]);
+  assert.doesNotMatch(dashboard, /setShowPriceListModal|>Price List<\/button>/);
+  assert.match(details, /onClick=\{onGoListings\}[\s\S]*Open Listings/);
+  assert.match(listings, /Export Listings/);
+  assert.match(modal, /Straight Payment \(Months\)/);
+  assert.match(modal, /Number\(months\) < 1 \|\| Number\(months\) > 120/);
+  assert.match(modal, /new URLSearchParams\(\{ straightPaymentMonths: months, status \}\)/);
+  assert.match(modal, /LISTING_EXPORT_STATUS_OPTIONS/);
+  assert.match(modal, /Unit Status/);
+  assert.match(modal, /Print Price List/);
+  assert.match(modal, /price-list\/print-audit/);
+});
+
+test('Straight Payment Months is not stored in Add or Edit Project data', async () => {
+  const [projectModal, projectsController, sharedController] = await Promise.all([
+    read('../../../CLIENT/SYSTEM/src/components/System/projectComponents/AddLotProjectModal.jsx'),
+    read('../controllers/System/projects.controller.js'),
+    read('../controllers/Lot_Projects/_shared/lotProject.shared.js'),
+  ]);
+
+  assert.doesNotMatch(projectModal, /Straight Payment \(Months\)/);
+  assert.doesNotMatch(projectModal, /straightPaymentMonths/);
+  assert.doesNotMatch(projectsController, /lot_project_straight_payment_months/);
+  assert.doesNotMatch(sharedController, /lot_project_straight_payment_months/);
+});
+
+test('print page uses the month count supplied by the Price List modal', async () => {
+  const printPage = await read(
+    '../../../CLIENT/SYSTEM/src/components/Lot_Projects/ListingProfileComponents/Printouts/ProjectPriceListPrintPage.jsx'
+  );
+
+  assert.match(printPage, /const searchParams = new URLSearchParams\(window\.location\.search\)/);
+  assert.match(printPage, /searchParams\.get\('straightPaymentMonths'\)/);
+  assert.match(printPage, /searchParams\.get\('status'\)/);
+  assert.match(printPage, /getPriceListValues\(listing, straightPaymentMonths\)/);
+  assert.match(printPage, /netAfterReservation \/ straightPaymentMonths/);
+  assert.match(printPage, /\{straightPaymentMonths\}<\/td>/);
+});
+
+test('Add and Edit Lot Project use two separate floating document modals', async () => {
+  const projectModal = await read('../../../CLIENT/SYSTEM/src/components/System/projectComponents/AddLotProjectModal.jsx');
+  const editModal = await read('../../../CLIENT/SYSTEM/src/components/Lot_Projects/DashboardComponents/EditProjectModal/EditProjectModal.jsx');
+
+  assert.match(projectModal, /const \[step, setStep\] = useState\(1\)/);
+  assert.match(projectModal, /Project Information/);
+  assert.match(projectModal, /Next: Documents/);
+  assert.match(projectModal, /aria-label="Project document setup"/);
+  assert.match(projectModal, /Step 2 of 2 · Document Picker/);
+  assert.match(projectModal, /Step 2 of 2 · Project Checklist/);
+  assert.match(projectModal, /Choose Documents/);
+  assert.match(projectModal, /Documents Added/);
+  assert.match(projectModal, /lg:grid-cols-\[minmax\(0,0\.95fr\)_minmax\(0,1\.05fr\)\]/);
+
+  const floatingDocumentModals = projectModal.match(
+    /<section className="flex max-h-\[88vh\][^"]*shadow-2xl/g
+  ) || [];
+  assert.equal(floatingDocumentModals.length, 2);
+
+  assert.doesNotMatch(projectModal, /<form[\s>]/);
+  assert.doesNotMatch(projectModal, /onSubmit=/);
+  assert.match(projectModal, /type="button"[\s\S]*?Next: Documents/);
+  assert.match(projectModal, /onClick=\{handleSave\}/);
+  assert.match(editModal, /mode="edit"/);
+});
+
+
+

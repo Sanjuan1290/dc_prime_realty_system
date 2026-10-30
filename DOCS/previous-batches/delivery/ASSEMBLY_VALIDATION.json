@@ -1,0 +1,23 @@
+{
+  "node_js_syntax_checked": 674,
+  "node_js_syntax_failures": [],
+  "missing_relative_imports": [
+    {
+      "from": "client/src/website/data/projects.js",
+      "import": "../assets/luntiang-location-map.png"
+    },
+    {
+      "from": "client/src/website/components/TrippingForm.jsx",
+      "import": "../assets/rainy-season-safety.png"
+    },
+    {
+      "from": "server/tests/timezoneSystemwide20261011.test.mjs",
+      "import": "./client/src/utils/formatDateTime.js"
+    },
+    {
+      "from": "server/tests/batch8ExternalMode.test.mjs",
+      "import": "../services/companyFinances.service.js?batch8-external-mode"
+    }
+  ],
+  "missing_binary_assets": 47
+}

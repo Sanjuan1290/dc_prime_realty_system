@@ -1,0 +1,118 @@
+const supportedStatuses = new Set([
+  'available',
+  'hold',
+  'sold',
+  'pending_for_cancellation',
+  'cancelled',
+]);
+
+const normalizeStatus = (value) => String(value || '').trim().toLowerCase();
+
+const transitionError = (message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+};
+
+export const LISTING_STATUS_ACTIONS = Object.freeze({
+  START_CANCELLATION: 'start_cancellation',
+  SETTLE_CANCELLATION: 'settle_cancellation',
+  CANCEL_CANCELLATION: 'cancel_cancellation',
+  RESET_TO_AVAILABLE: 'reset_to_available',
+  VOID_UNPAID_CANCELLATION: 'void_unpaid_cancellation',
+});
+
+export const validateListingStatusTransition = ({
+  currentStatus,
+  nextStatus,
+  action = '',
+  confirmSaleDataDeletion = false,
+} = {}) => {
+  const current = normalizeStatus(currentStatus);
+  const next = normalizeStatus(nextStatus);
+  const transitionAction = normalizeStatus(action);
+
+  if (!supportedStatuses.has(current) || !supportedStatuses.has(next)) {
+    throw transitionError('Invalid listing status transition.');
+  }
+
+  if (current === next) {
+    return { currentStatus: current, nextStatus: next, resetToAvailable: false };
+  }
+
+  // Starting cancellation is a distinct permissioned workflow.
+  if (
+    current === 'sold' &&
+    next === 'pending_for_cancellation' &&
+    transitionAction === LISTING_STATUS_ACTIONS.START_CANCELLATION
+  ) {
+    return { currentStatus: current, nextStatus: next, resetToAvailable: false };
+  }
+
+  // Pending cancellation can only be completed through the Settlement button.
+  if (
+    current === 'pending_for_cancellation' &&
+    next === 'cancelled' &&
+    transitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION
+  ) {
+    return { currentStatus: current, nextStatus: next, resetToAvailable: false };
+  }
+
+  // A mistaken or withdrawn cancellation request may be reversed without
+  // removing any buyer, payment, document, SOA, or commission records.
+  if (
+    current === 'pending_for_cancellation' &&
+    next === 'sold' &&
+    transitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
+  ) {
+    return { currentStatus: current, nextStatus: next, resetToAvailable: false };
+  }
+
+  // An unpaid reservation may be voided without creating Buyer Account History.
+  // The service layer independently verifies that there are no payments,
+  // uploaded files, or released commissions before deleting the current account.
+  if (
+    current === 'pending_for_cancellation' &&
+    next === 'available' &&
+    transitionAction === LISTING_STATUS_ACTIONS.VOID_UNPAID_CANCELLATION
+  ) {
+    if (confirmSaleDataDeletion !== true) {
+      throw transitionError('Confirm the permanent removal of the unpaid buyer account before voiding the reservation.');
+    }
+
+    return {
+      currentStatus: current,
+      nextStatus: next,
+      resetToAvailable: false,
+      voidUnpaidAccount: true,
+    };
+  }
+
+  // Active sale data may only be archived and cleared after cancellation has been
+  // settled and the dedicated Change to Available action confirms the reset.
+  if (current === 'cancelled' && next === 'available') {
+    if (
+      transitionAction !== LISTING_STATUS_ACTIONS.RESET_TO_AVAILABLE ||
+      confirmSaleDataDeletion !== true
+    ) {
+      throw transitionError(
+        'Use the Change to Available button after Settlement and confirm the archival of the previous sale before clearing the active account.'
+      );
+    }
+
+    return { currentStatus: current, nextStatus: next, resetToAvailable: true };
+  }
+
+  if (current === 'sold' && next === 'available') {
+    throw transitionError(
+      'A sold listing cannot be changed directly to available. Change it to Pending for Cancellation, complete Settlement, then use Change to Available.'
+    );
+  }
+
+  throw transitionError(
+    `Listing status cannot be changed directly from ${current.replaceAll('_', ' ')} to ${next.replaceAll('_', ' ')}.`
+  );
+};
+
+
+

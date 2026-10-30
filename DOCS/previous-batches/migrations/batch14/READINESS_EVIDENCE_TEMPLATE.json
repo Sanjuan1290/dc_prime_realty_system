@@ -1,0 +1,74 @@
+{
+  "finance_reconciliation": {
+    "reconciliation_passed": false,
+    "launch_approved": false
+  },
+  "gates": {
+    "backup_restore": {
+      "status": "pending",
+      "reference": "",
+      "reviewer": "",
+      "verified_on": ""
+    },
+    "tidb_migrations": {
+      "status": "pending",
+      "reference": "",
+      "reviewer": "",
+      "verified_on": ""
+    },
+    "builds": {
+      "status": "pending",
+      "reference": "",
+      "reviewer": "",
+      "verified_on": ""
+    },
+    "auth_security": {
+      "status": "pending",
+      "reference": "",
+      "reviewer": "",
+      "verified_on": ""
+    },
+    "import_roundtrip": {
+      "status": "pending",
+      "reference": "",
+      "reviewer": "",
+      "verified_on": ""
+    },
+    "finance_parity": {
+      "status": "pending",
+      "reference": "",
+      "reviewer": "",
+      "verified_on": ""
+    },
+    "payroll_history": {
+      "status": "pending",
+      "reference": "",
+      "reviewer": "",
+      "verified_on": ""
+    },
+    "corrections": {
+      "status": "pending",
+      "reference": "",
+      "reviewer": "",
+      "verified_on": ""
+    },
+    "permissions": {
+      "status": "pending",
+      "reference": "",
+      "reviewer": "",
+      "verified_on": ""
+    },
+    "monitoring_recovery": {
+      "status": "pending",
+      "reference": "",
+      "reviewer": "",
+      "verified_on": ""
+    },
+    "business_approval": {
+      "status": "pending",
+      "reference": "",
+      "reviewer": "",
+      "verified_on": ""
+    }
+  }
+}

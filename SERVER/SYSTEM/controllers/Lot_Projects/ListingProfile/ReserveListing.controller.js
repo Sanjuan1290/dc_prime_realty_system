@@ -1,0 +1,1283 @@
+import {
+  db,
+  getErrorMessage,
+  tableExists,
+  columnExists,
+  getProjectBySlug,
+  getProjectDefaultDocuments,
+  getListingLookupWhere,
+  toNullable,
+  addIfColumnExists,
+  cleanBuyerType,
+  cleanSecondBuyerRole,
+  dateOrNull,
+  todayDateOnly,
+  parseMoneyValue,
+  roundMoneyValue,
+  getComputedSoaTerms,
+  createComputedSoaRows,
+  recomputeComputedSoaBalances,
+  refreshListingPenaltyCache,
+  recomputeListingScheduleBalances,
+} from '../_shared/lotProject.shared.js';
+import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { toFormalTitleCase } from '../_shared/buyerProfileText.js';
+import { getListingPricingForMode } from '../_shared/listingPricing.js';
+import { replaceReservationCommissions } from '../Commissions/commissionHierarchy.service.js';
+import {
+  attachAccountToProfileRecords,
+  createLotProjectAccount,
+} from '../../../services/lotProjectAccount.service.js';
+import {
+  assertBuyerFormSchema,
+  revokeOpenBuyerFormLinks,
+} from '../BuyerForms/buyerForm.shared.js';
+import { resolveDocumentRequiredFlag, resolveDocumentResponsibleParty } from '../../../utils/documentRequirement.js';
+import { assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js';
+
+const cleanNamePart = (value) => toFormalTitleCase(value, 255);
+
+const firstMissingRequiredField = (fields = []) =>
+  fields.find((field) => !String(field.value ?? '').trim());
+const buildBuyerFullName = ({ firstName, middleName, lastName, suffix, fallback = '' } = {}) => {
+  const generated = [firstName, middleName, lastName, suffix]
+    .map(cleanNamePart)
+    .filter(Boolean)
+    .join(' ');
+  return generated || cleanNamePart(fallback);
+};
+
+const normalizeNumberOption = (modeValue, customValue, fallback = 0) => {
+  if (modeValue === 'custom') return Number(customValue || 0);
+  if (modeValue === 'spot_cash') return 0;
+  const numberValue = Number(modeValue ?? fallback);
+  return Number.isNaN(numberValue) ? fallback : numberValue;
+};
+
+const getMissingDailyPenaltySchemaItems = async (connection) => {
+  const missing = [];
+
+  const requiredTables = [
+    'lot_project_payment_schedules',
+    'lot_project_penalty_reliefs',
+  ];
+
+  for (const tableName of requiredTables) {
+    if (!(await tableExists(connection, tableName))) {
+      missing.push(`table ${tableName}`);
+    }
+  }
+
+  const requiredColumns = [
+    ['lot_project_client_profiles', 'soa_penalty_calculation_method'],
+    ['lot_project_client_profiles', 'soa_penalty_effective_from'],
+    ['lot_project_payment_schedules', 'calculated_penalty_amount'],
+    ['lot_project_payment_schedules', 'waived_penalty_amount'],
+    ['lot_project_payment_schedules', 'penalty_calculated_through'],
+  ];
+
+  for (const [tableName, columnName] of requiredColumns) {
+    if (missing.includes(`table ${tableName}`)) continue;
+    if (!(await columnExists(connection, tableName, columnName))) {
+      missing.push(`${tableName}.${columnName}`);
+    }
+  }
+
+  return missing;
+};
+
+const getMissingDualPricingSchemaItems = async (connection) => {
+  const requiredColumns = [
+    ['lot_project_listings', 'lot_project_listing_installment_price_per_sqm'],
+    ['lot_project_listings', 'lot_project_listing_cash_price_per_sqm'],
+    ['lot_project_client_profiles', 'soa_selected_price_per_sqm'],
+    ['lot_project_client_profiles', 'soa_selected_base_selling_price'],
+    ['lot_project_client_profiles', 'soa_sale_discount_percentage'],
+    ['lot_project_client_profiles', 'soa_sale_discount_amount'],
+    ['lot_project_client_profiles', 'soa_selected_net_selling_price'],
+    ['lot_project_client_profiles', 'soa_selected_lmf_amount'],
+    ['lot_project_client_profiles', 'soa_selected_tcp'],
+  ];
+
+  const missing = [];
+  for (const [tableName, columnName] of requiredColumns) {
+    if (!(await columnExists(connection, tableName, columnName))) {
+      missing.push(`${tableName}.${columnName}`);
+    }
+  }
+  return missing;
+};
+
+const normalizeDocumentPayload = (documents = []) =>
+  documents
+    .map((document) => ({
+      document_id: Number(document.document_id || document.id),
+      is_required: resolveDocumentRequiredFlag(document),
+      responsible_party: resolveDocumentResponsibleParty(document),
+      status: document.status === 'inactive' ? 'inactive' : 'active',
+    }))
+    .filter((document) => document.document_id);
+
+const getSavedListingDocumentRequirements = async (connection, projectId, listingId) => {
+  if (!(await tableExists(connection, 'lot_project_listing_documents'))) return [];
+
+  const [rows] = await connection.query(
+    `
+      SELECT
+        lpd.document_id,
+        lpd.lot_project_listing_document_is_required,
+        lpd.lot_project_listing_document_responsible_party,
+        lpd.lot_project_listing_document_status,
+        d.document_name,
+        d.document_description
+      FROM lot_project_listing_documents lpd
+      INNER JOIN documents d ON d.document_id = lpd.document_id
+      WHERE lpd.lot_project_id = ?
+        AND lpd.lot_project_listing_id = ?
+        AND lpd.lot_project_listing_document_status = 'active'
+      ORDER BY lpd.lot_project_listing_document_is_required DESC, d.document_name ASC
+    `,
+    [projectId, listingId]
+  );
+
+  return rows.map((document) => ({
+    ...document,
+    id: document.document_id,
+    name: document.document_name,
+    description: document.document_description || 'Listing Requirement',
+    source: 'Listing Requirement',
+    requirement: document.lot_project_listing_document_is_required ? 'required' : 'optional',
+    responsibleParty: document.lot_project_listing_document_responsible_party || 'client',
+    status: 'active',
+  }));
+};
+
+
+export const replaceReservationSchedules = async (connection, projectId, listing, clientProfileId, accountId, profileTerms) => {
+  if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return;
+
+  const listingTermsRow = {
+    ...listing,
+    lot_project_client_profile_id: clientProfileId,
+    buyer_full_name: profileTerms.buyerName,
+    soa_mode_of_payment: profileTerms.modeOfPayment,
+    soa_reservation_fee: profileTerms.reservationFee,
+    soa_reservation_fee_applied_to_downpayment: profileTerms.reservationFeeAppliedToDownpayment ? 1 : 0,
+    soa_starting_date: profileTerms.startingDate,
+    soa_first_due_date: profileTerms.firstDueDate,
+    soa_downpayment_percentage: profileTerms.downpaymentPercentage,
+    soa_downpayment_input_mode: profileTerms.downpaymentInputMode,
+    soa_downpayment_amount: profileTerms.downpaymentAmount,
+    soa_downpayment_terms: profileTerms.downpaymentTerms,
+    soa_monthly_terms: profileTerms.monthlyTerms,
+    soa_annual_interest_rate: profileTerms.annualInterestRate,
+    soa_interest_rate_overridden: profileTerms.interestRateOverridden ? 1 : 0,
+    soa_dp_discount_percentage: profileTerms.dpDiscountPercentage,
+    soa_legal_misc_fee_mode: profileTerms.legalMiscFeeMode,
+    soa_legal_misc_fee_amount: profileTerms.legalMiscFeeAmount,
+  };
+
+  const computedTerms = getComputedSoaTerms(listingTermsRow, []);
+  const computedRows = createComputedSoaRows(computedTerms);
+  const scheduleRows = recomputeComputedSoaBalances(computedRows, computedTerms);
+
+  await connection.query(
+    `DELETE FROM lot_project_payment_schedules WHERE lot_project_client_profile_id = ?`,
+    [clientProfileId]
+  );
+
+  if (!scheduleRows.length) return;
+
+  const baseColumns = [
+    'lot_project_id',
+    'lot_project_listing_id',
+    'lot_project_client_profile_id',
+    'lot_project_account_id',
+    'due_date',
+    'description',
+    'beginning_balance',
+    'due_amount',
+    'penalty_amount',
+    'amount_paid',
+    'date_paid',
+    'reference_id',
+    'ending_balance',
+    'schedule_status',
+  ];
+  const optionalColumns = [];
+  const addOptionalColumn = async (column) => {
+    if (await columnExists(connection, 'lot_project_payment_schedules', column)) optionalColumns.push(column);
+  };
+
+  await addOptionalColumn('interest_amount');
+  await addOptionalColumn('discount_amount');
+  await addOptionalColumn('principal_amount');
+  await addOptionalColumn('monthly_amortization_amount');
+  await addOptionalColumn('paid_interest_amount');
+  await addOptionalColumn('paid_principal_amount');
+  await addOptionalColumn('paid_penalty_amount');
+
+  const columns = [...baseColumns, ...optionalColumns];
+  const values = scheduleRows.flatMap((row) => {
+    const baseValues = [
+      projectId,
+      listing.lot_project_listing_id,
+      clientProfileId,
+      accountId,
+      row.dueDate,
+      row.description,
+      Number(row.beginningBalance || 0),
+      Number(row.dueAmount || 0),
+      Number(row.penalty || 0),
+      0,
+      null,
+      null,
+      Number(row.endingBalance || 0),
+      'Unpaid',
+    ];
+    const optionalValues = optionalColumns.map((column) => {
+      if (column === 'interest_amount') return Number(row.interest || 0);
+      if (column === 'discount_amount') return Number(row.discountAmount || row.discount_amount || 0);
+      if (column === 'principal_amount') return Number(row.principalAmount || row.principal_amount || 0);
+      if (column === 'monthly_amortization_amount') return Number(row.monthlyAmortizationAmount || row.dueAmount || 0);
+      return 0;
+    });
+
+    return [...baseValues, ...optionalValues];
+  });
+
+  await connection.query(
+    `
+      INSERT INTO lot_project_payment_schedules (
+        ${columns.join(',\n        ')}
+      ) VALUES ${scheduleRows.map(() => `(${columns.map(() => '?').join(', ')})`).join(', ')}
+    `,
+    values
+  );
+};
+
+export const insertReservationDocuments = async (connection, projectId, listingId, clientProfileId, requestedDocuments = null) => {
+  if (!(await tableExists(connection, 'lot_project_listing_documents'))) return;
+
+  let sourceDocuments = Array.isArray(requestedDocuments) && requestedDocuments.length
+    ? requestedDocuments
+    : await getSavedListingDocumentRequirements(connection, projectId, listingId);
+
+  // The listing-specific checklist is the first fallback. Project defaults are
+  // used only when the listing itself does not have saved requirements.
+  if (!sourceDocuments.length) sourceDocuments = await getProjectDefaultDocuments(projectId);
+
+  const cleanDocuments = normalizeDocumentPayload(sourceDocuments);
+
+  await connection.query(
+    `DELETE FROM lot_project_listing_documents WHERE lot_project_listing_id = ?`,
+    [listingId]
+  );
+
+  if (!cleanDocuments.length) return;
+
+  await connection.query(
+    `
+      INSERT INTO lot_project_listing_documents (
+        lot_project_id,
+        lot_project_listing_id,
+        document_id,
+        lot_project_listing_document_is_required,
+        lot_project_listing_document_responsible_party,
+        lot_project_listing_document_status
+      ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, ?, ?)').join(', ')}
+    `,
+    cleanDocuments.flatMap((document) => [
+      projectId,
+      listingId,
+      document.document_id,
+      document.is_required,
+      document.responsible_party,
+      document.status,
+    ])
+  );
+
+  if (!(await tableExists(connection, 'lot_project_client_documents'))) return;
+
+  await connection.query(
+    `
+      INSERT INTO lot_project_client_documents (
+        lot_project_id,
+        lot_project_listing_id,
+        lot_project_client_profile_id,
+        document_id,
+        lot_project_client_document_status
+      ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, \'Missing\')').join(', ')}
+      ON DUPLICATE KEY UPDATE
+        lot_project_id = VALUES(lot_project_id),
+        lot_project_listing_id = VALUES(lot_project_listing_id)
+    `,
+    cleanDocuments.flatMap((document) => [
+      projectId,
+      listingId,
+      clientProfileId,
+      document.document_id,
+    ])
+  );
+};
+
+
+export const reserveLotProjectListing = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const project = await getProjectBySlug(slug);
+
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+    if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
+    if (!(await tableExists(connection, 'lot_project_listings'))) {
+      return res.status(500).json({ message: 'lot_project_listings table does not exist.' });
+    }
+    if (!(await tableExists(connection, 'lot_project_client_profiles'))) {
+      return res.status(500).json({ message: 'lot_project_client_profiles table does not exist.' });
+    }
+    const missingDailyPenaltySchema = await getMissingDailyPenaltySchemaItems(connection);
+    if (missingDailyPenaltySchema.length) {
+      return res.status(500).json({
+        message: `Daily penalty database migration is incomplete. Missing: ${missingDailyPenaltySchema.join(', ')}. Run server/migrations/20260711_add_daily_penalty_reliefs.sql against the same database configured in server/.env, then restart the API.`,
+        missing_schema_items: missingDailyPenaltySchema,
+      });
+    }
+    const missingDualPricingSchema = await getMissingDualPricingSchemaItems(connection);
+    if (missingDualPricingSchema.length) {
+      return res.status(500).json({
+        message: `Dual listing pricing migration is incomplete. Missing: ${missingDualPricingSchema.join(', ')}. Run server/migrations/20260719_dual_listing_pricing_and_contract_snapshots.sql.`,
+        missing_schema_items: missingDualPricingSchema,
+      });
+    }
+
+    const lookup = getListingLookupWhere(listingLookup, '');
+    const hasAnnualInterestRate = await columnExists(connection, 'lot_project_listings', 'annual_interest_rate');
+    const annualInterestSelect = hasAnnualInterestRate ? 'annual_interest_rate' : '0 AS annual_interest_rate';
+
+    const [listingRows] = await connection.query(
+      `
+        SELECT
+          lot_project_listing_id,
+          lot_project_listing_unit_id,
+          lot_project_listing_status,
+          lot_project_listing_area_sqm,
+          lot_project_listing_price_per_sqm,
+          lot_project_listing_installment_price_per_sqm,
+          lot_project_listing_cash_price_per_sqm,
+          lot_project_listing_lmf_rate,
+          lot_project_listing_tcp,
+          lot_project_listing_net_selling_price,
+          lot_project_listing_lmf_amount,
+          lot_project_listing_reservation_fee,
+          ${annualInterestSelect}
+        FROM lot_project_listings
+        WHERE lot_project_id = ?
+          AND ${lookup.sql}
+        LIMIT 1
+      `,
+      [project.lot_project_id, ...lookup.params]
+    );
+
+    const listing = listingRows[0];
+    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+    if (!['available', 'hold'].includes(String(listing.lot_project_listing_status || '').toLowerCase())) {
+      return res.status(400).json({ message: 'Only available or hold listings can be reserved.' });
+    }
+
+    const buyerFormSubmissionId = Number(
+      req.body.buyerFormSubmissionId || req.body.submissionId || 0
+    ) || null;
+    const clientProfile = req.body.clientProfile || req.body.client || {};
+    const reservation = req.body.reservation || {};
+    const terms = reservation.paymentTerms || req.body.paymentTerms || {};
+    const buyerType = cleanBuyerType(clientProfile.buyerType || clientProfile.buyer_type);
+    const hasSecondBuyer = buyerType === 'spouses' || buyerType === 'and_account';
+    const buyerFirstName = cleanNamePart(clientProfile.buyerFirstName || clientProfile.buyer_first_name);
+    const buyerMiddleName = cleanNamePart(clientProfile.buyerMiddleName || clientProfile.buyer_middle_name);
+    const buyerLastName = cleanNamePart(clientProfile.buyerLastName || clientProfile.buyer_last_name);
+    const buyerSuffix = cleanNamePart(clientProfile.buyerSuffix || clientProfile.buyer_suffix);
+    const buyerName = buildBuyerFullName({
+      firstName: buyerFirstName,
+      middleName: buyerMiddleName,
+      lastName: buyerLastName,
+      suffix: buyerSuffix,
+      fallback: clientProfile.buyerName || clientProfile.buyer_full_name,
+    });
+    const secondBuyerFirstName = cleanNamePart(clientProfile.secondBuyerFirstName || clientProfile.second_buyer_first_name);
+    const secondBuyerMiddleName = cleanNamePart(clientProfile.secondBuyerMiddleName || clientProfile.second_buyer_middle_name);
+    const secondBuyerLastName = cleanNamePart(clientProfile.secondBuyerLastName || clientProfile.second_buyer_last_name);
+    const secondBuyerSuffix = cleanNamePart(clientProfile.secondBuyerSuffix || clientProfile.second_buyer_suffix);
+    const secondBuyerName = buildBuyerFullName({
+      firstName: secondBuyerFirstName,
+      middleName: secondBuyerMiddleName,
+      lastName: secondBuyerLastName,
+      suffix: secondBuyerSuffix,
+      fallback: clientProfile.secondBuyerName || clientProfile.second_buyer_full_name,
+    });
+
+    const principalRequiredFields = [
+      { label: 'Principal buyer first name', value: buyerFirstName },
+      { label: 'Principal buyer last name', value: buyerLastName },
+      { label: 'Principal buyer birth date', value: clientProfile.birthDate ?? clientProfile.buyer_birth_date },
+      { label: 'Principal buyer place of birth', value: clientProfile.placeOfBirth ?? clientProfile.buyer_place_of_birth },
+      { label: 'Principal buyer citizenship', value: clientProfile.citizenship ?? clientProfile.buyer_citizenship },
+      { label: 'Principal buyer gender', value: clientProfile.gender ?? clientProfile.buyer_gender },
+      { label: 'Principal buyer civil status', value: clientProfile.civilStatus ?? clientProfile.buyer_civil_status },
+      { label: 'Principal buyer mobile number', value: clientProfile.contactNo ?? clientProfile.buyer_contact_number },
+      { label: 'Principal buyer present address', value: clientProfile.presentAddress ?? clientProfile.buyer_present_address },
+      { label: 'Principal buyer present ZIP code', value: clientProfile.presentZipCode ?? clientProfile.buyer_present_zip_code },
+      { label: 'Principal buyer employment status', value: clientProfile.employmentStatus ?? clientProfile.buyer_employment_status },
+      { label: 'Principal buyer monthly income', value: clientProfile.monthlyIncome ?? clientProfile.buyer_monthly_income },
+    ];
+
+    const missingPrincipalField = firstMissingRequiredField(principalRequiredFields);
+    if (missingPrincipalField) {
+      return res.status(400).json({ message: `${missingPrincipalField.label} is required.` });
+    }
+
+    if (hasSecondBuyer) {
+      const secondBuyerRequiredFields = [
+        { label: 'Spouse / second buyer role', value: clientProfile.secondBuyerRole ?? clientProfile.second_buyer_role },
+        { label: 'Spouse / second buyer first name', value: secondBuyerFirstName },
+        { label: 'Spouse / second buyer last name', value: secondBuyerLastName },
+        { label: 'Spouse / second buyer birth date', value: clientProfile.secondBuyerBirthDate ?? clientProfile.second_buyer_birth_date },
+        { label: 'Spouse / second buyer place of birth', value: clientProfile.secondBuyerPlaceOfBirth ?? clientProfile.second_buyer_place_of_birth },
+        { label: 'Spouse / second buyer citizenship', value: clientProfile.secondBuyerCitizenship ?? clientProfile.second_buyer_citizenship },
+        { label: 'Spouse / second buyer gender', value: clientProfile.secondBuyerGender ?? clientProfile.second_buyer_gender },
+        { label: 'Spouse / second buyer civil status', value: clientProfile.secondBuyerCivilStatus ?? clientProfile.second_buyer_civil_status },
+        { label: 'Spouse / second buyer mobile number', value: clientProfile.secondBuyerContactNo ?? clientProfile.second_buyer_contact_number },
+        { label: 'Spouse / second buyer present address', value: clientProfile.secondBuyerPresentAddress ?? clientProfile.second_buyer_present_address },
+        { label: 'Spouse / second buyer present ZIP code', value: clientProfile.secondBuyerPresentZipCode ?? clientProfile.second_buyer_present_zip_code },
+        { label: 'Spouse / second buyer employment status', value: clientProfile.secondBuyerEmploymentStatus ?? clientProfile.second_buyer_employment_status },
+        { label: 'Spouse / second buyer monthly income', value: clientProfile.secondBuyerMonthlyIncome ?? clientProfile.second_buyer_monthly_income },
+      ];
+
+      const missingSecondBuyerField = firstMissingRequiredField(secondBuyerRequiredFields);
+      if (missingSecondBuyerField) {
+        return res.status(400).json({ message: `${missingSecondBuyerField.label} is required.` });
+      }
+    }
+
+    const modeOfPayment = reservation.modeOfPayment === 'cash' || terms.modeOfPayment === 'cash' ? 'cash' : 'installment';
+    const isCash = modeOfPayment === 'cash';
+    const saleDiscountPercentage = parseMoneyValue(terms.saleDiscountPercentage || terms.soa_sale_discount_percentage || 0);
+    if (saleDiscountPercentage < 0 || saleDiscountPercentage > 100) {
+      return res.status(400).json({ message: 'Sale discount percentage must be between 0 and 100.' });
+    }
+    const listingLmfRate = parseMoneyValue(listing.lot_project_listing_lmf_rate || 0);
+    const hasSubmittedLmfRate =
+      terms.legalMiscFeeRate !== undefined &&
+      terms.legalMiscFeeRate !== null &&
+      String(terms.legalMiscFeeRate).trim() !== '';
+    const selectedLmfRate = hasSubmittedLmfRate
+      ? Number(terms.legalMiscFeeRate)
+      : listingLmfRate;
+    if (!Number.isFinite(selectedLmfRate) || selectedLmfRate < 0 || selectedLmfRate > 100) {
+      return res.status(400).json({ message: 'LMF rate must be between 0 and 100.' });
+    }
+
+    const contractPricing = getListingPricingForMode(
+      listing,
+      modeOfPayment,
+      saleDiscountPercentage,
+      selectedLmfRate
+    );
+    if (contractPricing.pricePerSqm <= 0 || contractPricing.baseSellingPrice <= 0) {
+      return res.status(400).json({ message: `The listing does not have a valid ${modeOfPayment} price per SQM.` });
+    }
+
+    // Downstream SOA and commission services already read these listing fields.
+    // Replace them in-memory with the immutable contract calculation selected by
+    // this reservation. The public listing row itself remains unchanged.
+    listing.lot_project_listing_price_per_sqm = contractPricing.pricePerSqm;
+    listing.commissionBase = contractPricing.baseSellingPrice;
+    listing.soa_selected_price_per_sqm = contractPricing.pricePerSqm;
+    listing.soa_selected_base_selling_price = contractPricing.baseSellingPrice;
+    listing.lot_project_listing_lmf_rate = contractPricing.legalMiscRate;
+    listing.lot_project_listing_net_selling_price = contractPricing.netSellingPrice;
+    listing.lot_project_listing_lmf_amount = contractPricing.lmfAmount;
+    listing.lot_project_listing_tcp = contractPricing.tcp;
+
+    const reservationFee = parseMoneyValue(terms.reservationFee || listing.lot_project_listing_reservation_fee || 0);
+    const legalMiscFeeMode = String(terms.legalMiscFeeMode || terms.legalMiscFee || 'include_in_monthly') === 'separate_soa_row'
+      ? 'separate_soa_row'
+      : 'include_in_monthly';
+    const legalMiscFeeAmount = contractPricing.lmfAmount;
+    const downpaymentPrincipalBase = roundMoneyValue(
+      legalMiscFeeMode === 'separate_soa_row'
+        ? Math.max(contractPricing.tcp - legalMiscFeeAmount, 0)
+        : contractPricing.tcp
+    );
+    const downpaymentInputMode = !isCash && (
+      String(terms.downpaymentInputMode || '').toLowerCase() === 'amount' ||
+      String(terms.downpaymentPercentageMode || '').toLowerCase() === 'amount'
+    ) ? 'amount' : 'percentage';
+    const requestedDownpaymentAmount = downpaymentInputMode === 'amount'
+      ? parseMoneyValue(terms.downpaymentAmount ?? terms.customDownpaymentAmount ?? 0)
+      : null;
+    if (
+      downpaymentInputMode === 'amount' &&
+      (!Number.isFinite(requestedDownpaymentAmount) || requestedDownpaymentAmount < 0 || requestedDownpaymentAmount > downpaymentPrincipalBase)
+    ) {
+      return res.status(400).json({
+        message: 'Actual downpayment amount must be between 0 and the contract principal balance.',
+      });
+    }
+    const downpaymentAmount = isCash
+      ? null
+      : downpaymentInputMode === 'amount'
+        ? roundMoneyValue(requestedDownpaymentAmount)
+        : null;
+    const downpaymentPercentage = isCash
+      ? 0
+      : downpaymentInputMode === 'amount'
+        ? downpaymentPrincipalBase > 0
+          ? (downpaymentAmount / downpaymentPrincipalBase) * 100
+          : 0
+        : Number(
+            terms.downpaymentPercentage ?? normalizeNumberOption(terms.downpaymentPercentageMode, terms.customDownpaymentPercentage, 30)
+          );
+    if (!Number.isFinite(downpaymentPercentage) || downpaymentPercentage < 0 || downpaymentPercentage > 100) {
+      return res.status(400).json({ message: 'Downpayment percentage must be between 0 and 100.' });
+    }
+    const downpaymentTerms = isCash
+      ? 0
+      : Number(
+          terms.downpaymentTerms ?? normalizeNumberOption(terms.downpaymentTermsMode, terms.customDownpaymentTerms, 3)
+        );
+    const monthlyTerms = isCash
+      ? 0
+      : Number(
+          terms.monthlyTerms ?? normalizeNumberOption(terms.monthlyTermsMode, terms.customMonthlyTerms, 36)
+        );
+    const dpDiscountPercentage = isCash ? 0 : parseMoneyValue(terms.dpDiscountPercentage || 0);
+    if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
+      return res.status(400).json({ message: 'Downpayment discount percentage must be between 0 and 100.' });
+    }
+    const reservationFeeAppliedToDownpayment = !isCash && (
+      terms.reservationFeeTreatment === 'apply_to_downpayment' ||
+      terms.reservationFeeAppliedToDownpayment === true ||
+      Number(terms.reservationFeeAppliedToDownpayment || terms.soa_reservation_fee_applied_to_downpayment || 0) === 1
+    );
+    const today = todayDateOnly();
+    const isHistoricalEntry = terms.isHistoricalEntry === true || Number(terms.isHistoricalEntry || 0) === 1;
+    const startingDate = dateOrNull(terms.startingDate) || today;
+    const firstDueDate = dateOrNull(terms.firstDueDate) || startingDate;
+    const backdateReason = String(terms.backdateReason || '').trim();
+
+    if (startingDate > today) {
+      return res.status(400).json({ message: 'Starting Date cannot be after today.' });
+    }
+    if (firstDueDate < startingDate) {
+      return res.status(400).json({ message: 'First Due Date cannot be before the Starting Date.' });
+    }
+    if (startingDate < today && !backdateReason) {
+      return res.status(400).json({ message: 'Backdate Reason is required when Starting Date is before today.' });
+    }
+    if (backdateReason.length > 500) {
+      return res.status(400).json({ message: 'Backdate Reason cannot exceed 500 characters.' });
+    }
+    const dailyPenaltyRate = Number(terms.dailyPenaltyRate ?? terms.penaltyRatePercent ?? 0.05);
+    const penaltyGraceDays = Number(terms.penaltyGraceDays ?? 0);
+    const penaltyEffectiveFrom = dateOrNull(terms.penaltyEffectiveFrom ?? terms.soa_penalty_effective_from);
+    if (!Number.isFinite(dailyPenaltyRate) || dailyPenaltyRate < 0 || dailyPenaltyRate > 100) {
+      return res.status(400).json({ message: 'Daily penalty rate must be between 0 and 100.' });
+    }
+    if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 0 || penaltyGraceDays > 31) {
+      return res.status(400).json({ message: 'Penalty grace period must be between 0 and 31 days.' });
+    }
+    const assignedSellerId = Number(terms.sellerId || reservation.sellerId || reservation.seller?.id || reservation.seller?.accredited_seller_id || 0) || null;
+    // The commission service determines whether this is an In-House distributed sale
+    // or a single-recipient External Network sale.
+    let saleChannel = 'distributed';
+
+    if (!assignedSellerId) {
+      return res.status(400).json({ message: 'Assigned Seller / Group is required.' });
+    }
+
+    if (await tableExists(connection, 'accredited_sellers')) {
+      const [sellerRows] = await connection.query(
+        `
+          SELECT
+            acs.accredited_seller_id,
+            acs.accredited_seller_status,
+            u.id AS user_id,
+            u.role,
+            u.status AS user_status,
+            sg.seller_group_name,
+            sg.seller_group_type,
+            sg.seller_group_external_account_user_id,
+            sg.seller_group_status
+          FROM accredited_sellers acs
+          INNER JOIN users u ON u.id = acs.user_id
+          LEFT JOIN seller_groups sg ON sg.seller_group_id = acs.seller_group_id
+          WHERE acs.accredited_seller_id = ?
+          LIMIT 1
+        `,
+        [assignedSellerId]
+      );
+
+      const assignedSeller = sellerRows[0];
+      if (!assignedSeller || assignedSeller.accredited_seller_status !== 'active' || assignedSeller.user_status !== 'active') {
+        return res.status(400).json({ message: 'The assigned Seller / Group is not active.' });
+      }
+      const isInHouseSalesAgent = assignedSeller.seller_group_type === 'in_house' && assignedSeller.role === 'sales_agent';
+      const isExternalGroupAccount =
+        assignedSeller.seller_group_type === 'external' &&
+        assignedSeller.role === 'external_group' &&
+        Number(assignedSeller.user_id) === Number(assignedSeller.seller_group_external_account_user_id || 0);
+      if (!isInHouseSalesAgent && !isExternalGroupAccount) {
+        return res.status(400).json({
+          message: 'Select an active In-House Sales Agent or the registered External Network account.',
+        });
+      }
+      saleChannel = isExternalGroupAccount ? 'external_group' : 'distributed';
+      if (assignedSeller.seller_group_status !== 'active') {
+        return res.status(400).json({ message: 'The selected group is inactive.' });
+      }
+    }
+
+    const tableName = 'lot_project_client_profiles';
+    if (
+      downpaymentInputMode === 'amount' &&
+      (!(await columnExists(connection, tableName, 'soa_downpayment_input_mode')) ||
+        !(await columnExists(connection, tableName, 'soa_downpayment_amount')))
+    ) {
+      return res.status(400).json({
+        message: 'Actual downpayment amount needs the latest database migration.',
+      });
+    }
+    if (reservationFeeAppliedToDownpayment && !(await columnExists(connection, tableName, 'soa_reservation_fee_applied_to_downpayment'))) {
+      return res.status(400).json({
+        message: 'Reservation fee deduction from downpayment needs the latest database migration.',
+      });
+    }
+    const listingInterestRate = parseMoneyValue(listing.annual_interest_rate || 0);
+    const hasSubmittedInterestRate =
+      terms.interestRate !== undefined &&
+      terms.interestRate !== null &&
+      String(terms.interestRate).trim() !== '';
+    const selectedInterestRate = isCash
+      ? 0
+      : hasSubmittedInterestRate
+        ? Number(terms.interestRate)
+        : listingInterestRate;
+    if (!Number.isFinite(selectedInterestRate) || selectedInterestRate < 0 || selectedInterestRate > 100) {
+      return res.status(400).json({ message: 'Interest rate must be between 0 and 100.' });
+    }
+    const interestRateOverridden = !isCash && hasSubmittedInterestRate && Math.abs(selectedInterestRate - listingInterestRate) > 0.0001 ? 1 : 0;
+
+    const columns = [
+      'lot_project_id',
+      'lot_project_listing_id',
+      'buyer_type',
+      'buyer_first_name',
+      'buyer_middle_name',
+      'buyer_last_name',
+      'buyer_suffix',
+      'buyer_full_name',
+      'buyer_birth_date',
+      'buyer_place_of_birth',
+      'buyer_citizenship',
+      'buyer_gender',
+      'buyer_civil_status',
+      'buyer_contact_number',
+      'buyer_email',
+      'buyer_tin',
+      'buyer_present_address',
+      'buyer_permanent_address',
+      'buyer_employment_status',
+      'buyer_employer_business_name',
+      'buyer_employer_business_address',
+      'buyer_nature_of_work_business',
+      'buyer_occupation_position',
+      'buyer_monthly_income',
+      'second_buyer_full_name',
+      'second_buyer_first_name',
+      'second_buyer_middle_name',
+      'second_buyer_last_name',
+      'second_buyer_suffix',
+      'second_buyer_birth_date',
+      'second_buyer_place_of_birth',
+      'second_buyer_citizenship',
+      'second_buyer_gender',
+      'second_buyer_civil_status',
+      'second_buyer_contact_number',
+      'second_buyer_email',
+      'second_buyer_tin',
+      'second_buyer_present_address',
+      'second_buyer_permanent_address',
+      'second_buyer_employment_status',
+      'second_buyer_employer_business_name',
+      'second_buyer_employer_business_address',
+      'second_buyer_nature_of_work_business',
+      'second_buyer_occupation_position',
+      'second_buyer_monthly_income',
+      'lot_project_client_profile_status',
+      'soa_mode_of_payment',
+      'soa_reservation_fee',
+      'soa_starting_date',
+      'soa_first_due_date',
+      'soa_downpayment_percentage',
+      'soa_downpayment_terms',
+      'soa_monthly_terms',
+      'soa_annual_interest_rate',
+      'soa_dp_discount_percentage',
+    ];
+
+    const values = [
+      project.lot_project_id,
+      listing.lot_project_listing_id,
+      buyerType,
+      toNullable(buyerFirstName),
+      toNullable(buyerMiddleName),
+      toNullable(buyerLastName),
+      toNullable(buyerSuffix),
+      buyerName,
+      dateOrNull(clientProfile.birthDate || clientProfile.buyer_birth_date),
+      toNullable(toFormalTitleCase(clientProfile.placeOfBirth || clientProfile.buyer_place_of_birth, 255)),
+      toNullable(toFormalTitleCase(clientProfile.citizenship || clientProfile.buyer_citizenship, 255)),
+      toNullable(toFormalTitleCase(clientProfile.gender || clientProfile.buyer_gender, 100)),
+      toNullable(toFormalTitleCase(clientProfile.civilStatus || clientProfile.buyer_civil_status, 100)),
+      toNullable(clientProfile.contactNo || clientProfile.buyer_contact_number),
+      toNullable(clientProfile.email || clientProfile.buyer_email),
+      toNullable(clientProfile.tin || clientProfile.buyer_tin),
+      toNullable(toFormalTitleCase(clientProfile.presentAddress || clientProfile.buyer_present_address, 2000)),
+      toNullable(toFormalTitleCase(clientProfile.permanentAddress || clientProfile.buyer_permanent_address, 2000)),
+      toNullable(toFormalTitleCase(clientProfile.employmentStatus || clientProfile.buyer_employment_status, 255)),
+      toNullable(toFormalTitleCase(clientProfile.employerBusinessName || clientProfile.buyer_employer_business_name, 255)),
+      toNullable(toFormalTitleCase(clientProfile.employerBusinessAddress || clientProfile.buyer_employer_business_address, 2000)),
+      toNullable(toFormalTitleCase(clientProfile.natureOfWorkBusiness || clientProfile.buyer_nature_of_work_business, 255)),
+      toNullable(toFormalTitleCase(clientProfile.occupationPositionTitle || clientProfile.buyer_occupation_position, 255)),
+      parseMoneyValue(clientProfile.monthlyIncome || clientProfile.buyer_monthly_income),
+      hasSecondBuyer ? secondBuyerName : null,
+      hasSecondBuyer ? toNullable(secondBuyerFirstName) : null,
+      hasSecondBuyer ? toNullable(secondBuyerMiddleName) : null,
+      hasSecondBuyer ? toNullable(secondBuyerLastName) : null,
+      hasSecondBuyer ? toNullable(secondBuyerSuffix) : null,
+      hasSecondBuyer ? dateOrNull(clientProfile.secondBuyerBirthDate || clientProfile.second_buyer_birth_date) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerPlaceOfBirth || clientProfile.second_buyer_place_of_birth, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerCitizenship || clientProfile.second_buyer_citizenship, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerGender || clientProfile.second_buyer_gender, 100)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerCivilStatus || clientProfile.second_buyer_civil_status, 100)) : null,
+      hasSecondBuyer ? toNullable(clientProfile.secondBuyerContactNo || clientProfile.second_buyer_contact_number) : null,
+      hasSecondBuyer ? toNullable(clientProfile.secondBuyerEmail || clientProfile.second_buyer_email) : null,
+      hasSecondBuyer ? toNullable(clientProfile.secondBuyerTin || clientProfile.second_buyer_tin) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerPresentAddress || clientProfile.second_buyer_present_address, 2000)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerPermanentAddress || clientProfile.second_buyer_permanent_address, 2000)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerEmploymentStatus || clientProfile.second_buyer_employment_status, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerEmployerBusinessName || clientProfile.second_buyer_employer_business_name, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerEmployerBusinessAddress || clientProfile.second_buyer_employer_business_address, 2000)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerNatureOfWorkBusiness || clientProfile.second_buyer_nature_of_work_business, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerOccupationPositionTitle || clientProfile.second_buyer_occupation_position, 255)) : null,
+      hasSecondBuyer ? parseMoneyValue(clientProfile.secondBuyerMonthlyIncome || clientProfile.second_buyer_monthly_income) : 0,
+      'active',
+      modeOfPayment,
+      reservationFee,
+      startingDate,
+      firstDueDate,
+      Number.isNaN(downpaymentPercentage) ? 30 : downpaymentPercentage,
+      Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
+      Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
+      selectedInterestRate,
+      dpDiscountPercentage,
+    ];
+
+    await addIfColumnExists(connection, tableName, columns, values, 'buyer_residence_phone_number', toNullable(clientProfile.residencePhoneNumber));
+    await addIfColumnExists(connection, tableName, columns, values, 'buyer_present_zip_code', toNullable(clientProfile.presentZipCode));
+    await addIfColumnExists(connection, tableName, columns, values, 'buyer_permanent_zip_code', toNullable(clientProfile.permanentZipCode));
+    await addIfColumnExists(connection, tableName, columns, values, 'buyer_employer_zip_code', toNullable(clientProfile.employerZipCode));
+    await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_role', hasSecondBuyer ? cleanSecondBuyerRole(clientProfile.secondBuyerRole, buyerType) : null);
+    await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_residence_phone_number', hasSecondBuyer ? toNullable(clientProfile.secondBuyerResidencePhoneNumber) : null);
+    await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_present_zip_code', hasSecondBuyer ? toNullable(clientProfile.secondBuyerPresentZipCode) : null);
+    await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_permanent_zip_code', hasSecondBuyer ? toNullable(clientProfile.secondBuyerPermanentZipCode) : null);
+    await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_employer_zip_code', hasSecondBuyer ? toNullable(clientProfile.secondBuyerEmployerZipCode) : null);
+    await addIfColumnExists(connection, tableName, columns, values, 'assigned_accredited_seller_id', assignedSellerId);
+    await addIfColumnExists(connection, tableName, columns, values, 'sale_channel', saleChannel);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_price_per_sqm', contractPricing.pricePerSqm);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_base_selling_price', contractPricing.baseSellingPrice);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_sale_discount_percentage', contractPricing.saleDiscountPercentage);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_sale_discount_amount', contractPricing.saleDiscountAmount);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_net_selling_price', contractPricing.netSellingPrice);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_lmf_amount', contractPricing.lmfAmount);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_tcp', contractPricing.tcp);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_downpayment_input_mode', downpaymentInputMode);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_downpayment_amount', downpaymentAmount);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_reservation_fee_applied_to_downpayment', reservationFeeAppliedToDownpayment ? 1 : 0);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_mode', legalMiscFeeMode);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_amount', legalMiscFeeAmount);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_interest_rate_overridden', interestRateOverridden);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_rate_percent', dailyPenaltyRate);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_grace_days', penaltyGraceDays);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_effective_from', penaltyEffectiveFrom);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_calculation_method', 'daily');
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_is_historical_entry', isHistoricalEntry ? 1 : 0);
+
+    const updateAssignments = columns
+      .filter((column) => !['lot_project_id', 'lot_project_listing_id'].includes(column))
+      .map((column) => `${column} = VALUES(${column})`);
+
+    const buyerFormSchemaAvailable =
+      (await tableExists(connection, 'lot_project_buyer_form_links')) &&
+      (await tableExists(connection, 'lot_project_buyer_form_submissions')) &&
+      (await columnExists(connection, 'lot_project_listings', 'pending_buyer_form_submission_id')) &&
+      (await columnExists(connection, 'lot_project_listings', 'buyer_form_generation'));
+
+    if (buyerFormSubmissionId && !buyerFormSchemaAvailable) {
+      await assertBuyerFormSchema(connection);
+    }
+
+    await connection.beginTransaction();
+
+    const pendingSubmissionSelect = buyerFormSchemaAvailable
+      ? 'pending_buyer_form_submission_id'
+      : 'NULL AS pending_buyer_form_submission_id';
+    const [lockedListingRows] = await connection.query(
+      `
+        SELECT
+          lot_project_listing_id,
+          lot_project_listing_status,
+          ${pendingSubmissionSelect}
+        FROM lot_project_listings
+        WHERE lot_project_id = ?
+          AND lot_project_listing_id = ?
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [project.lot_project_id, listing.lot_project_listing_id]
+    );
+
+    const lockedListing = lockedListingRows[0];
+    if (!lockedListing) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Listing not found.' });
+    }
+
+    const lockedStatus = String(lockedListing.lot_project_listing_status || '').toLowerCase();
+    if (!['available', 'hold'].includes(lockedStatus)) {
+      await connection.rollback();
+      return res.status(409).json({ message: 'This unit is no longer available for reservation.' });
+    }
+
+    // reservation.create uses the new account id as its review entity, so there
+    // is no account record to lock before the INSERT. Lock the existing unit
+    // review surface before any reservation writes to prevent a reservation from
+    // racing an open listing correction.
+    await assertEntityNotReviewLocked(connection, {
+      actor: req.authUser,
+      entityType: 'lot_project_listing',
+      entityId: listing.lot_project_listing_id,
+    });
+
+    let buyerFormSubmission = null;
+    if (buyerFormSubmissionId) {
+      const [submissionRows] = await connection.query(
+        `
+          SELECT
+            submission.*,
+            link.link_status
+          FROM lot_project_buyer_form_submissions submission
+          INNER JOIN lot_project_buyer_form_links link
+            ON link.lot_project_buyer_form_link_id = submission.lot_project_buyer_form_link_id
+          WHERE submission.lot_project_buyer_form_submission_id = ?
+            AND submission.lot_project_id = ?
+            AND submission.lot_project_listing_id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [buyerFormSubmissionId, project.lot_project_id, listing.lot_project_listing_id]
+      );
+      buyerFormSubmission = submissionRows[0] || null;
+
+      if (!buyerFormSubmission || !['submitted', 'pending_review'].includes(buyerFormSubmission.submission_status)) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'The buyer form submission is no longer pending review.' });
+      }
+
+      if (Number(lockedListing.pending_buyer_form_submission_id || 0) !== buyerFormSubmissionId) {
+        await connection.rollback();
+        return res.status(409).json({ message: 'This submission is not the active buyer form submission for the unit.' });
+      }
+
+      await assertEntityNotReviewLocked(connection, {
+        actor: req.authUser,
+        entityType: 'lot_project_buyer_form',
+        entityId: buyerFormSubmissionId,
+      });
+    } else if (buyerFormSchemaAvailable) {
+      if (Number(lockedListing.pending_buyer_form_submission_id || 0) > 0) {
+        await connection.rollback();
+        return res.status(409).json({ message: 'Review the pending buyer form submission before reserving this unit.' });
+      }
+      await revokeOpenBuyerFormLinks(connection, listing.lot_project_listing_id, { status: 'superseded' });
+    }
+
+    listing.lot_project_listing_status = lockedStatus;
+
+    const [profileResult] = await connection.query(
+      `
+        INSERT INTO lot_project_client_profiles (${columns.join(', ')})
+        VALUES (${columns.map(() => '?').join(', ')})
+      `,
+      values
+    );
+
+    const clientProfileId = Number(profileResult.insertId || 0);
+    if (!clientProfileId) throw new Error('Buyer profile was not created.');
+
+    const listingReservationUpdates = [
+      "lot_project_listing_status = 'sold'",
+      "lot_project_listing_sold_substatus = 'active'",
+      'lot_project_listing_cancellation_type = NULL',
+      'hold_client_name = NULL',
+      'hold_note = NULL',
+      'hold_created_at = NULL',
+      'hold_created_by_user_id = NULL',
+    ];
+    if (buyerFormSchemaAvailable) listingReservationUpdates.push('pending_buyer_form_submission_id = NULL');
+
+    await connection.query(
+      `
+        UPDATE lot_project_listings
+        SET ${listingReservationUpdates.join(',\n            ')}
+        WHERE lot_project_id = ?
+          AND lot_project_listing_id = ?
+      `,
+      [project.lot_project_id, listing.lot_project_listing_id]
+    );
+
+    let reservationHistoryId = null;
+    if (await tableExists(connection, 'lot_project_reservation_history')) {
+      const historyTerms = getComputedSoaTerms({
+        ...listing,
+        soa_mode_of_payment: modeOfPayment,
+        soa_reservation_fee: reservationFee,
+        soa_reservation_fee_applied_to_downpayment: reservationFeeAppliedToDownpayment ? 1 : 0,
+        soa_downpayment_percentage: Number.isNaN(downpaymentPercentage) ? 30 : downpaymentPercentage,
+        soa_downpayment_input_mode: downpaymentInputMode,
+        soa_downpayment_amount: downpaymentAmount,
+        soa_downpayment_terms: Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
+        soa_monthly_terms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
+        soa_annual_interest_rate: selectedInterestRate,
+        soa_interest_rate_overridden: interestRateOverridden,
+        soa_dp_discount_percentage: dpDiscountPercentage,
+        soa_legal_misc_fee_mode: legalMiscFeeMode,
+        soa_legal_misc_fee_amount: legalMiscFeeAmount,
+        soa_selected_tcp: contractPricing.tcp,
+        soa_selected_lmf_amount: contractPricing.lmfAmount,
+      }, []);
+
+      const historyColumns = [
+        'lot_project_id',
+        'lot_project_listing_id',
+        'lot_project_client_profile_id',
+        'unit_id_snapshot',
+        'buyer_name_snapshot',
+        'reservation_status',
+        'reserved_at',
+        'tcp_snapshot',
+        'discount_percentage_snapshot',
+        'discount_applied_snapshot',
+        'created_by_user_id',
+      ];
+      const historyValues = [
+        project.lot_project_id,
+        listing.lot_project_listing_id,
+        clientProfileId,
+        listing.lot_project_listing_unit_id,
+        buyerName,
+        'active',
+        new Date(),
+        contractPricing.tcp,
+        contractPricing.saleDiscountPercentage,
+        contractPricing.saleDiscountAmount,
+        req.authUser?.id || null,
+      ];
+
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'pricing_mode_snapshot', modeOfPayment);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'price_per_sqm_snapshot', contractPricing.pricePerSqm);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'base_selling_price_snapshot', contractPricing.baseSellingPrice);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'net_selling_price_snapshot', contractPricing.netSellingPrice);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'lmf_amount_snapshot', contractPricing.lmfAmount);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'sale_discount_percentage_snapshot', contractPricing.saleDiscountPercentage);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'sale_discount_amount_snapshot', contractPricing.saleDiscountAmount);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'dp_discount_percentage_snapshot', dpDiscountPercentage);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'dp_discount_amount_snapshot', historyTerms.downpaymentDiscountTotal);
+
+      const [historyResult] = await connection.query(
+        `INSERT INTO lot_project_reservation_history (${historyColumns.join(', ')}) VALUES (${historyColumns.map(() => '?').join(', ')})`,
+        historyValues
+      );
+      reservationHistoryId = Number(historyResult.insertId || 0) || null;
+    }
+
+    const account = await createLotProjectAccount(connection, {
+      projectId: project.lot_project_id,
+      listingId: listing.lot_project_listing_id,
+      clientProfileId,
+      reservationHistoryId,
+      buyerName,
+      unitId: listing.lot_project_listing_unit_id,
+      reservedAt: new Date(),
+    });
+
+    await insertReservationDocuments(
+      connection,
+      project.lot_project_id,
+      listing.lot_project_listing_id,
+      clientProfileId,
+      Array.isArray(req.body.documents) ? req.body.documents : null
+    );
+
+    await replaceReservationSchedules(connection, project.lot_project_id, listing, clientProfileId, account.accountId, {
+      buyerName,
+      modeOfPayment,
+      reservationFee,
+      startingDate: startingDate,
+      firstDueDate: firstDueDate,
+      downpaymentPercentage: Number.isNaN(downpaymentPercentage) ? 30 : downpaymentPercentage,
+      downpaymentInputMode,
+      downpaymentAmount,
+      downpaymentTerms: Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
+      monthlyTerms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
+      annualInterestRate: selectedInterestRate,
+      interestRateOverridden: Boolean(interestRateOverridden),
+      dpDiscountPercentage,
+      reservationFeeAppliedToDownpayment,
+      legalMiscFeeMode,
+      legalMiscFeeAmount,
+    });
+
+    // A newly-created historical SOA must not wait for the midnight scheduler.
+    // Seed the persisted cache immediately so SOA, Dashboard, Notifications,
+    // PDFs, and downstream summaries all see the same canonical penalty value.
+    const reservedListing = {
+      ...listing,
+      lot_project_client_profile_id: clientProfileId,
+      lot_project_account_id: account.accountId,
+    };
+    await refreshListingPenaltyCache(connection, reservedListing, today);
+    await recomputeListingScheduleBalances(connection, reservedListing, { asOfDate: today });
+
+    // Serialize the final seller-chain check with manager replacement.
+    // Manager replacement locks the Network and seller rows in the same order.
+    const [[selectedSellerNetwork]] = await connection.query(
+      'SELECT seller_group_id FROM accredited_sellers WHERE accredited_seller_id=? LIMIT 1',
+      [assignedSellerId]
+    );
+    if (!selectedSellerNetwork?.seller_group_id) throw new Error('Choose a valid seller before saving.');
+    await connection.query('SELECT seller_group_id FROM seller_groups WHERE seller_group_id=? FOR UPDATE', [selectedSellerNetwork.seller_group_id]);
+    await connection.query('SELECT accredited_seller_id FROM accredited_sellers WHERE seller_group_id=? ORDER BY user_id FOR UPDATE', [selectedSellerNetwork.seller_group_id]);
+    await replaceReservationCommissions(
+      connection,
+      project.lot_project_id,
+      listing,
+      clientProfileId,
+      assignedSellerId,
+      saleChannel
+    );
+
+    if (account?.accountId) {
+      await attachAccountToProfileRecords(connection, {
+        accountId: account.accountId,
+        clientProfileId,
+        reservationHistoryId,
+      });
+    }
+
+    if (buyerFormSubmission) {
+      await connection.query(
+        `
+          UPDATE lot_project_buyer_form_submissions
+          SET submission_status = 'approved',
+              approved_payload_json = ?,
+              reviewed_by_user_id = ?,
+              reviewed_at = NOW(),
+              approved_at = NOW(),
+              updated_at = NOW()
+          WHERE lot_project_buyer_form_submission_id = ?
+        `,
+        [JSON.stringify(clientProfile), req.authUser?.id || null, buyerFormSubmissionId]
+      );
+
+      await connection.query(
+        `
+          UPDATE lot_project_buyer_form_links
+          SET link_status = 'consumed',
+              consumed_at = NOW(),
+              updated_at = NOW()
+          WHERE lot_project_buyer_form_link_id = ?
+        `,
+        [buyerFormSubmission.lot_project_buyer_form_link_id]
+      );
+
+
+      if (account?.accountId) {
+        if (await columnExists(connection, 'lot_project_buyer_form_submissions', 'lot_project_account_id')) {
+          await connection.query(
+            `UPDATE lot_project_buyer_form_submissions SET lot_project_account_id = ? WHERE lot_project_buyer_form_submission_id = ?`,
+            [account.accountId, buyerFormSubmissionId]
+          );
+        }
+        if (await columnExists(connection, 'lot_project_buyer_form_links', 'lot_project_account_id')) {
+          await connection.query(
+            `UPDATE lot_project_buyer_form_links SET lot_project_account_id = ? WHERE lot_project_buyer_form_link_id = ?`,
+            [account.accountId, buyerFormSubmission.lot_project_buyer_form_link_id]
+          );
+        }
+      }
+    }
+
+    await writeAuditLog(connection, req, {
+      action: 'create',
+      module: 'Reservations',
+      entityType: 'lot_project_listing',
+      entityId: String(listing.lot_project_listing_id),
+      entityLabel: `Unit ${listing.lot_project_listing_unit_id} — ${buyerName}`,
+      title: 'Reserved listing for client',
+      description: `Reserved ${listing.lot_project_listing_unit_id} for ${buyerName}.`,
+      metadata: {
+        clientProfileId,
+        accountId: account?.accountId || null,
+        accountReference: account?.accountReference || null,
+        buyerName,
+        buyerType,
+        modeOfPayment,
+        selectedLmfRate: contractPricing.legalMiscRate,
+        selectedLmfAmount: contractPricing.lmfAmount,
+        selectedInterestRate,
+        interestRateOverridden: Boolean(interestRateOverridden),
+        reservationFeeAppliedToDownpayment,
+        assignedSellerId,
+        saleChannel,
+        dailyPenaltyRate,
+        penaltyGraceDays,
+        penaltyEffectiveFrom,
+        penaltyCalculationMethod: 'daily',
+        isHistoricalEntry,
+        startingDate,
+        backdateReason: backdateReason || null,
+        firstDueDate,
+        buyerFormSubmissionId,
+        // Preserve the submitted reservation inputs for administrative traceability.
+        // writeAuditLog applies centralized secret/account-number redaction before persistence.
+        clientProfileInput: clientProfile,
+        reservationInput: reservation,
+        paymentTermsInput: terms,
+        computedContract: {
+          pricePerSqm: contractPricing.pricePerSqm,
+          baseSellingPrice: contractPricing.baseSellingPrice,
+          saleDiscountPercentage: contractPricing.saleDiscountPercentage,
+          saleDiscountAmount: contractPricing.saleDiscountAmount,
+          netSellingPrice: contractPricing.netSellingPrice,
+          legalMiscRate: contractPricing.legalMiscRate,
+          legalMiscAmount: contractPricing.lmfAmount,
+          tcp: contractPricing.tcp,
+          downpaymentInputMode,
+          downpaymentAmount,
+          downpaymentPercentage,
+          downpaymentTerms,
+          monthlyTerms,
+          dpDiscountPercentage,
+        },
+      },
+    });
+
+    if (buyerFormSubmission) {
+      await createOperationalReview(connection, {
+        actor: req.authUser,
+        actionKey: 'buyer_form.approve',
+        department: 'sales',
+        projectId: project.lot_project_id,
+        entityType: 'lot_project_buyer_form',
+        entityId: buyerFormSubmissionId,
+        entityLabel: `Buyer form · ${listing.lot_project_listing_unit_id} · ${buyerName}`,
+        beforeSnapshot: {
+          projectSlug: slug,
+          listingId: listing.lot_project_listing_id,
+          unitId: listing.lot_project_listing_unit_id,
+          submissionId: buyerFormSubmissionId,
+          status: buyerFormSubmission.submission_status,
+        },
+        afterSnapshot: {
+          projectSlug: slug,
+          listingId: listing.lot_project_listing_id,
+          unitId: listing.lot_project_listing_unit_id,
+          submissionId: buyerFormSubmissionId,
+          status: 'approved',
+          accountId: account.accountId,
+          clientProfileId,
+          buyerName,
+        },
+      });
+    }
+
+    await createOperationalReview(connection, {
+      actor: req.authUser,
+      actionKey: 'reservation.create',
+      department: 'sales',
+      projectId: project.lot_project_id,
+      entityType: 'lot_project_account',
+      entityId: account.accountId,
+      entityLabel: `${listing.lot_project_listing_unit_id} — ${buyerName}`,
+      beforeSnapshot: {
+        projectSlug: slug,
+        listingId: listing.lot_project_listing_id,
+        unitId: listing.lot_project_listing_unit_id,
+        listingStatus: lockedStatus,
+        buyerFormSubmissionId,
+      },
+      afterSnapshot: {
+        projectSlug: slug,
+        listingId: listing.lot_project_listing_id,
+        unitId: listing.lot_project_listing_unit_id,
+        accountId: account.accountId,
+        accountReference: account.accountReference || null,
+        clientProfileId,
+        buyerName,
+        buyerType,
+        modeOfPayment,
+        reservationFee,
+        status: 'active',
+      },
+    });
+
+    await connection.commit();
+
+    return res.status(201).json({
+      success: true,
+      message: `${buyerName} reservation saved successfully.`,
+      listing_id: listing.lot_project_listing_id,
+      client_profile_id: clientProfileId,
+      account_id: account?.accountId || null,
+      account_reference: account?.accountReference || null,
+      unit_id: listing.lot_project_listing_unit_id,
+      buyer_form_submission_id: buyerFormSubmissionId,
+    });
+    } catch (error) {
+      try {
+        await connection.rollback();
+      } catch {}
+
+      console.error('Reserve listing failed:', {
+        message: error?.message,
+        code: error?.code,
+        errno: error?.errno,
+        sqlState: error?.sqlState,
+        sqlMessage: error?.sqlMessage,
+        sql: error?.sql,
+      });
+
+      return res.status(error?.statusCode || 500).json({
+        message: getErrorMessage(error),
+      });
+  } finally {
+    connection.release();
+  }
+};
+
+
+

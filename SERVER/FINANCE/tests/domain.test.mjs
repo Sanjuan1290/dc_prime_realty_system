@@ -1,0 +1,15 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {money,phpCents,pesos,validDate,validateTransaction,validateRange,summarizeRows,canWrite,canAdmin} from '../src/domain.js';
+import {assertSafeDatabase} from '../src/dbGuard.js';
+import {hashPassword,verifyPassword,sessionHash} from '../src/passwords.js';
+test('cash precise centavos',()=>{assert.equal(money('50000'),'50000.00');assert.equal(money('0.01'),'0.01');assert.equal(pesos(123n),'1.23');assert.equal(money('0.1'),'0.10');});
+test('reject zero, negative, float fragments, exponent',()=>{for(const s of ['0','-1','1.999','1e4','','NaN','100000000000000'])assert.throws(()=>money(s));});
+test('validates calendar date strictly',()=>{assert.equal(validDate('2026-10-27'),'2026-10-27');for(const s of ['2026-02-30','2026-13-01','2026/01/01'])assert.throws(()=>validDate(s));});
+test('validates transaction shape and future dates',()=>{const input={kind:'income',amount:'123.45',transaction_date:'2026-10-27',category_id:5,description:'Payment'};assert.equal(validateTransaction(input,'2026-10-27').amount,'123.45');assert.throws(()=>validateTransaction(input,'2026-10-26'));assert.throws(()=>validateTransaction({...input,category_id:'abc'},'2026-10-27'));});
+test('rejects reversed filter range',()=>{assert.throws(()=>validateRange({from:'2026-10-30',to:'2026-10-01'}));});
+test('zero starting balance and excludes void transactions',()=>{const rows=[{transaction_date:'2026-01-01',kind:'income',amount:'100.00',status:'posted'},{transaction_date:'2026-02-01',kind:'expense',amount:'40.25',status:'posted'},{transaction_date:'2026-02-02',kind:'income',amount:'500.00',status:'void'}];assert.deepEqual(summarizeRows(rows,'2026-02-01','2026-02-28'),{opening_balance:'100.00',money_in:'0.00',money_out:'40.25',net_change:'-40.25',closing_balance:'59.75',currency:'PHP'});});
+test('role permissions separate viewer/accountant/admin',()=>{assert.equal(canWrite('viewer'),false);assert.equal(canWrite('accountant'),true);assert.equal(canAdmin('accountant'),false);assert.equal(canAdmin('admin'),true);});
+test('finance database guard rejects HR/Realty',()=>{const e={NODE_ENV:'test',FINANCE_STAGING_ENABLED:'true',TIDB_HOST:'db',TIDB_USERNAME:'finance',TIDB_PASSWORD:'password',TIDB_DATABASE:'dc_prime_realty_system_db'};assert.throws(()=>assertSafeDatabase(e));assert.doesNotThrow(()=>assertSafeDatabase({...e,TIDB_DATABASE:'dc_prime_finance_db'}));});
+test('prod cannot start by default',()=>{const e={NODE_ENV:'production',FINANCE_STAGING_ENABLED:'true',TIDB_HOST:'db',TIDB_USERNAME:'finance',TIDB_PASSWORD:'password',TIDB_DATABASE:'dc_prime_finance_db'};assert.throws(()=>assertSafeDatabase(e));});
+test('password hashed and verified without plaintext',()=>{const h=hashPassword('this-is-a-long-test-password');assert.match(h,/^scrypt\$/);assert.ok(verifyPassword('this-is-a-long-test-password',h));assert.equal(verifyPassword('bad',h),false);});
+test('cookies are HttpOnly and host-only',()=>{assert.equal(sessionHash('a').length,64);});

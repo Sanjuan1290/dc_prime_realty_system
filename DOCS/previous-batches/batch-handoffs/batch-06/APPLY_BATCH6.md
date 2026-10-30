@@ -1,0 +1,9 @@
+# Batch 6 — HR backend staging overlay
+
+1. **Do not deploy to production.** This package contains an independent HR staging backend, not an HR cutover.
+2. Apply the prior Batch 4 workspace and Batch 5 database overlay in a Git branch. Copy **only** `apps/hr-server/` from this overlay, replacing the empty Batch 4 placeholder (`package.json`) and adding the files. Keep original `client/`, `server/`, and Realty DB untouched.
+3. Apply Batch 5 SQL migrations on a **separate, disposable staging HR database** and check actual constraints. This package also includes `migrations/20261027_batch6/01_staging_hr_access_seed.sql` — its `USE` points to `dc_prime_hr_db`; adjust only after peer review if your isolated staging DB has a different approved name. The SQL is not run automatically.
+4. Set up the new HR `.env` using `.env.example` **without committing secrets**. Use dedicated HR credentials. Set `HR_STAGING_ONLY=true`, `HR_ENABLE_WRITES=false`, `HR_ENABLE_JOBS=false`. With zero HR users, protected routes correctly reject requests until staging accounts are provisioned.
+5. At repository root run `npm install`, then `npm run check:workspace`, `npm --workspace @dcprime/hr-server run check`, `npm --workspace @dcprime/hr-server test`. Run `npm --workspace @dcprime/hr-server start` ONLY after Batch 5 staged database and credentials are ready.
+6. Keep legacy Realty application authoritative. Never run two attendance schedulers. Payroll release endpoint and signed payroll receipts are **blocked** until salary transfer and protected storage integration are completed (Batches 8–9).
+7. The copied controllers preserve existing HTTP paths, but their behavior still needs end-to-end testing with seeded staging HR identities, settings and migrated sample data. **No production deploy/cutover is approved** by this package.

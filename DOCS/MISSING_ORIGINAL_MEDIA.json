@@ -1,0 +1,524 @@
+[
+  {
+    "path": "client/public/logo.png",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/logo.png",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/logo.png"
+  },
+  {
+    "path": "client/public/docImage1.png",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/docImage1.png",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/docImage1.png"
+  },
+  {
+    "path": "client/public/logo-mobile.png",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/logo-mobile.png",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/logo-mobile.png"
+  },
+  {
+    "path": "client/public/website/images/bailen/site-road.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/bailen/site-road.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/bailen/site-road.jpg"
+  },
+  {
+    "path": "client/public/website/images/bailen/site-road.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/bailen/site-road.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/bailen/site-road.jpg"
+  },
+  {
+    "path": "client/public/website/images/bailen/waterfall.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/bailen/waterfall.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/bailen/waterfall.jpg"
+  },
+  {
+    "path": "client/public/website/images/bailen/waterfall.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/bailen/waterfall.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/bailen/waterfall.jpg"
+  },
+  {
+    "path": "client/public/website/videos/maragondon-hero.mp4",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/videos/maragondon-hero.mp4",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/videos/maragondon-hero.mp4"
+  },
+  {
+    "path": "client/public/website/videos/maragondon-hero.mp4",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/videos/maragondon-hero.mp4",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/videos/maragondon-hero.mp4"
+  },
+  {
+    "path": "client/src/website/assets/office-hours-flyer.png",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/src/website/assets/office-hours-flyer.png",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/src/website/assets/office-hours-flyer.png"
+  },
+  {
+    "path": "client/src/website/assets/rainy-season-safety.png",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/src/website/assets/rainy-season-safety.png",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/src/website/assets/rainy-season-safety.png"
+  },
+  {
+    "path": "client/public/website/images/bailen/river-pool.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/bailen/river-pool.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/bailen/river-pool.jpg"
+  },
+  {
+    "path": "client/public/website/images/bailen/river-pool.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/bailen/river-pool.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/bailen/river-pool.jpg"
+  },
+  {
+    "path": "client/public/website/images/bailen/rock-river.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/bailen/rock-river.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/bailen/rock-river.jpg"
+  },
+  {
+    "path": "client/public/website/images/bailen/rock-river.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/bailen/rock-river.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/bailen/rock-river.jpg"
+  },
+  {
+    "path": "client/src/website/assets/luntiang-location-map.png",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/src/website/assets/luntiang-location-map.png",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/src/website/assets/luntiang-location-map.png"
+  },
+  {
+    "path": "client/public/website/images/company/proverbs-16-3.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/company/proverbs-16-3.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/company/proverbs-16-3.jpg"
+  },
+  {
+    "path": "client/public/website/images/company/proverbs-16-3.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/company/proverbs-16-3.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/company/proverbs-16-3.jpg"
+  },
+  {
+    "path": "client/public/website/images/maragondon/site-visit.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/maragondon/site-visit.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/maragondon/site-visit.jpg"
+  },
+  {
+    "path": "client/public/website/images/maragondon/site-visit.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/maragondon/site-visit.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/maragondon/site-visit.jpg"
+  },
+  {
+    "path": "client/public/forms/offer-to-buy-individual-apr-2026.png",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/forms/offer-to-buy-individual-apr-2026.png",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/forms/offer-to-buy-individual-apr-2026.png"
+  },
+  {
+    "path": "client/public/website/images/bailen/aerial-greenery.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/bailen/aerial-greenery.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/bailen/aerial-greenery.jpg"
+  },
+  {
+    "path": "client/public/website/images/bailen/aerial-greenery.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/bailen/aerial-greenery.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/bailen/aerial-greenery.jpg"
+  },
+  {
+    "path": "client/public/website/images/brand/dc-prime-email-logo.png",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/brand/dc-prime-email-logo.png",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/brand/dc-prime-email-logo.png"
+  },
+  {
+    "path": "client/public/website/images/brand/dc-prime-email-logo.png",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/brand/dc-prime-email-logo.png",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/brand/dc-prime-email-logo.png"
+  },
+  {
+    "path": "client/public/website/images/drive/company/team-event.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/company/team-event.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/company/team-event.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/company/team-event.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/company/team-event.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/company/team-event.webp"
+  },
+  {
+    "path": "client/public/website/images/company/office-team-collage.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/company/office-team-collage.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/company/office-team-collage.jpg"
+  },
+  {
+    "path": "client/public/website/images/company/office-team-collage.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/company/office-team-collage.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/company/office-team-collage.jpg"
+  },
+  {
+    "path": "client/public/website/images/company/security-bank-event.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/company/security-bank-event.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/company/security-bank-event.jpg"
+  },
+  {
+    "path": "client/public/website/images/company/security-bank-event.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/company/security-bank-event.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/company/security-bank-event.jpg"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/luntiang-trail.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/luntiang-trail.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/bailen/luntiang-trail.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/luntiang-trail.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/luntiang-trail.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/bailen/luntiang-trail.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/company/team-collage.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/company/team-collage.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/company/team-collage.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/company/team-collage.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/company/team-collage.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/company/team-collage.webp"
+  },
+  {
+    "path": "client/public/website/images/maragondon/access-road-visit.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/maragondon/access-road-visit.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/maragondon/access-road-visit.jpg"
+  },
+  {
+    "path": "client/public/website/images/maragondon/access-road-visit.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/maragondon/access-road-visit.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/maragondon/access-road-visit.jpg"
+  },
+  {
+    "path": "client/public/website/images/redesign/dc-prime-logo-gold.png",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/dc-prime-logo-gold.png",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/redesign/dc-prime-logo-gold.png"
+  },
+  {
+    "path": "client/public/website/images/redesign/dc-prime-logo-gold.png",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/dc-prime-logo-gold.png",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/redesign/dc-prime-logo-gold.png"
+  },
+  {
+    "path": "client/public/website/images/bailen/luntiang-aguinaldo-cover.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/bailen/luntiang-aguinaldo-cover.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/bailen/luntiang-aguinaldo-cover.jpg"
+  },
+  {
+    "path": "client/public/website/images/bailen/luntiang-aguinaldo-cover.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/bailen/luntiang-aguinaldo-cover.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/bailen/luntiang-aguinaldo-cover.jpg"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/bailen-river-pool.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/bailen-river-pool.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/bailen/bailen-river-pool.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/bailen-river-pool.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/bailen-river-pool.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/bailen/bailen-river-pool.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/bailen-rock-river.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/bailen-rock-river.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/bailen/bailen-rock-river.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/bailen-rock-river.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/bailen-rock-river.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/bailen/bailen-rock-river.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/bailen-waterfall.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/bailen-waterfall.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/bailen/bailen-waterfall.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/bailen-waterfall.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/bailen-waterfall.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/bailen/bailen-waterfall.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/luntiang-aerial.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/luntiang-aerial.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/bailen/luntiang-aerial.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/luntiang-aerial.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/luntiang-aerial.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/bailen/luntiang-aerial.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/luntiang-hillside.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/luntiang-hillside.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/bailen/luntiang-hillside.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/luntiang-hillside.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/luntiang-hillside.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/bailen/luntiang-hillside.webp"
+  },
+  {
+    "path": "client/public/website/images/maragondon/prime-enclave-cover.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/maragondon/prime-enclave-cover.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/maragondon/prime-enclave-cover.jpg"
+  },
+  {
+    "path": "client/public/website/images/maragondon/prime-enclave-cover.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/maragondon/prime-enclave-cover.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/maragondon/prime-enclave-cover.jpg"
+  },
+  {
+    "path": "client/public/website/images/maragondon/site-visit-collage.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/maragondon/site-visit-collage.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/maragondon/site-visit-collage.jpg"
+  },
+  {
+    "path": "client/public/website/images/maragondon/site-visit-collage.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/maragondon/site-visit-collage.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/maragondon/site-visit-collage.jpg"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/luntiang-aerial-tour.mp4",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/luntiang-aerial-tour.mp4",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/bailen/luntiang-aerial-tour.mp4"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/luntiang-aerial-tour.mp4",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/luntiang-aerial-tour.mp4",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/bailen/luntiang-aerial-tour.mp4"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/luntiang-site-road.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/luntiang-site-road.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/bailen/luntiang-site-road.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/bailen/luntiang-site-road.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/bailen/luntiang-site-road.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/bailen/luntiang-site-road.webp"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-guide-placeholder.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-guide-placeholder.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/redesign/scenic-guide-placeholder.jpg"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-guide-placeholder.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-guide-placeholder.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/redesign/scenic-guide-placeholder.jpg"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-hero-placeholder.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-hero-placeholder.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/redesign/scenic-hero-placeholder.jpg"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-hero-placeholder.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-hero-placeholder.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/redesign/scenic-hero-placeholder.jpg"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-hero-placeholder.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-hero-placeholder.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/redesign/scenic-hero-placeholder.webp"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-hero-placeholder.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-hero-placeholder.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/redesign/scenic-hero-placeholder.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/maragondon/prime-enclave-tour.mp4",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/maragondon/prime-enclave-tour.mp4",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/maragondon/prime-enclave-tour.mp4"
+  },
+  {
+    "path": "client/public/website/images/drive/maragondon/prime-enclave-tour.mp4",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/maragondon/prime-enclave-tour.mp4",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/maragondon/prime-enclave-tour.mp4"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-bailen-placeholder.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-bailen-placeholder.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/redesign/scenic-bailen-placeholder.jpg"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-bailen-placeholder.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-bailen-placeholder.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/redesign/scenic-bailen-placeholder.jpg"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-bailen-placeholder.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-bailen-placeholder.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/redesign/scenic-bailen-placeholder.webp"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-bailen-placeholder.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-bailen-placeholder.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/redesign/scenic-bailen-placeholder.webp"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-guide-placeholder.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-guide-placeholder.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/redesign/scenic-guide-placeholder.webp"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-guide-placeholder.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-guide-placeholder.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/redesign/scenic-guide-placeholder.webp"
+  },
+  {
+    "path": "client/public/website/images/coordinator/christopher-sarte-training.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/coordinator/christopher-sarte-training.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/coordinator/christopher-sarte-training.jpg"
+  },
+  {
+    "path": "client/public/website/images/coordinator/christopher-sarte-training.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/coordinator/christopher-sarte-training.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/coordinator/christopher-sarte-training.jpg"
+  },
+  {
+    "path": "client/public/website/images/drive/maragondon/prime-enclave-aerial.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/maragondon/prime-enclave-aerial.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/maragondon/prime-enclave-aerial.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/maragondon/prime-enclave-aerial.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/maragondon/prime-enclave-aerial.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/maragondon/prime-enclave-aerial.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/maragondon/prime-enclave-sunset.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/maragondon/prime-enclave-sunset.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/maragondon/prime-enclave-sunset.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/maragondon/prime-enclave-sunset.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/maragondon/prime-enclave-sunset.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/maragondon/prime-enclave-sunset.webp"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-maragondon-placeholder.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-maragondon-placeholder.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/redesign/scenic-maragondon-placeholder.jpg"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-maragondon-placeholder.jpg",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-maragondon-placeholder.jpg",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/redesign/scenic-maragondon-placeholder.jpg"
+  },
+  {
+    "path": "client/public/website/images/drive/maragondon/prime-enclave-hero-loop.mp4",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/maragondon/prime-enclave-hero-loop.mp4",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/maragondon/prime-enclave-hero-loop.mp4"
+  },
+  {
+    "path": "client/public/website/images/drive/maragondon/prime-enclave-hero-loop.mp4",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/maragondon/prime-enclave-hero-loop.mp4",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/maragondon/prime-enclave-hero-loop.mp4"
+  },
+  {
+    "path": "client/public/website/images/drive/maragondon/prime-enclave-lot-view.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/maragondon/prime-enclave-lot-view.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/drive/maragondon/prime-enclave-lot-view.webp"
+  },
+  {
+    "path": "client/public/website/images/drive/maragondon/prime-enclave-lot-view.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/drive/maragondon/prime-enclave-lot-view.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/drive/maragondon/prime-enclave-lot-view.webp"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-maragondon-placeholder.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-maragondon-placeholder.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/WEBSITE/public/website/images/redesign/scenic-maragondon-placeholder.webp"
+  },
+  {
+    "path": "client/public/website/images/redesign/scenic-maragondon-placeholder.webp",
+    "source_url": "https://raw.githubusercontent.com/Sanjuan1290/dc_prime_realty_system/HEAD/client/public/website/images/redesign/scenic-maragondon-placeholder.webp",
+    "state": "binary not embedded in supplied text export",
+    "destination": "CLIENT/SYSTEM/public/website/images/redesign/scenic-maragondon-placeholder.webp"
+  }
+]

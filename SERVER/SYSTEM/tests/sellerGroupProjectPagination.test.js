@@ -1,0 +1,42 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const dirname = path.dirname(fileURLToPath(import.meta.url))
+const root = path.resolve(dirname, '..', '..', '..')
+const projectFields = fs.readFileSync(
+  path.join(root, 'CLIENT/SYSTEM/src/components/System/sellerGroupComponents/ProjectAccreditationFields.jsx'),
+  'utf8'
+)
+const sellerGroupPage = fs.readFileSync(
+  path.join(root, 'CLIENT/SYSTEM/src/pages/System/SellerGroup.jsx'),
+  'utf8'
+)
+const sellerGroupController = fs.readFileSync(
+  path.join(root, 'SERVER/SYSTEM/controllers/System/sellerGroup.controller.js'),
+  'utf8'
+)
+
+test('group project accreditation editor displays at most five projects per page', () => {
+  assert.match(projectFields, /const PROJECTS_PER_PAGE = 5/)
+  assert.match(projectFields, /filteredProjects\.slice\(pageStart, pageStart \+ PROJECTS_PER_PAGE\)/)
+  assert.match(projectFields, /Page \{page\} of \{totalPages\}/)
+})
+
+test('group records support project filtering and compact all-project summaries', () => {
+  assert.match(sellerGroupPage, /All Projects/)
+  assert.match(sellerGroupPage, /project: projectFilter/)
+  assert.match(sellerGroupPage, /View all projects/)
+  assert.match(sellerGroupPage, /selectedProjectId=\{projectFilter\}/)
+})
+
+test('group API filters paginated records by active project accreditation', () => {
+  assert.match(sellerGroupController, /const projectId = Math\.max\(Number\(req\.query\.project\) \|\| 0, 0\)/)
+  assert.match(sellerGroupController, /EXISTS \(\s*SELECT 1 FROM seller_group_lot_project_rates filter_rate/)
+  assert.match(sellerGroupController, /filter_rate\.seller_group_lot_project_rate_status = 'active'/)
+})
+
+
+

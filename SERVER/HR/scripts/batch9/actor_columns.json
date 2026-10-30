@@ -1,0 +1,57 @@
+{
+  "employee_barcode_sequences": [],
+  "employees": [
+    "linked_user_id",
+    "created_by_user_id",
+    "updated_by_user_id"
+  ],
+  "attendance_day_settings": [
+    "updated_by_user_id"
+  ],
+  "attendance_events": [
+    "created_by_user_id",
+    "updated_by_user_id"
+  ],
+  "attendance_event_participants": [],
+  "employee_work_schedules": [],
+  "employee_rest_day_assignments": [
+    "created_by_user_id",
+    "updated_by_user_id"
+  ],
+  "employee_employment_history": [
+    "created_by_user_id",
+    "corrected_by_user_id"
+  ],
+  "employee_attendance_records": [
+    "recorded_by_user_id",
+    "updated_by_user_id"
+  ],
+  "employee_attendance_corrections": [
+    "changed_by_user_id"
+  ],
+  "employee_payroll_periods": [
+    "finalized_by_user_id"
+  ],
+  "employee_payroll_settings": [
+    "updated_by_user_id"
+  ],
+  "employee_cash_advances": [
+    "approved_by_user_id",
+    "created_by_user_id",
+    "updated_by_user_id"
+  ],
+  "employee_payrolls": [
+    "finalized_by_user_id",
+    "released_by_user_id"
+  ],
+  "employee_payroll_corrections": [
+    "created_by_user_id"
+  ],
+  "employee_cash_advance_deductions": [
+    "created_by_user_id"
+  ],
+  "employee_payroll_signed_receipts": [
+    "uploaded_by_user_id",
+    "archived_by_user_id"
+  ]
+}

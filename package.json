@@ -1,0 +1,28 @@
+{
+  "name": "dc-prime-realty",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Four independently deployed frontends and four backend services",
+  "workspaces": [
+    "CLIENT/*",
+    "SERVER/*"
+  ],
+  "scripts": {
+    "dev:website": "npm run dev --workspace=@dc-prime/website-client",
+    "dev:system": "npm run dev --workspace=@dc-prime/system-client",
+    "dev:hr": "npm run dev --workspace=@dc-prime/hr-client",
+    "dev:finance": "npm run dev --workspace=@dcprime/finance-client",
+    "start:website": "npm run start --workspace=@dc-prime/website-server",
+    "start:system": "npm run start --workspace=@dc-prime/system-server",
+    "start:hr": "npm run start --workspace=@dcprime/hr-server",
+    "start:finance": "npm run start --workspace=@dcprime/finance-server",
+    "build:website": "npm run build --workspace=@dc-prime/website-client",
+    "build:system": "npm run build --workspace=@dc-prime/system-client",
+    "build:hr": "npm run build --workspace=@dc-prime/hr-client",
+    "build:finance": "npm run build --workspace=@dcprime/finance-client",
+    "check:layout": "node tools/check-layout.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

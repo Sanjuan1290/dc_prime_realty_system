@@ -1,0 +1,132 @@
+[
+  {
+    "batch": 6,
+    "path": "apps/hr-server/.env.example",
+    "previous_sha256": "813fefa10e265af92bff910e24d4a50f677e3e0787e4041cdf3b2ea1341a9dee"
+  },
+  {
+    "batch": 6,
+    "path": "apps/hr-server/package.json",
+    "previous_sha256": "16b1048cf2a7b0095ec9e1496f6f65f62e51fdd98a47f73c40f9f740fc5b0e35"
+  },
+  {
+    "batch": 7,
+    "path": "apps/hr-client/package.json",
+    "previous_sha256": "1fdd065918c66f83ee6a9633447ed4cecd5c921eb60b976b9a85f62a4c5c43c3"
+  },
+  {
+    "batch": 7,
+    "path": "apps/hr-client/.env.example",
+    "previous_sha256": "0c80062e26a9c98821c42c8c6b7c6e4f4c9f7d00948692026c557f7c51632ce2"
+  },
+  {
+    "batch": 8,
+    "path": "apps/hr-server/controllers/System/Employees/EmployeePayroll.controller.js",
+    "previous_sha256": "dacc7d53f8c362bef2d923e8c7141111ff758abbdae0207a8bb2646fee1efa95"
+  },
+  {
+    "batch": 8,
+    "path": "apps/hr-server/routers/System/employeePayroll.routers.js",
+    "previous_sha256": "7a09e97f0f4f49052fd2551ec090767756498d791eb9ad597784e90e9024f98b"
+  },
+  {
+    "batch": 8,
+    "path": "apps/hr-server/server.js",
+    "previous_sha256": "bbacd314b3b1cc38ef22c2e9d139f7497423d95556b6271a1a8d5660fa08c6cf"
+  },
+  {
+    "batch": 8,
+    "path": "apps/hr-server/tests/hrIsolation.test.mjs",
+    "previous_sha256": "a9e3cb549d90daf75fea817a151bb0297d12a6b040e73ca7bfeba36c26158f9c"
+  },
+  {
+    "batch": 8,
+    "path": "server/server.js",
+    "previous_sha256": "49c8855f021ef8f8a66e3ad77434cedd0e1b3c92422baf75f9f1805d82b7dbb0"
+  },
+  {
+    "batch": 8,
+    "path": "server/services/companyFinances.service.js",
+    "previous_sha256": "6774da8f23a4900cc4972a081041d9664e7a1b6733da8149dc78b511e9c012e6"
+  },
+  {
+    "batch": 10,
+    "path": "server/server.js",
+    "previous_sha256": "781f1bc3a4d14e6e5e1a56c03010843dd3479bdf5c621c7ff57b18893229a1c5"
+  },
+  {
+    "batch": 11,
+    "path": "client/src/pages/System/CompanyFinances.jsx",
+    "previous_sha256": "9823025a5bbbae5095fbc838409c9fa71aaa38c444f2ddeca957fc0bb527a92a"
+  },
+  {
+    "batch": 11,
+    "path": "server/controllers/System/companyFinances.controller.js",
+    "previous_sha256": "cda3b1eb6259fa65933e1479947ec05f61d012a6186a94b4dcc305bf17f6b2bd"
+  },
+  {
+    "batch": 11,
+    "path": "server/package.json",
+    "previous_sha256": "2c099b765a5814b4770746261c49703e3c0b0a8036b123b11e36f4ebc3695a46"
+  },
+  {
+    "batch": 12,
+    "path": "apps/finance-client/.env.example",
+    "previous_sha256": "91c2c799c7a0bd69a735565b1f230ba7396ec850ee2a3eb5df1b1f1d3dda7422"
+  },
+  {
+    "batch": 12,
+    "path": "apps/finance-client/package.json",
+    "previous_sha256": "a59508f4a0cfef69ead318ec7d517d057d0bd561d68beb9c16c5906014728469"
+  },
+  {
+    "batch": 12,
+    "path": "apps/finance-server/.env.example",
+    "previous_sha256": "192b0d0528319750637fe7a02b906a32736cc5ffd6ad4603be3230a926492111"
+  },
+  {
+    "batch": 12,
+    "path": "apps/finance-server/package.json",
+    "previous_sha256": "663c571630b284c2f53756d1fa0918d619da77d9f47009a241c191b2e7360721"
+  },
+  {
+    "batch": 13,
+    "path": "apps/finance-client/src/App.jsx",
+    "previous_sha256": "f0286ccece3476ce918432510e575f3740adf498774e1de5a82119742184456f"
+  },
+  {
+    "batch": 13,
+    "path": "apps/finance-server/package.json",
+    "previous_sha256": "c92fffdd49d96670c85af265dd20d14e97541eaea17f1cae58a1e5c18802b9a8"
+  },
+  {
+    "batch": 13,
+    "path": "apps/finance-server/src/server.js",
+    "previous_sha256": "875dd6b5edf166407006e89468b21ec12b483160385c5286931889f1fa2a0032"
+  },
+  {
+    "batch": 13,
+    "path": "apps/finance-server/tests/isolation.test.mjs",
+    "previous_sha256": "b68de4f808ee441351ccef0a7dd9eff6f11c9bec3568230ce24adc30b6a3e880"
+  },
+  {
+    "batch": 14,
+    "path": "apps/finance-client/src/App.jsx",
+    "previous_sha256": "8a8fd481ede53bbc0e5b8c801f7003a38d06abd87a1d67c43909c9a0ae74d54c"
+  },
+  {
+    "batch": 14,
+    "path": "apps/finance-server/src/server.js",
+    "previous_sha256": "946a47a81c661d8a34d04335574a1c2bc006ed8e761ccd54bb8abd72ac7d4d24"
+  },
+  {
+    "batch": 15,
+    "path": "apps/hr-server/scripts/check-isolation.mjs",
+    "previous_sha256": "8c818107a151c01cf5880de977f8f7a35301b4bd18bfc4ffab2f3e932e08753f"
+  },
+  {
+    "batch": 15,
+    "path": "scripts/verify-workspace.mjs",
+    "previous_sha256": "8071612b4e599ca0548eeeec2d6639202d9f6a43b9968444c5c888468a71f9a8"
+  }
+]

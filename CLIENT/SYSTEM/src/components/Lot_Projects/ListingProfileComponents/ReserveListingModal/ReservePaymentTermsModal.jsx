@@ -1,0 +1,308 @@
+import { useMemo, useState } from 'react'
+import { FiLoader, FiSearch, FiUser, FiAlertTriangle, FiCheckCircle, FiLock } from 'react-icons/fi'
+import { getPaymentCalculations, money } from './reserveUtils'
+import { SectionCard, SelectInput, TextInput } from './ReserveShared'
+import { DAILY_PENALTY_RATE_OPTIONS, formatDailyPenaltyRateOption } from '../../../../config/paymentTerms'
+import { PreviewCard, ReservationCommissionPreview, ReservationPaymentPreview } from './ReservationPreviewPanels'
+
+const downpaymentTermOptions = Array.from({ length: 12 }, (_, index) => String(index + 1))
+const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => String(index))
+
+const AgentPicker = ({
+  agents,
+  selectedAgent,
+  selectedAgentId,
+  search,
+  onSearch,
+  onSelect,
+  isLoading,
+  error,
+  showUnavailableSellers = false,
+  setShowUnavailableSellers = () => {},
+}) => {
+  const [showResults, setShowResults] = useState(false)
+  return (
+    <div className="relative flex flex-col gap-1.5 md:col-span-2">
+      <span className="text-xs font-black text-slate-700">Assigned Seller / Network <span className="text-red-500">*</span></span>
+      <div className="relative">
+        <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          value={search}
+          onFocus={() => setShowResults(true)}
+          onChange={(event) => {
+            onSearch(event.target.value)
+            setShowResults(true)
+          }}
+          placeholder="Search Sales Agent or External Network..."
+          className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-4 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+        />
+      </div>
+      <label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={showUnavailableSellers} onChange={event=>setShowUnavailableSellers(event.target.checked)}/> Show Unavailable Sellers</label>
+
+      {selectedAgent ? (
+        <div className="mt-2 flex flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><p className="font-black text-blue-950">{selectedAgent.name}</p><p className="text-xs font-semibold text-blue-700">{selectedAgent.isExternalGroup ? `Representative: ${selectedAgent.representativeName || '-'}` : `${selectedAgent.groupName} · Reports under: ${selectedAgent.reportsUnderName}`}</p></div>
+          <span className="w-fit rounded-lg bg-white px-2.5 py-1 text-xs font-black text-blue-700 ring-1 ring-blue-200">{selectedAgent.isExternalGroup ? 'Pool' : 'Sales Agent'}: {Number(selectedAgent.directRate || selectedAgent.rateValue || 0).toFixed(4)}%</span>
+        </div>
+      ) : null}
+
+      {showResults ? (
+        <div className="absolute left-0 right-0 top-[74px] z-30 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
+          {isLoading ? <div className="flex items-center gap-2 px-3 py-4 text-sm font-semibold text-slate-500"><FiLoader className="animate-spin" />Loading Seller / Network options...</div> : null}
+          {error ? <div className="px-3 py-4 text-sm font-semibold text-red-700">{error}</div> : null}
+          {!isLoading && !error && agents.length === 0 ? <div className="px-3 py-5 text-center"><p className="font-black text-slate-700">No active Seller / Network options found.</p><p className="mt-1 text-xs font-semibold text-slate-500">Configure project rates from the In-House Network or External Network page.</p></div> : null}
+          {!isLoading && agents.map((agent) => (
+            <button
+              key={agent.id}
+              type="button"
+              disabled={!agent.ready}
+              title={!agent.ready ? agent.unavailableReason : undefined}
+              onClick={() => {
+                if (!agent.ready) return
+                onSelect(String(agent.id))
+                onSearch(agent.name)
+                setShowResults(false)
+              }}
+              className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 ${String(agent.id) === String(selectedAgentId) ? 'bg-blue-50' : ''}`}
+            >
+              <div className="flex min-w-0 items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><FiUser /></span><div className="min-w-0"><p className="truncate text-sm font-black text-slate-950">{agent.name}</p><p className="truncate text-xs font-semibold text-slate-500">{agent.isExternalGroup ? `Representative: ${agent.representativeName || '-'}` : `${agent.groupName} · Reports under: ${agent.reportsUnderName}`}</p>{!agent.ready && agent.unavailableReason ? <p className="mt-1 flex gap-1 text-xs font-semibold text-amber-700"><FiAlertTriangle className="shrink-0"/>{agent.unavailableReason}</p> : null}{agent.isSystemDummy ? <p className="mt-1 text-[11px] font-black uppercase tracking-wide text-blue-600">System Agent · Owner: {agent.ownerName}</p> : null}</div></div>
+              <span className={`shrink-0 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${agent.ready ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{agent.ready ? <><FiCheckCircle/> Ready</> : <><FiLock/> Unavailable</>}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+const ReservePaymentTermsModal = ({
+  listing,
+  project,
+  tcp,
+  contractPricing,
+  paymentForm,
+  updatePaymentField,
+  agents = [],
+  showUnavailableSellers = false,
+  setShowUnavailableSellers = () => {},
+  selectedAgent = null,
+  agentSearch = '',
+  setAgentSearch,
+  isLoadingAgents = false,
+  agentsError = null,
+  commissionPreview = null,
+  isLoadingPreview = false,
+  previewError = null,
+}) => {
+  const [penaltyRateMode, setPenaltyRateMode] = useState(() =>
+    DAILY_PENALTY_RATE_OPTIONS.includes(Number(paymentForm.dailyPenaltyRate)) ? 'preset' : 'custom'
+  )
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+  const isHistoricalEntry = Boolean(paymentForm.isHistoricalEntry)
+  const startingDateMaximum = today
+  const firstDueMinimum = paymentForm.startingDate || undefined
+  const isBackdatedReservation = Boolean(paymentForm.startingDate && paymentForm.startingDate < today)
+  const isCash = String(paymentForm.modeOfPayment || '').toLowerCase() === 'cash'
+  const lotAreaSqm = Number(
+    listing?.lotAreaSqm ??
+    listing?.lot_project_listing_area_sqm ??
+    listing?.area ??
+    0
+  )
+  const lotAreaLabel = lotAreaSqm > 0
+    ? `${new Intl.NumberFormat('en-PH', { maximumFractionDigits: 2 }).format(lotAreaSqm)} sqm`
+    : '-'
+  const listingLmfRate = Number(
+    listing?.lmfRate ??
+    listing?.legalMiscRate ??
+    listing?.lot_project_listing_lmf_rate ??
+    0
+  )
+  const listingInterestRate = Number(
+    listing?.annualInterestRate ??
+    listing?.annual_interest_rate ??
+    0
+  )
+  const paymentCalculations = useMemo(() => getPaymentCalculations(tcp, paymentForm), [tcp, paymentForm])
+  const paymentPreview = paymentCalculations.preview
+  const selectedPenaltyRateOption = penaltyRateMode === 'custom'
+    ? 'custom'
+    : String(Number(paymentForm.dailyPenaltyRate))
+  const isCustomPenaltyRate = penaltyRateMode === 'custom'
+
+  return (
+    <div className="flex flex-col gap-4">
+      <SectionCard title="Selected Listing" description="The selected payment mode chooses the matching price per SQM." right={<span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">Auto status: Reserved</span>}>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <PreviewCard label="Unit" value={listing?.unit_id || listing?.unitCode || '-'} />
+          <PreviewCard label="Lot Area" value={lotAreaLabel} />
+          <PreviewCard label="Project" value={project?.name || listing?.project_name || listing?.projectName || '-'} />
+          <PreviewCard label="Pricing Mode" value={isCash ? 'Cash' : 'Installment'} tone="blue" />
+          <PreviewCard label="Selected Price / SQM" value={money(contractPricing?.pricePerSqm)} tone="blue" />
+          <PreviewCard label="Base Selling Price" value={money(contractPricing?.baseSellingPrice)} />
+          <PreviewCard label="Sale Discount" value={money(contractPricing?.saleDiscountAmount)} tone="amber" />
+          <PreviewCard label="Net Selling Price" value={money(contractPricing?.netSellingPrice)} />
+          <PreviewCard label="TCP" value={money(tcp)} tone="blue" />
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Reservation Setup" description="All new reservations use distributed commission generation.">
+        <div className="grid gap-4 md:grid-cols-2">
+          <AgentPicker agents={agents} selectedAgent={selectedAgent} selectedAgentId={paymentForm.sellerId} search={agentSearch} onSearch={setAgentSearch} onSelect={(value) => updatePaymentField('sellerId', value)} isLoading={isLoadingAgents} error={agentsError} showUnavailableSellers={showUnavailableSellers} setShowUnavailableSellers={setShowUnavailableSellers} />
+          <SelectInput label="Mode of Payment" value={paymentForm.modeOfPayment} onChange={(value) => updatePaymentField('modeOfPayment', value)}><option value="installment">Installment</option><option value="cash">Cash</option></SelectInput>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-black uppercase text-emerald-700">Reservation Status</p><p className="mt-1 text-sm font-black text-emerald-900">Reserved automatically after saving</p></div>
+        </div>
+      </SectionCard>
+
+      <SectionCard title={isCash ? 'Cash Payment Terms' : 'Installment Payment Terms'}>
+        <div className="grid gap-4 md:grid-cols-2">
+          {isCash ? <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2"><p className="text-xs font-black uppercase text-blue-700">Cash Schedule</p><p className="mt-1 text-sm font-semibold text-blue-900">The SOA will contain the reservation fee and one full-payment balance. Downpayment, monthly terms, and installment interest are not used.</p></div> : null}
+          <TextInput label="Reservation Fee" type="number" value={paymentForm.reservationFee} onChange={(value) => updatePaymentField('reservationFee', value)} placeholder="Enter reservation fee" example="₱50,000" required />
+          <label className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2">
+            <input
+              type="checkbox"
+              checked={isHistoricalEntry}
+              onChange={(event) => updatePaymentField('isHistoricalEntry', event.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>
+              <span className="block text-sm font-black text-blue-950">Import an existing client account</span>
+              <span className="mt-1 block text-xs font-semibold text-blue-700">Use this only for a client account that already existed before it was added to this system, such as an older reservation with an existing payment history or payment schedule. You do not need this for a reservation that is simply being encoded late.</span>
+            </span>
+          </label>
+          <TextInput
+            label="Starting Date"
+            type="date"
+            value={paymentForm.startingDate}
+            onChange={(value) => updatePaymentField('startingDate', value)}
+            max={startingDateMaximum}
+            helper={isBackdatedReservation ? 'Backdated reservation. Use the actual reservation date and provide the reason below. Future dates are not allowed.' : 'Use the actual reservation date. Past dates are allowed for delayed encoding or system downtime; future dates are not allowed.'}
+            required
+          />
+          <TextInput
+            label={isCash ? 'Full Payment Due Date' : 'First Due Date'}
+            type="date"
+            value={paymentForm.firstDueDate}
+            onChange={(value) => updatePaymentField('firstDueDate', value)}
+            min={firstDueMinimum}
+            helper="Must be on or after the Starting Date. Past or future dates are allowed."
+            required
+          />
+          {isBackdatedReservation ? (
+            <div className="md:col-span-2">
+              <TextInput
+                label="Backdate Reason"
+                value={paymentForm.backdateReason || ''}
+                onChange={(value) => updatePaymentField('backdateReason', value)}
+                placeholder="Example: System downtime on September 21"
+                helper="Required because the Starting Date is before today. This reason is saved in the reservation Audit Log."
+                required
+              />
+            </div>
+          ) : null}
+          <TextInput
+            label="LMF Rate (%)"
+            type="number"
+            value={paymentForm.legalMiscFeeRate}
+            onChange={(value) => updatePaymentField('legalMiscFeeRate', value)}
+            min="0"
+            max="100"
+            step="0.01"
+            placeholder="0"
+            example="10%"
+            helper={`Listing default: ${listingLmfRate.toFixed(2)}%. This reservation uses the entered rate without changing the listing.`}
+            required
+          />
+          <SelectInput label="Legal / Misc Fee Treatment" value={paymentForm.legalMiscFeeMode || paymentForm.legalMiscFee} onChange={(value) => { updatePaymentField('legalMiscFee', value); updatePaymentField('legalMiscFeeMode', value) }} helper={`Calculated LMF: ${money(paymentForm.legalMiscFeeAmount || 0)}. Pay later creates a separate SOA row.`}><option value="include_in_monthly">{isCash ? 'Include in cash balance' : 'Include in monthly'}</option><option value="separate_soa_row">Pay later</option></SelectInput>
+          <TextInput label="Sale Discount %" type="number" value={paymentForm.saleDiscountPercentage} onChange={(value) => updatePaymentField('saleDiscountPercentage', value)} min="0" max="100" step="0.01" placeholder="0" example="5%" helper="Applied to the selected base selling price. LMF remains based on the original base selling price." />
+
+          {!isCash ? <>
+            <SelectInput label="Downpayment" value={paymentForm.downpaymentPercentageMode} onChange={(value) => updatePaymentField('downpaymentPercentageMode', value)} helper="Choose a standard percentage, enter a custom percentage, or enter the exact downpayment amount." required><option value="15">15%</option><option value="30">30%</option><option value="custom">Custom Percentage</option><option value="amount">Actual Amount</option></SelectInput>
+            {paymentForm.downpaymentPercentageMode === 'custom' ? <TextInput label="Custom Downpayment Percentage" type="number" value={paymentForm.customDownpaymentPercentage} onChange={(value) => updatePaymentField('customDownpaymentPercentage', value)} min="0" max="100" step="0.000001" placeholder="Enter 0 to 100" example="20%" helper="Enter a value from 0 to 100." required /> : null}
+            {paymentForm.downpaymentPercentageMode === 'amount' ? <TextInput label="Actual Downpayment Amount" type="number" value={paymentForm.customDownpaymentAmount} onChange={(value) => updatePaymentField('customDownpaymentAmount', value)} min="0" max={paymentPreview.principalBase} step="0.01" placeholder="Example: 400000" example="₱400,000" helper={`Enter the exact downpayment amount up to ${money(paymentPreview.principalBase)}.`} required /> : null}
+            <SelectInput label="Downpayment Terms" value={paymentForm.downpaymentTermsMode} onChange={(value) => updatePaymentField('downpaymentTermsMode', value)} helper="Choose spot cash, 1–12 months, or custom." required><option value="spot_cash">Spot Cash</option>{downpaymentTermOptions.map((value) => <option key={value} value={value}>{value} month{value === '1' ? '' : 's'}</option>)}<option value="custom">Custom</option></SelectInput>
+            {paymentForm.downpaymentTermsMode === 'custom' ? <TextInput label="Custom Downpayment Terms" type="number" value={paymentForm.customDownpaymentTerms} onChange={(value) => updatePaymentField('customDownpaymentTerms', value)} placeholder="Number of months" example="18 months" required /> : null}
+            <SelectInput label="Reservation Fee Treatment" value={paymentForm.reservationFeeTreatment || 'separate'} onChange={(value) => updatePaymentField('reservationFeeTreatment', value)} helper="Choose if the reservation fee stays separate or counts toward the required downpayment." required><option value="separate">Separate from Downpayment</option><option value="apply_to_downpayment">Deduct Reservation Fee from Downpayment</option></SelectInput>
+            <TextInput label="Downpayment Discount %" type="number" value={paymentForm.dpDiscountPercentage} onChange={(value) => updatePaymentField('dpDiscountPercentage', value)} placeholder="0" example="5%" helper="Applied to the complete required downpayment before the reservation fee is deducted. It does not change the property TCP." />
+            <SelectInput label="Monthly Terms" value={paymentForm.monthlyTermsMode} onChange={(value) => updatePaymentField('monthlyTermsMode', value)} helper="Choose 12, 24, 36, 48, 60 months, or custom." required><option value="12">12 months</option><option value="24">24 months</option><option value="36">36 months</option><option value="48">48 months</option><option value="60">60 months</option><option value="custom">Custom</option></SelectInput>
+            {paymentForm.monthlyTermsMode === 'custom' ? <TextInput label="Custom Monthly Terms" type="number" value={paymentForm.customMonthlyTerms} onChange={(value) => updatePaymentField('customMonthlyTerms', value)} placeholder="Number of months" example="30 months" required /> : null}
+            <TextInput
+              label="Annual Interest Rate (%)"
+              type="number"
+              value={paymentForm.interestRate}
+              onChange={(value) => updatePaymentField('interestRate', value)}
+              min="0"
+              max="100"
+              step="0.01"
+              placeholder="0"
+              example="6%"
+              helper={`Listing default: ${listingInterestRate.toFixed(2)}%. A changed value is saved as this buyer's interest-rate override.`}
+              required
+            />
+          </> : null}
+
+          <SelectInput
+            label={isCash ? 'Daily Penalty Rate for Overdue Cash Balance (%)' : 'Daily Penalty Rate for Overdue Installment (%)'}
+            value={selectedPenaltyRateOption}
+            onChange={(value) => {
+              if (value === 'custom') {
+                setPenaltyRateMode('custom')
+                updatePaymentField('dailyPenaltyRate', '')
+              } else {
+                setPenaltyRateMode('preset')
+                updatePaymentField('dailyPenaltyRate', value)
+              }
+            }}
+            helper="Choose 0.01% to 0.10% per day (default 0.05%), or use Custom for another approved rate."
+            required
+          >
+            {DAILY_PENALTY_RATE_OPTIONS.map((value) => <option key={value} value={String(value)}>{formatDailyPenaltyRateOption(value)}</option>)}
+            <option value="custom">Custom</option>
+          </SelectInput>
+          {isCustomPenaltyRate ? (
+            <TextInput
+              label="Custom Daily Penalty Rate (%)"
+              type="number"
+              value={paymentForm.dailyPenaltyRate}
+              onChange={(value) => updatePaymentField('dailyPenaltyRate', value)}
+              min="0"
+              max="100"
+              step="0.01"
+              placeholder="Enter 0 to 100"
+              example="0.15%"
+              helper="Saved only for this buyer's reservation."
+              required
+            />
+          ) : null}
+          <SelectInput label="Penalty-Free Grace Period (Days)" value={paymentForm.penaltyGraceDays} onChange={(value) => updatePaymentField('penaltyGraceDays', value)} helper="Choose when daily penalties begin." required>{penaltyGraceDayOptions.map((value) => <option key={value} value={value}>{value === '0' ? 'No grace period (0 days)' : `${value} day${value === '1' ? '' : 's'}`}</option>)}</SelectInput>
+          <TextInput label="Penalty Effective From (Optional)" type="date" value={paymentForm.penaltyEffectiveFrom || ''} onChange={(value) => updatePaymentField('penaltyEffectiveFrom', value)} helper="No daily penalty is calculated before this date. Useful for historical accounts created before the penalty policy started. Leave blank to use each SOA row's due date and grace period." />
+          {!isCash ? <TextInput label="Monthly Amortization" value={money(paymentPreview.monthlyAmortization)} onChange={() => null} disabled helper="Calculated from the balance, interest rate, and monthly terms." /> : null}
+        </div>
+      </SectionCard>
+
+      <ReservationCommissionPreview
+        preview={commissionPreview}
+        isLoading={isLoadingPreview}
+        error={previewError}
+        hasSelectedAgent={Boolean(paymentForm.sellerId)}
+      />
+
+      <ReservationPaymentPreview
+        contractPricing={contractPricing}
+        paymentForm={paymentForm}
+        tcp={tcp}
+        paymentPreview={paymentPreview}
+      />
+    </div>
+  )
+}
+
+export default ReservePaymentTermsModal
+
+
+

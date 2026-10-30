@@ -1,0 +1,885 @@
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useFetch as fetchJson, useFetchPost as postJson } from '../../../../utils/useFetch'
+import NetworkCompanyProfitPanel from '../NetworkCompanyProfitPanel'
+import CommissionReceiptPreview from '../CommissionReceiptPreview'
+import SignedCopyUploadModal from '../../../Shared/SignedCopyUploadModal'
+import { FiFileText, FiPrinter } from 'react-icons/fi'
+import ReleaseReceiptFields, { emptyReleaseReceipt, validateReleaseReceipt } from '../ReleaseReceiptFields'
+import { selectCompanyProfitsForAccount } from '../../../../utils/networkProfitSelector'
+import { buildMissingProofOfIncomeReview } from '../missingProofOfIncomeReview'
+import { FiAlertCircle, FiLoader, FiPauseCircle, FiPlayCircle, FiSave, FiX } from 'react-icons/fi'
+
+const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
+
+const todayManilaISO = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Manila',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date())
+
+const statusLabel = (status) => ({
+  Pending: 'Not Eligible',
+  Eligible: 'Eligible',
+  'Awaiting Release Date': 'Awaiting Release Date',
+  'Earned on Cancellation': 'Earned on Cancellation',
+  'Forfeited on Cancellation': 'Forfeited on Cancellation',
+  'Partially Released': 'Partial',
+  Released: 'Completed',
+  'On Hold': 'On Hold',
+  Cancelled: 'Cancelled',
+}[status] || status || 'Not Eligible')
+
+const InfoCard = ({ label, value }) => (
+  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{label}</p>
+    <p className="mt-1 text-sm font-black text-slate-950">{value}</p>
+  </div>
+)
+
+const StatusPill = ({ status }) => {
+  const styles = {
+    Eligible: 'border-blue-200 bg-blue-50 text-blue-700',
+    'Awaiting Release Date': 'border-amber-200 bg-amber-50 text-amber-700',
+    'Earned on Cancellation': 'border-violet-200 bg-violet-50 text-violet-700',
+    'Forfeited on Cancellation': 'border-slate-300 bg-slate-100 text-slate-600',
+    Pending: 'border-amber-200 bg-amber-50 text-amber-700',
+    Released: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    'Partially Released': 'border-indigo-200 bg-indigo-50 text-indigo-700',
+    'On Hold': 'border-amber-200 bg-amber-50 text-amber-700',
+    Cancelled: 'border-red-200 bg-red-50 text-red-700',
+  }
+
+  return (
+    <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${styles[status] || styles.Pending}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {statusLabel(status)}
+    </span>
+  )
+}
+
+const ModalNotice = ({ notice, onClose }) => {
+  if (!notice) return null
+
+  const styles = {
+    info: 'border-blue-200 bg-blue-50 text-blue-900',
+    warning: 'border-amber-200 bg-amber-50 text-amber-900',
+    error: 'border-red-200 bg-red-50 text-red-900',
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+    loading: 'border-slate-200 bg-slate-50 text-slate-900',
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4">
+      <div className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${styles[notice.type] || styles.info}`}>
+        <div className="flex items-start gap-3">
+          {notice.type === 'loading' ? (
+            <FiLoader className="mt-0.5 h-5 w-5 shrink-0 animate-spin" />
+          ) : (
+            <FiAlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+          )}
+
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-black">{notice.title || 'Commission notice'}</p>
+            <p className="mt-1 text-sm font-semibold leading-relaxed">{notice.message}</p>
+          </div>
+        </div>
+
+        {notice.type !== 'loading' ? (
+          <div className="mt-5 flex justify-end">
+            <button type="button" onClick={onClose} className="h-10 rounded-xl bg-white px-5 text-sm font-black text-slate-800 shadow-sm transition hover:bg-slate-50">
+              OK
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+const ConfirmDialog = ({ action, stage, agentReceiptStatus, isSaving, onCancel, onConfirm }) => {
+  if (!action || !stage || action === 'release_stage') return null
+
+  const isReceiptAction = action === 'set_agent_receipt_status'
+  const markingSubmitted = agentReceiptStatus === 'submitted'
+  const labels = {
+    hold_stage: 'hold this stage',
+    unhold_stage: 'unhold this stage',
+    set_agent_receipt_status: markingSubmitted
+      ? 'mark the External Realty agent receipt as Submitted'
+      : 'mark the External Realty agent receipt as Unsubmitted',
+  }
+  const confirmLabels = {
+    hold_stage: 'Hold Stage',
+    unhold_stage: 'Unhold Stage',
+    set_agent_receipt_status: markingSubmitted ? 'Mark Submitted' : 'Mark Unsubmitted',
+  }
+  const titles = {
+    hold_stage: 'Hold Commission Stage?',
+    unhold_stage: 'Unhold Commission Stage?',
+    set_agent_receipt_status: markingSubmitted ? 'Mark Agent Receipt Submitted?' : 'Mark Agent Receipt Unsubmitted?',
+  }
+
+  const receiptHelper = markingSubmitted
+    ? 'If the next milestone is held only because of this receipt requirement, it will be re-evaluated automatically.'
+    : 'If the next milestone is already eligible and has not been released, it will be placed on hold until this receipt is marked Submitted.'
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-blue-200 bg-blue-50 p-5 text-blue-900 shadow-2xl">
+        <div className="flex items-start gap-3">
+          <FiAlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-black">{titles[action] || 'Confirm Action'}</p>
+            <p className="mt-1 text-sm font-semibold leading-relaxed">
+              Are you sure you want to {labels[action] || action} for {stage.stage}?
+            </p>
+            {isReceiptAction ? <p className="mt-2 text-xs font-semibold leading-relaxed text-blue-700">{receiptHelper}</p> : null}
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50">
+            No
+          </button>
+          <button type="button" onClick={onConfirm} disabled={isSaving} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
+            {isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : null}
+            {confirmLabels[action] || 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const ReleaseConfirmDialog = ({
+  stage,
+  releaseDateInfo,
+  releaseMode,
+  historicalDate,
+  historicalNote,
+  historicalAllowed,
+  receiptDetails,
+  onReceiptChange,
+  paymentMethod,
+  onPaymentMethodChange,
+  isSaving,
+  onModeChange,
+  onHistoricalDateChange,
+  onHistoricalNoteChange,
+  onCancel,
+  onConfirm,
+}) => {
+  if (!stage) return null
+
+  const today = releaseDateInfo?.todayDateISO || todayManilaISO()
+  const liveAllowed = Boolean(stage.isReleaseDate)
+  const historicalSelected = releaseMode === 'historical'
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/55 p-4">
+      <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl sm:p-6">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+            <FiSave className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-black">Release {stage.stage}</h3>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Choose how this commission release should be recorded before the final review.</p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3">
+          <label className={`rounded-2xl border p-4 transition ${releaseMode === 'live' ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-50' : 'border-slate-200 bg-white'} ${!liveAllowed ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+            <span className="flex items-start gap-3">
+              <input
+                type="radio"
+                name="commission-release-mode"
+                value="live"
+                checked={releaseMode === 'live'}
+                disabled={!liveAllowed || isSaving}
+                onChange={() => onModeChange('live')}
+                className="mt-1 h-4 w-4"
+              />
+              <span>
+                <span className="block text-sm font-black text-slate-900">Release Today</span>
+                <span className="mt-1 block text-xs font-semibold leading-relaxed text-slate-500">
+                  Records the actual release date as {today}. Live releases follow this project's configured release days.
+                </span>
+                {!liveAllowed ? (
+                  <span className="mt-2 block text-xs font-black text-amber-700">
+                    Live release is unavailable today. Next regular release: {releaseDateInfo?.nextReleaseDate || '-'}.
+                  </span>
+                ) : null}
+              </span>
+            </span>
+          </label>
+
+          {historicalAllowed ? (
+            <label className={`cursor-pointer rounded-2xl border p-4 transition ${historicalSelected ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-50' : 'border-slate-200 bg-white'}`}>
+              <span className="flex items-start gap-3">
+                <input
+                  type="radio"
+                  name="commission-release-mode"
+                  value="historical"
+                  checked={historicalSelected}
+                  disabled={isSaving}
+                  onChange={() => onModeChange('historical')}
+                  className="mt-1 h-4 w-4"
+                />
+                <span>
+                  <span className="block text-sm font-black text-slate-900">Record Historical Release</span>
+                  <span className="mt-1 block text-xs font-semibold leading-relaxed text-slate-500">
+                    Available because this buyer account was explicitly encoded as a historical record. The payment milestone is validated as of the selected date.
+                  </span>
+                </span>
+              </span>
+            </label>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-black text-slate-800">Historical release is not available for this account</p>
+              <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+                This is a normal live buyer account. Backdated commission releases cannot be recorded here.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {historicalSelected ? (
+          <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-black uppercase tracking-wide text-violet-800">Actual Release Date</span>
+              <input
+                type="date"
+                value={historicalDate}
+                max={today}
+                disabled={isSaving}
+                onChange={(event) => onHistoricalDateChange(event.target.value)}
+                className="h-11 rounded-xl border border-violet-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+              />
+              <span className="text-xs font-semibold leading-relaxed text-violet-700">Enter the date the seller actually received this commission. Future dates are not allowed.</span>
+            </label>
+
+            <label className="mt-4 grid gap-1.5">
+              <span className="text-xs font-black uppercase tracking-wide text-violet-800">Historical Note <span className="font-semibold normal-case text-violet-600">(optional)</span></span>
+              <textarea
+                value={historicalNote}
+                maxLength={500}
+                rows={3}
+                disabled={isSaving}
+                onChange={(event) => onHistoricalNoteChange(event.target.value)}
+                placeholder="Example: Encoded from the 2024 commission Excel record."
+                className="resize-none rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+              />
+              <span className="text-right text-[11px] font-semibold text-violet-600">{historicalNote.length}/500</span>
+            </label>
+
+            <p className="mt-3 rounded-xl bg-white/80 p-3 text-xs font-semibold leading-relaxed text-violet-800">
+              The actual release date is backdated for business history only. The Audit Log will still record the current administrator and the real time this historical entry was encoded.
+            </p>
+          </div>
+        ) : null}
+
+        <label className="mt-4 block text-xs font-black uppercase text-slate-600">Payment Method
+          <select className="mt-1 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold" value={paymentMethod} disabled={isSaving} onChange={e=>onPaymentMethodChange(e.target.value)}>
+            <option value="bank_transfer">Bank Transfer</option><option value="cash">Cash</option><option value="check">Check</option><option value="other">Other</option>
+          </select>
+        </label>
+        <ReleaseReceiptFields value={receiptDetails} onChange={onReceiptChange} disabled={isSaving}
+          releaseDate={historicalSelected ? historicalDate : today} paymentMethod={paymentMethod} />
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onCancel} disabled={isSaving} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isSaving || (historicalSelected && !historicalDate)}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : null}
+            Proceed to Final Review
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, canRelease = false, canViewSigned = false, canUploadSigned = false, canHold = false, canUnhold = false, isSaving = false, serverNotice = null, onClearServerNotice }) => {
+  const sellers = Array.isArray(commissionGroup?.sellers) ? commissionGroup.sellers : []
+  // Network profit remains a separate financial ledger; this selector only joins the UI.
+  // Match by the buyer ACCOUNT ID, never by unit or seller name (both may repeat).
+  const { data: profitResponse, isLoading: isProfitLoading, isError: isProfitError, error: profitError } = useQuery({
+    queryKey: ['network-company-profit', projectSlug],
+    queryFn: () => fetchJson(`/projects/lot-projects/${projectSlug}/network-company-profit`),
+    enabled: Boolean(projectSlug && commissionGroup?.accountId),
+  })
+  const companyProfits = selectCompanyProfitsForAccount(profitResponse?.data, commissionGroup?.accountId)
+  const [manualBeneficiary, setManualBeneficiary] = useState(null)
+  // Resolve the default from the loaded account's Company Profit data in the same render.
+  // A deliberate user selection always wins; seller is the fallback when no profit exists.
+  const selectedBeneficiary = manualBeneficiary || (isProfitLoading
+    ? '__loading__'
+    : companyProfits.length ? `company:${companyProfits[0].id}` : `seller:${sellers[0]?.commissionId || sellers[0]?.id || ''}`)
+  const selectedProfit = selectedBeneficiary.startsWith('company:')
+    ? companyProfits.find((profit) => `company:${profit.id}` === selectedBeneficiary)
+    : null
+  const commission = sellers.find((seller) => `seller:${seller.commissionId || seller.id}` === selectedBeneficiary) || sellers[0] || {}
+  const grossCommission = Number(commission.grossCommission || commission.gross || 0)
+  const released = Number(commission.released || 0)
+  const netRemaining = Math.max(Number(commission.netRemaining ?? grossCommission - released), 0)
+  const milestones = useMemo(() => commission.releaseMilestones || [], [commission.releaseMilestones])
+  const releaseDateInfo = commission.releaseDateInfo || {}
+  const historicalAllowed = Boolean(commission.isHistoricalAccount)
+  const retentionReady = Boolean(commission.retentionReady || (commission.paymentComplete && commission.documentsComplete))
+  const isExternalGroup = Boolean(
+    commission.isExternalGroup
+    || String(commission.rawRole || '').toLowerCase() === 'external_group'
+    || String(commission.sellerGroupType || '').toLowerCase() === 'external'
+  )
+  const retentionBlockedMessage = 'Retention can only be unheld when all required documents are complete and the account is fully paid.'
+  const [confirmAction, setConfirmAction] = useState(null)
+  const [selectedStage, setSelectedStage] = useState(null)
+  const [releaseMode, setReleaseMode] = useState('live')
+  const [historicalDate, setHistoricalDate] = useState(releaseDateInfo.todayDateISO || todayManilaISO())
+  const [historicalNote, setHistoricalNote] = useState('')
+  const [agentReceiptStatus, setAgentReceiptStatus] = useState('')
+  const [receiptDetails, setReceiptDetails] = useState(emptyReleaseReceipt)
+  const [paymentMethod, setPaymentMethod] = useState('bank_transfer')
+  const [sellerReceiptChoice, setSellerReceiptChoice] = useState(null)
+  const [sellerSignedChoice, setSellerSignedChoice] = useState(null)
+  const [missingReceiptChoice, setMissingReceiptChoice] = useState(null)
+  const [missingReceiptDetails, setMissingReceiptDetails] = useState(emptyReleaseReceipt)
+  const [missingPaymentMethod, setMissingPaymentMethod] = useState('bank_transfer')
+  const [legacyReceiptSaving, setLegacyReceiptSaving] = useState(false)
+  const [legacyReceiptError, setLegacyReceiptError] = useState('')
+  const [receiptLoading, setReceiptLoading] = useState(false)
+  const [notice, setNotice] = useState(null)
+  const activeNotice = notice || serverNotice
+
+  const openSellerReceipt = async (stage, purpose) => {
+    if (receiptLoading) return
+    setReceiptLoading(true)
+    setNotice(null)
+    try {
+      const data = await fetchJson(`/projects/lot-projects/${projectSlug}/commissions/${commission.commissionId || commission.id}/releases/${stage.releaseId}/receipt`)
+      const payload = data?.data
+      if (!payload?.receipt?.receiptId || !payload?.accreditedSellerId) throw new Error('No saved receipt was found for this release.')
+      if (purpose === 'signed') {
+        setSellerSignedChoice({ receiptId: payload.receipt.receiptId, sellerId: payload.accreditedSellerId, stage: stage.stage })
+      } else {
+        setSellerReceiptChoice({ receipt: payload.receipt,
+          seller: { full_name: commission.seller, role: commission.rawRole,
+            seller_group_type: commission.sellerGroupType, seller_group_name: commission.sellerGroup } })
+      }
+    } catch (error) {
+      if (error.code === 'RELEASE_RECEIPT_NOT_FOUND' && error.data?.legacyReceipt?.sellerId) {
+        // An older payment must never be released twice just to make a receipt.
+        // The existing Accredited Seller receipt endpoint attaches the exact stage.
+        setMissingReceiptChoice({
+          ...error.data.legacyReceipt, stage: stage.stage, amount: stage.netAmount,
+          releasePercent: stage.releasePercent, triggerPercent: stage.triggerPercent, purpose,
+        })
+        setMissingReceiptDetails(emptyReleaseReceipt())
+        setMissingPaymentMethod('bank_transfer')
+        setLegacyReceiptError('')
+      } else {
+        setNotice({ type: 'warning', title: 'Receipt not available', message: error.message || 'Could not load this release receipt.' })
+      }
+    } finally { setReceiptLoading(false) }
+  }
+
+  const saveMissingReceipt = async () => {
+    if (!missingReceiptChoice || legacyReceiptSaving || !canUploadSigned) return
+    const invalid = validateReleaseReceipt(missingReceiptDetails, String(missingReceiptChoice.actualReleaseDate || '').slice(0, 10), missingPaymentMethod)
+    if (invalid) { setLegacyReceiptError(invalid); return }
+    setLegacyReceiptError('')
+    // Build the exact ProofOfIncomeDoubleCheck schema before opening Final Review.
+    // Missing identities must never be presented as "Not provided" for confirmation.
+    let reviewData
+    try {
+      reviewData = buildMissingProofOfIncomeReview({
+        commissionGroup, commission, missingReceiptChoice, receiptDetails: missingReceiptDetails, paymentMethod: missingPaymentMethod,
+      })
+    } catch (error) {
+      setLegacyReceiptError(error.message)
+      return
+    }
+    setLegacyReceiptSaving(true)
+    try {
+      await postJson(`/accredited/${missingReceiptChoice.sellerId}/proof-of-income-receipts`, {
+        commissionId: missingReceiptChoice.commissionId,
+        releaseIds: [missingReceiptChoice.releaseId],
+        ...missingReceiptDetails,
+        paymentMethod: missingPaymentMethod,
+      }, { doubleCheck: {
+        type: 'proof-of-income',
+        summary: `Record missing Proof of Income only · ${commission.seller} · ${missingReceiptChoice.stage}`,
+        description: 'Verify the existing paid milestone and receipt details. No commission will be released again.',
+        confirmLabel: 'Confirm & Link Receipt',
+        data: reviewData,
+      } })
+      setMissingReceiptChoice(null)
+      setNotice({ type: 'success', title: 'Receipt linked', message: 'The receipt was attached to the existing released milestone. No additional payout was made. Open Print Acknowledgment or Signed Copy again.' })
+    } catch (error) {
+      setLegacyReceiptError(error?.message || 'Could not save the receipt. No payout was changed.')
+    } finally { setLegacyReceiptSaving(false) }
+  }
+
+  const changeBeneficiary = (event) => {
+    setManualBeneficiary(event.target.value)
+    setConfirmAction(null)
+    setSelectedStage(null)
+    setReleaseMode('live')
+    setHistoricalDate(releaseDateInfo.todayDateISO || todayManilaISO())
+    setHistoricalNote('')
+    setAgentReceiptStatus('')
+    setNotice(null)
+    setSellerReceiptChoice(null)
+    setSellerSignedChoice(null)
+    setMissingReceiptChoice(null)
+    setLegacyReceiptError('')
+    onClearServerNotice?.()
+  }
+
+  const openConfirm = (action, stage, options = {}) => {
+    if ((['release_stage', 'set_agent_receipt_status'].includes(action) && !canRelease)
+      || (action === 'hold_stage' && !canHold)
+      || (action === 'unhold_stage' && !canUnhold)) {
+      setNotice({ type: 'error', title: 'Permission required', message: 'Your account does not have permission for this commission action.' })
+      return
+    }
+    if (!stage?.releaseId) {
+      setNotice({ type: 'error', title: 'Missing release stage', message: 'This release stage is missing a database id. Refresh the page first.' })
+      return
+    }
+
+    if (action === 'release_stage' && !['Eligible', 'Earned on Cancellation'].includes(stage.status)) {
+      setNotice({ type: 'error', title: 'Not eligible', message: `${stage.stage} is not eligible for release yet.` })
+      return
+    }
+
+    if (action === 'unhold_stage' && stage.externalReceiptHoldSourceReleaseId) {
+      setNotice({ type: 'warning', title: 'Receipt required', message: `${stage.stage} is held until the previous External Realty agent receipt is marked Submitted.` })
+      return
+    }
+
+    if (action === 'unhold_stage' && stage.stage === 'Retention' && !retentionReady) {
+      setNotice({ type: 'warning', title: 'Retention locked', message: retentionBlockedMessage })
+      return
+    }
+
+    if (action === 'set_agent_receipt_status') {
+      if (!isExternalGroup || stage.status !== 'Released') {
+        setNotice({ type: 'warning', title: 'Receipt status unavailable', message: 'Agent receipt status is only available for released External Realty commission stages.' })
+        return
+      }
+      setAgentReceiptStatus(options.agentReceiptStatus === 'submitted' ? 'submitted' : 'unsubmitted')
+    }
+
+    if (action === 'release_stage') {
+      if (!stage.isReleaseDate && !historicalAllowed) {
+        setNotice({
+          type: 'warning',
+          title: 'Release day required',
+          message: `This is a normal live buyer account, so Historical Release is unavailable. Release this commission on the next configured release day (${releaseDateInfo.nextReleaseDate || '-'}).`,
+        })
+        return
+      }
+      setReleaseMode(stage.isReleaseDate ? 'live' : 'historical')
+      setHistoricalDate(releaseDateInfo.todayDateISO || todayManilaISO())
+      setHistoricalNote('')
+      setReceiptDetails(emptyReleaseReceipt())
+      setPaymentMethod('bank_transfer')
+    }
+
+    setSelectedStage(stage)
+    setConfirmAction(action)
+  }
+
+  const submitAction = () => {
+    if (!confirmAction || !selectedStage || isSaving) return
+
+    if (confirmAction === 'release_stage' && releaseMode === 'historical') {
+      if (!historicalAllowed) {
+        setNotice({ type: 'error', title: 'Historical release blocked', message: 'This buyer account was not encoded as a historical record.' })
+        return
+      }
+      const today = releaseDateInfo.todayDateISO || todayManilaISO()
+      if (!historicalDate || historicalDate > today) {
+        setNotice({ type: 'error', title: 'Invalid historical date', message: 'Select a valid actual release date that is not in the future.' })
+        return
+      }
+    }
+
+    if (confirmAction === 'release_stage') {
+      const actualDate = releaseMode === 'historical' ? historicalDate : (releaseDateInfo.todayDateISO || todayManilaISO())
+      const problem = validateReleaseReceipt(receiptDetails, actualDate, paymentMethod)
+      if (problem) {
+        setNotice({ type: 'error', title: 'Receipt Details required', message: problem })
+        return
+      }
+    }
+
+    onAction?.(commission, {
+      action: confirmAction,
+      releaseId: selectedStage.releaseId,
+      ...(confirmAction === 'release_stage' ? {
+        receiptDetails,
+        paymentMethod,
+        releaseMode,
+        actualReleaseDate: releaseMode === 'historical'
+          ? historicalDate
+          : (releaseDateInfo.todayDateISO || todayManilaISO()),
+        ...(releaseMode === 'historical' ? {
+          historicalNote: historicalNote.trim(),
+        } : {}),
+      } : {}),
+      ...(confirmAction === 'set_agent_receipt_status' ? {
+        agentReceiptStatus,
+      } : {}),
+    })
+    setConfirmAction(null)
+    setSelectedStage(null)
+    setAgentReceiptStatus('')
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/55 p-0 sm:p-4">
+      <div className="flex min-h-dvh w-full max-w-[1120px] flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-xl">
+        <div className="flex shrink-0 flex-col gap-3 border-b border-slate-200 px-4 py-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-base font-black text-slate-950">Commission Details</h2>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              {commissionGroup?.unit || '-'} · {commissionGroup?.client || '-'} · {sellers.length} seller{sellers.length === 1 ? '' : 's'}{companyProfits.length ? ` · ${companyProfits.length} Network Company Profit recipient${companyProfits.length === 1 ? '' : 's'}` : ''}
+            </p>
+          </div>
+
+          <div className="flex w-full items-end gap-2 md:w-auto">
+            <label className="min-w-0 flex-1 md:w-[360px] md:flex-none">
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Company & Seller Commission</span>
+              <select
+                value={selectedBeneficiary}
+                onChange={changeBeneficiary}
+                disabled={isSaving || isProfitLoading || sellers.length + companyProfits.length <= 1}
+                className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100 disabled:text-slate-500"
+                aria-label="Select company or seller commission"
+              >
+                {isProfitLoading ? <option value="__loading__">Loading Company Profit...</option> : null}
+                {companyProfits.map((profit) => (
+                  <option key={`company:${profit.id}`} value={`company:${profit.id}`}>
+                    Company Profit · {profit.network} · {profit.payee}
+                  </option>
+                ))}
+                {sellers.map((seller) => (
+                  <option key={`seller:${seller.commissionId || seller.id}`} value={`seller:${seller.commissionId || seller.id}`}>
+                    {seller.seller || 'Unnamed seller'} · {seller.role || '-'} · {seller.commissionType || '-'}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button type="button" onClick={onClose} disabled={isSaving} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Close commission details">
+              <FiX className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-3">
+          {isProfitLoading ? <p className="mb-3 text-xs font-semibold text-slate-500">Loading Company Profit options for this buyer account...</p> : null}
+          {isProfitError ? <p role="alert" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">Company Profit could not load: {profitError?.message || 'Refresh and try again.'} Seller commissions remain available.</p> : null}
+          {isProfitLoading ? <p role="status" className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">Loading Company Profit and seller records...</p> : selectedProfit ? (
+            <NetworkCompanyProfitPanel
+              key={selectedProfit.id}
+              embedded
+              profitRecord={selectedProfit}
+              projectSlug={projectSlug}
+              canRelease={canRelease}
+              sellers={sellers.filter(seller => Number(seller.sellerGroupId) === Number(selectedProfit.networkId))}
+            />
+          ) : selectedBeneficiary.startsWith('company:') ? (
+            <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">This Company Profit record is no longer available for this buyer account. Select a seller or refresh the page.</p>
+          ) : (
+          <>
+          <section>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><h3 className="text-sm font-black text-slate-950">Commission Information</h3><p className="text-xs font-semibold text-slate-500">Showing {commission.seller || 'selected seller'}</p></div>
+
+            <div className="mt-3 grid gap-2 md:grid-cols-4">
+              <InfoCard label="Seller" value={commission.seller || '-'} />
+              <InfoCard label="Seller Email" value={commission.sellerEmail || '-'} />
+              <InfoCard label="Seller Contact No." value={commission.sellerContactNo || '-'} />
+              <InfoCard label="Role" value={commission.role || '-'} />
+              <InfoCard label="Commission Type" value={commission.commissionType || commission.sellerType || '-'} />
+              <InfoCard label="Commission Base (Before Discount)" value={money(commission.commissionBase)} />
+              <InfoCard label="Rate" value={`${Number(commission.rate || 0).toFixed(4)}%`} />
+              <InfoCard label="Gross Commission" value={money(grossCommission)} />
+              <InfoCard label="Released" value={money(released)} />
+              <InfoCard label="Net Remaining" value={money(netRemaining)} />
+              <InfoCard label="Group" value={commission.sellerGroup || '-'} />
+              <InfoCard label="Current Reports Under" value={commission.reportsUnder || '-'} />
+            </div>
+          </section>
+
+          <section className="mt-5">
+            <h3 className="text-sm font-black text-slate-950">Property / Payment</h3>
+
+            <div className="mt-3 grid gap-2 md:grid-cols-4">
+              <InfoCard label="Client" value={commission.client || '-'} />
+              <InfoCard label="Unit" value={commission.unit || '-'} />
+              <InfoCard label="Project" value={commission.project || '-'} />
+              <InfoCard label="TCP" value={money(commission.tcp)} />
+              <InfoCard label="Paid" value={money(commission.paid)} />
+              <InfoCard label="Payment %" value={`${Number(commission.paymentPercent || 0).toFixed(2)}%`} />
+            </div>
+          </section>
+
+          <section className="mt-5">
+            <h3 className="text-sm font-black text-slate-950">Main Release Milestones</h3>
+
+            <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+              <table className={`${isExternalGroup ? 'min-w-[980px]' : 'min-w-[840px]'} w-full divide-y divide-slate-200 text-xs`}>
+                <thead className="bg-slate-50">
+                  <tr>
+                    {[
+                      'Stage',
+                      'Trigger %',
+                      'Release %',
+                      'Gross',
+                      'Net',
+                      'Status',
+                      ...(isExternalGroup ? ['Agent Receipt'] : []),
+                      'Actions',
+                    ].map((head) => (
+                      <th key={head} className="px-4 py-3 text-left font-black text-slate-700">{head}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {milestones.map((stage) => {
+                    const isReleased = stage.status === 'Released'
+                    const isOnHold = stage.status === 'On Hold'
+                    const isCancelled = stage.status === 'Cancelled'
+                    const isEarnedOnCancellation = stage.status === 'Earned on Cancellation'
+                    const isForfeitedOnCancellation = stage.status === 'Forfeited on Cancellation'
+                    const receiptSubmitted = stage.externalAgentReceiptStatus === 'submitted'
+                    const receiptBlocked = Boolean(stage.externalReceiptHoldSourceReleaseId)
+                    const releaseDateLocked = ['Eligible', 'Earned on Cancellation'].includes(stage.status)
+                      && !stage.isReleaseDate
+                      && !historicalAllowed
+
+                    return (
+                      <tr key={stage.id || stage.stage} className="align-top">
+                        <td className="px-4 py-3 font-black text-slate-900">{stage.stage}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-600">{stage.stage === 'Retention' ? '-' : `${Number(stage.triggerPercent || 0)}%`}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-600">{Number(stage.releasePercent || 0)}%</td>
+                        <td className="px-4 py-3 font-semibold text-slate-700">{money(stage.grossAmount)}</td>
+                        <td className="px-4 py-3 font-black text-slate-900">{money(stage.netAmount)}</td>
+                        <td className="px-4 py-3">
+                          <StatusPill status={stage.displayStatus || (stage.status === 'Eligible' && !stage.isReleaseDate && !historicalAllowed ? 'Awaiting Release Date' : stage.status)} />
+                          {isReleased && stage.actualReleaseDate ? <p className="mt-1.5 text-[10px] font-bold text-slate-500">{stage.actualReleaseDate}</p> : null}
+                          {isReleased && stage.releaseEntryMode === 'historical' ? <span className="mt-1 inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-700">Historical</span> : null}
+                          {receiptBlocked ? <p className="mt-1.5 max-w-[170px] text-[10px] font-black leading-4 text-amber-700">Held until previous External Realty agent receipt is Submitted.</p> : null}
+                        </td>
+                        {isExternalGroup ? (
+                          <td className="px-4 py-3">
+                            {isReleased ? (
+                              <div className="flex min-w-[145px] flex-col items-start gap-2">
+                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${receiptSubmitted ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                                  {receiptSubmitted ? 'Submitted' : 'Unsubmitted'}
+                                </span>
+                                {canRelease ? <button
+                                  type="button"
+                                  onClick={() => openConfirm('set_agent_receipt_status', stage, { agentReceiptStatus: receiptSubmitted ? 'unsubmitted' : 'submitted' })}
+                                  disabled={isSaving}
+                                  className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-[10px] font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {receiptSubmitted ? 'Mark Unsubmitted' : 'Mark Submitted'}
+                                </button> : null}
+                              </div>
+                            ) : <span className="font-semibold text-slate-400">—</span>}
+                          </td>
+                        ) : null}
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            {isReleased ? <>
+                              <button type="button" onClick={() => openSellerReceipt(stage, 'print')} disabled={receiptLoading || isSaving}
+                                className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-black disabled:opacity-50">
+                                <FiPrinter className="h-3.5 w-3.5"/> Print Acknowledgment
+                              </button>
+                              <button type="button" onClick={() => openSellerReceipt(stage, 'signed')} disabled={receiptLoading || isSaving || !canViewSigned}
+                                title={!canViewSigned ? 'Accredited Seller document-view permission is required.' : undefined}
+                                className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-black disabled:opacity-50">
+                                <FiFileText className="h-3.5 w-3.5"/> Signed Copy
+                              </button>
+                            </> : null}
+
+                            {canRelease && ['Eligible', 'Earned on Cancellation'].includes(stage.status) ? (
+                              <button
+                                type="button"
+                                onClick={() => openConfirm('release_stage', stage)}
+                                disabled={isSaving || releaseDateLocked}
+                                title={!stage.isReleaseDate
+                                  ? historicalAllowed
+                                    ? 'Live release is unavailable today. This historical account may be recorded with its real past release date.'
+                                    : `Live release is unavailable today. Next release date: ${releaseDateInfo.nextReleaseDate || '-'}.`
+                                  : undefined}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {isSaving ? <FiLoader className="h-3.5 w-3.5 animate-spin" /> : <FiSave className="h-3.5 w-3.5" />}
+                                {stage.releaseButtonLabel || 'Release'}
+                              </button>
+                            ) : null}
+
+                            {releaseDateLocked ? (
+                              <p className="basis-full max-w-[220px] text-[10px] font-black leading-4 text-amber-700">
+                                Not a release date yet. Next release date: {releaseDateInfo.nextReleaseDate || '-'}.
+                              </p>
+                            ) : null}
+
+                            {canHold && !isReleased && !isOnHold && !isCancelled && !isEarnedOnCancellation && !isForfeitedOnCancellation ? (
+                              <button type="button" onClick={() => openConfirm('hold_stage', stage)} disabled={isSaving} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+                                <FiPauseCircle className="h-3.5 w-3.5" />
+                                Hold
+                              </button>
+                            ) : null}
+
+                            {canUnhold && isOnHold ? (
+                              <button
+                                type="button"
+                                onClick={() => openConfirm('unhold_stage', stage)}
+                                disabled={isSaving || receiptBlocked}
+                                title={receiptBlocked
+                                  ? 'This stage is automatically held until the previous External Realty agent receipt is marked Submitted.'
+                                  : stage.stage === 'Retention' && !retentionReady
+                                    ? retentionBlockedMessage
+                                    : undefined}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <FiPlayCircle className="h-3.5 w-3.5" />
+                                Unhold
+                              </button>
+                            ) : null}
+
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+
+                  {!milestones.length ? (
+                    <tr>
+                      <td colSpan={isExternalGroup ? 8 : 7} className="px-4 py-10 text-center font-semibold text-slate-500">
+                        No release milestones found for this commission.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          </>
+          )}
+        </div>
+
+        <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-3 py-3">
+          <button type="button" onClick={onClose} disabled={isSaving} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+            Close
+          </button>
+        </div>
+      </div>
+
+      {confirmAction === 'release_stage' ? (
+        <ReleaseConfirmDialog
+          stage={selectedStage}
+          releaseDateInfo={releaseDateInfo}
+          releaseMode={releaseMode}
+          historicalDate={historicalDate}
+          historicalNote={historicalNote}
+          historicalAllowed={historicalAllowed}
+          receiptDetails={receiptDetails}
+          onReceiptChange={setReceiptDetails}
+          paymentMethod={paymentMethod}
+          onPaymentMethodChange={next => { setPaymentMethod(next); setReceiptDetails(previous => ({...previous, bankName:'', accountNumber:'', referenceNumber:''})) }}
+          isSaving={isSaving}
+          onModeChange={setReleaseMode}
+          onHistoricalDateChange={setHistoricalDate}
+          onHistoricalNoteChange={setHistoricalNote}
+          onCancel={() => {
+            setConfirmAction(null)
+            setSelectedStage(null)
+            setAgentReceiptStatus('')
+          }}
+          onConfirm={submitAction}
+        />
+      ) : null}
+
+      {missingReceiptChoice ? (
+        <div role="dialog" aria-modal="true" aria-label="Link earlier Proof of Income receipt" className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-black text-slate-950">Record missing Proof of Income</h3>
+            <p className="mt-2 text-xs font-semibold text-slate-600">
+              {commission.seller} · {missingReceiptChoice.stage} · {money(missingReceiptChoice.amount)}
+            </p>
+            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+              This milestone was already paid. Only a receipt will be recorded and linked to it—no new commission release.
+              Use the actual receipt details, or cancel if an existing signed document needs reconciliation.
+            </p>
+            {canUploadSigned ? <>
+              <label className="mt-4 block text-xs font-bold">Payment Method
+                <select value={missingPaymentMethod} onChange={e=>{setMissingPaymentMethod(e.target.value);setMissingReceiptDetails(current=>({...current,bankName:'',accountNumber:'',referenceNumber:''}))}} className="mt-1 block w-full rounded-lg border p-2">
+                  <option value="bank_transfer">Bank Transfer</option><option value="cash">Cash</option><option value="check">Check</option><option value="other">Other</option>
+                </select>
+              </label>
+              <ReleaseReceiptFields value={missingReceiptDetails} paymentMethod={missingPaymentMethod} onChange={setMissingReceiptDetails}
+                disabled={legacyReceiptSaving} releaseDate={String(missingReceiptChoice.actualReleaseDate || '').slice(0, 10)}
+                title="Receipt Details for Earlier Release"
+                description="This attaches a receipt to an earlier released milestone. No additional commission will be paid." />
+              {legacyReceiptError ? <p role="alert" className="mt-2 text-sm font-bold text-red-700">{legacyReceiptError}</p> : null}
+            </> : <p className="mt-3 text-sm font-semibold text-amber-800">Ask an Accredited Sellers receipt manager to record the missing receipt.</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" disabled={legacyReceiptSaving} onClick={() => setMissingReceiptChoice(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold">Cancel</button>
+              {canUploadSigned ? <button type="button" disabled={legacyReceiptSaving} onClick={saveMissingReceipt} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{legacyReceiptSaving ? 'Saving receipt...' : 'Review & Link Receipt'}</button> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {sellerReceiptChoice ? <CommissionReceiptPreview {...sellerReceiptChoice} onClose={() => setSellerReceiptChoice(null)}/> : null}
+      {sellerSignedChoice ? <SignedCopyUploadModal
+        title="Seller Proof of Income — Signed Acknowledgment"
+        description="The signed receipt for this specific completed seller commission milestone."
+        recordLabel={`${sellerSignedChoice.stage} · ${commission.seller}`}
+        category="Signed Proof of Income"
+        readOnly={!canUploadSigned}
+        basePath={`/accredited/${sellerSignedChoice.sellerId}/proof-of-income-receipts/${sellerSignedChoice.receiptId}/signed-copy`}
+        onClose={() => setSellerSignedChoice(null)} /> : null}
+
+      <ConfirmDialog
+        action={confirmAction}
+        stage={selectedStage}
+        agentReceiptStatus={agentReceiptStatus}
+        isSaving={isSaving}
+        onCancel={() => {
+          setConfirmAction(null)
+          setSelectedStage(null)
+          setAgentReceiptStatus('')
+        }}
+        onConfirm={submitAction}
+      />
+
+      <ModalNotice notice={activeNotice} onClose={() => {
+        if (notice) setNotice(null)
+        else onClearServerNotice?.()
+      }} />
+    </div>
+  )
+}
+
+export default ReleaseDetailsModal
+
+
+
+
+
+

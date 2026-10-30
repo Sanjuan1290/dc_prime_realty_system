@@ -1,82 +1,81 @@
-# Post-Action Review + Correction Flow Fix
+# DC_PRIME_REALTY — Reorganized Source Code (Staging / Development)
 
-This package replaces the earlier routine-review locking behavior with the intended non-blocking post-action review and controlled-correction workflow.
+This package uses the requested `CLIENT/` and `SERVER/` directories. It reorganizes the **real source** from the October 27 export and overlays from Batches 4–16, rather than substituting empty placeholder apps. It has not been deployed or tested with live TiDB instances. **Not production approved.**
 
-## Final workflow
+## Applications
 
-### Staff entry
-1. Staff creates/edits the record. The business operation is saved immediately.
-2. A Review is queued for the owning Department Head. Normal work may continue.
-3. If the same Staff user edits the same record again before review finishes, the same Review number is refreshed to the latest saved values instead of creating stale duplicate Reviews.
-4. If the Staff changes the record after the Head already confirmed but before Auditor verification, the same Review is reopened for Head check of the latest values.
-5. Head may Confirm or Return for Correction.
-6. Returned correction locks only the exact affected record. Original Staff uses **Correct & Resubmit**, and the same Review goes back to the Head.
-7. Head may alternatively use **Correct & Confirm** and send the corrected Review directly to Auditor.
-8. Auditor independently verifies the final state.
+| App | Frontend | Backend | TiDB |
+| --- | --- | --- | --- |
+| WEBSITE | `CLIENT/WEBSITE` | `SERVER/WEBSITE` | none |
+| SYSTEM (Realty) | `CLIENT/SYSTEM` | `SERVER/SYSTEM` | `dc_prime_realty_system_db` |
+| HR | `CLIENT/HR` | `SERVER/HR` | `dc_prime_hr_db` (guard may require staging variant) |
+| FINANCE | `CLIENT/FINANCE` | `SERVER/FINANCE` | `dc_prime_finance_db` |
 
-### Department Head entry
-1. Head creates/edits the record and the operation saves immediately.
-2. Self-review is skipped.
-3. The Review goes directly to Auditor.
-4. If the Head edits it again before audit, the same Review is refreshed with the latest values.
+- WEBSITE is the original marketing site extracted from `client/src/website`, with its own Vite entry and routes. `SERVER/WEBSITE` is an optional Express **static file host** serving the built WEBSITE app; it is not a business API and uses no DB. On Cloudflare Pages, deploy just the client.
+- SYSTEM is the original complete Realty application, with public website pages removed from the live router. The public buyer-form frontend remains in SYSTEM, and buyer-form APIs still live in `SERVER/SYSTEM`.
+- HR and FINANCE use the actual independent app sources from earlier staging batches.
+- SYSTEM server no longer mounts the original `/employees`, `/attendance`, `/employee-payroll` or kiosk routes and does not start the original attendance scheduler. Legacy controllers/services are **retained as source** because Seller Network, historical finance, audits and migration workflows still reference them. Removing these now could cause data loss or runtime errors. HR functionality must be tested on standalone HR service.
+- HR signed receipts, payroll release workflows, correction/reversal handling, Seller Network links and production activation were previously blocked on purpose. Reorganizing folders DOES NOT resolve those.
 
-### Super Admin entry
-1. Super Admin creates/edits the record and the operation saves immediately.
-2. Department Head review is skipped.
-3. The Review goes directly to Auditor as a Super Admin direct entry.
-4. If Auditor later confirms a valid finding on a Super Admin-origin entry, the controlled correction is assigned to Super Admin, then returned to Auditor for recheck.
+## Prerequisites
 
-### System Admin
-- Ordinary permitted department work follows the owning department review path.
-- A normal Auditor-confirmed finding is corrected by System Admin through the exact Audit Case.
-- System Admin cannot use an Audit Case for the wrong entity or a Super Admin-origin correction.
+- Node.js 22+ and npm 10+.
+- Restore the 47 original image/video binaries via your full original Git checkout; `DOCS/MISSING_ORIGINAL_MEDIA.json` lists missing files and original URLs. Two imported images are clearly marked placeholders; replace them with the original assets. Some broken image/video URLs will appear until media is restored.
+- Separate TiDB databases, permissions, JWT/cookie signing secrets and deployment origins. Never put secrets in `VITE_` fields. Install dependencies and generate new lockfiles; old lockfiles with outdated paths are intentionally omitted.
 
-### Auditor finding
-1. Auditor opens an Audit Case.
-2. The exact affected record enters controlled correction mode.
-3. Once the finding is confirmed valid:
-   - normal origin -> System Admin controlled correction
-   - Super Admin direct origin -> Super Admin controlled correction
-4. Correcting administrator applies only the authorized correction.
-5. Review moves to **Auditor Recheck Pending**.
-6. Auditor verifies and closes, or returns the correction for more work.
+## Local setup (repo root)
 
-## Locking rules
+```bash
+npm install
+npm run check:layout
+npm run dev:website
+npm run dev:system
+npm run dev:hr
+npm run dev:finance
+```
 
-Routine post-action queues do NOT lock records:
-- `pending_head_review`
-- `pending_auditor_review`
+Run each command in a **separate terminal**. Also run each backend in a separate terminal:
 
-Controlled correction states DO lock the exact affected entity:
-- `returned_for_correction`
-- `audit_case_open`
-- `correction_required`
-- `pending_auditor_recheck`
+```bash
+npm run start:website   # only AFTER build:website, otherwise unnecessary for Vite dev
+npm run start:system
+npm run start:hr
+npm run start:finance
+```
 
-## Notifications / UI
+Frontends: WEBSITE 5173, SYSTEM 5174, HR 5175, FINANCE 5177 (default development ports). APIs: WEBSITE static 5101, SYSTEM 5001, HR 5102, FINANCE 5103. Confirm actual PORT/env overrides.
 
-- Creator receives a success + queued-check notification.
-- Department Head receives a post-action check notification for Staff/System Admin department entries.
-- Auditor receives a check notification after Head confirmation, Head direct entry, or Super Admin direct entry.
-- Review Center labels routine queues as completed operations with checks pending, not as failed/incomplete transactions.
-- Returned Staff correction exposes **Correct & Resubmit**.
-- Audit Case UI identifies whether System Admin or Super Admin owns the controlled correction.
+## Recommended deployments
 
-## Database
+| Service | Provider example | Root path | Build | Start/publish |
+| --- | --- | --- | --- | --- |
+| WEBSITE frontend | Cloudflare Pages | `CLIENT/WEBSITE` | `npm install && npm run build` | `dist` |
+| SYSTEM frontend | Cloudflare Pages | `CLIENT/SYSTEM` | `npm install && npm run build` | `dist` (include `functions/` for API proxy if using it) |
+| HR frontend | Cloudflare Pages | `CLIENT/HR` | `npm install && npm run build` | `dist` |
+| FINANCE frontend | Cloudflare Pages | `CLIENT/FINANCE` | `npm install && npm run build` | `dist` |
+| SYSTEM API | Render Web Service | `SERVER/SYSTEM` | `npm install` | `npm start` |
+| HR API | Render Web Service | `SERVER/HR` | `npm install` | `npm start` |
+| FINANCE API | Render Web Service | `SERVER/FINANCE` | `npm install` | `npm start` |
+| WEBSITE static host (optional) | Render Web Service | repository root | `npm install && npm run build:website` | `npm run start:website` |
 
-No SQL migration is required. This uses the existing `operational_reviews`, `operational_review_events`, `audit_cases`, and notification schema.
+The optional WEBSITE server requires the CLIENT/WEBSITE build in the *same deployed filesystem*. For a static frontend host, you do not need SERVER/WEBSITE at all.
 
-## Verification
+If configuring root directory to subfolders, check whether your provider supplies workspace dependencies or runs build commands from monorepo root. `npm install` in each app also works, though it generates separate lockfiles. For repeatable releases, commit the generated lockfiles after dependency resolution and run `npm ci` on subsequent builds.
 
-Focused review/governance suite:
-- 65 / 65 passed
+**Environment:** Each app has `.env.example`; SYSTEM also has `.env.deployment.example`. Configure actual deployment secrets in provider settings, not Git. HR server still contains staging/production safety guards; do not simply switch them off without testing. Read `SERVER/HR/README.md` and the Batch 15 blocker register first.
 
-Full reconstructed server suite:
-- 817 tests total
-- 800 passed
-- 17 failed
+## Fresh-start TiDB
 
-The remaining 17 failures are outside this workflow change. They include the incomplete reconstructed source/dependency environment (for example a truncated exported `_shared/lotProject.shared.js`) and older policy tests that still expect superseded owner/System Admin rules. Do not use those failures to change the current RBAC policy.
+Use `DATABASES/FRESH_START/00_ALL_THREE_EMPTY_SCHEMAS_144_TABLES.sql` in an **isolated empty TiDB staging environment**. It creates the 108-table Realty staging schema, 28-table HR schema and 8-table Finance schema. It contains no business data and **does not create admin credentials**. Alternative: the individual SQL files plus the Batch 8 Realty add-on, not both paths. See `DATABASES/FRESH_START/README.md`. None of these scripts drops an existing DB.
 
-All changed server controller/service files in this package pass `node --check`.
+The 108-table Realty test schema still contains old HR tables, as their dependent finance/Seller Network code has not been fully extracted. Do not remove them before reconciliation and integration fixes.
 
+## Verification before any live use
+
+1. Restore all missing media, install dependencies, regenerate lockfiles, and build each frontend (`npm run build:website`, `build:system`, `build:hr`, `build:finance`).
+2. Run `SERVER/SYSTEM` import checks, the HR frontend/server isolation checks and all three backend test suites. Some old source-text tests expect legacy route ownership and need re-scoping after this split.
+3. Execute migrations in private TiDB staging; verify constraints, access and database guards; provision authorized test admins.
+4. Run browser/API sign-in, protected file access, payroll/SOA/commission and Finance CSV/XLSX import/export tests.
+5. Review Batch 15 blockers; do not approve production or data cleanup without evidence.
+
+**Non-goals:** This package does not silently activate payroll releases, finance imports or old cleanup tasks. Original user/financial data is NOT shipped in this ZIP.

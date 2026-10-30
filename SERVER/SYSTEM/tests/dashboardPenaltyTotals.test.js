@@ -1,0 +1,50 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const dirname = path.dirname(fileURLToPath(import.meta.url))
+const root = path.resolve(dirname, '..', '..', '..')
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
+
+const controller = read('SERVER/SYSTEM/controllers/Lot_Projects/Dashboard/Dashboard.controller.js')
+const lotDashboard = read('CLIENT/SYSTEM/src/pages/Lot_Projects/Reports.jsx')
+const systemReports = read('CLIENT/SYSTEM/src/pages/System/Reports.jsx')
+
+test('Lot Project Dashboard separates paid and outstanding penalties in one summary card', () => {
+  assert.match(controller, /AS totalPenaltyAccumulated/)
+  assert.match(controller, /AS totalPenaltyPaid/)
+  assert.match(controller, /AS totalPenaltyOutstanding/)
+  assert.match(controller, /totalPenaltyAccumulated: toNumber\(scheduleSummary\.totalPenaltyAccumulated\)/)
+  assert.match(controller, /totalPenaltyPaid: toNumber\(scheduleSummary\.totalPenaltyPaid\)/)
+  assert.match(controller, /totalPenaltyOutstanding: toNumber\(scheduleSummary\.totalPenaltyOutstanding\)/)
+  assert.match(lotDashboard, /Penalty Summary/)
+  assert.match(lotDashboard, /Paid Penalties/)
+  assert.match(lotDashboard, /Outstanding Penalties/)
+  assert.doesNotMatch(lotDashboard, /Paid penalties \+ outstanding penalties after approved waivers/)
+  assert.match(lotDashboard, /stats\.totalPenaltyPaid/)
+  assert.match(lotDashboard, /stats\.totalPenaltyOutstanding/)
+})
+
+test('System Reports aggregates penalty totals from every included project', () => {
+  assert.match(systemReports, /total\.penaltyAccumulated \+= Number\(stats\.totalPenaltyAccumulated \|\| 0\)/)
+  assert.match(systemReports, /total\.penaltyPaid \+= Number\(stats\.totalPenaltyPaid \|\| 0\)/)
+  assert.match(systemReports, /total\.penaltyOutstanding \+= Number\(stats\.totalPenaltyOutstanding \|\| 0\)/)
+  assert.match(systemReports, /Penalty Summary/)
+  assert.match(systemReports, /Paid Penalties/)
+  assert.match(systemReports, /Outstanding Penalties/)
+  assert.doesNotMatch(systemReports, /Paid penalties \+ outstanding penalties after approved waivers/)
+  assert.match(systemReports, /summary\.penaltyPaid/)
+  assert.match(systemReports, /summary\.penaltyOutstanding/)
+})
+
+test('sales totals remain contract based while gross verified receipts still include paid penalties', () => {
+  assert.match(controller, /SELECT SUM\(p\.lot_project_payment_amount\)[\s\S]*p\.lot_project_payment_status = 'Verified'/)
+  assert.match(controller, /AS totalNetSales/)
+  assert.match(controller, /GREATEST\(\$\{effectiveTcpExpr\} - \(\$\{rangeEarnedDiscountExpr\}\), 0\)/)
+  assert.doesNotMatch(controller, /AS totalNetSales[^\n]*penalty_amount/)
+})
+
+
+

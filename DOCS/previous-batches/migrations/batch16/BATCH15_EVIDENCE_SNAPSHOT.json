@@ -1,0 +1,160 @@
+{
+  "batch": 15,
+  "decision": "NO_GO_PENDING_EVIDENCE",
+  "requirements": [
+    {
+      "id": "G01",
+      "description": "Production-aligned Git checkout and checksum confirmed",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G02",
+      "description": "Full database backup and isolated restore verified",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G03",
+      "description": "All required npm packages installed, clean lockfile, all builds pass",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G04",
+      "description": "Complete legacy frontend/backend regression passes",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G05",
+      "description": "HR schema and foreign keys verified on actual TiDB",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G06",
+      "description": "HR migration 17 tables, actors, settings and audit fully reconciled",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G07",
+      "description": "Independent HR API/UI and permissions pass staging E2E",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G08",
+      "description": "HR production write guard replaced after approved cutover design",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G09",
+      "description": "Salary release outbox and Realty inbox verified end-to-end",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G10",
+      "description": "Salary correction, reversal and cash advance policy approved and tested",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G11",
+      "description": "Seller Network import/undo employee link replacement approved and tested",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G12",
+      "description": "Cloudinary signed payroll receipts and webhook access verified",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G13",
+      "description": "Legacy Attendance job and write routes retired and DB permissions enforced",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G14",
+      "description": "Realty finance totals match source including released payroll and refunds",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G15",
+      "description": "Realty export ZIP/XLSX import round-trip verified end-to-end",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G16",
+      "description": "Finance adjustments/voids and source revision policy approved",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G17",
+      "description": "Finance staging DB permissions, 5+3 schemas, build and API pass",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G18",
+      "description": "Finance imported source totals reconcile with Realty export",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G19",
+      "description": "Public website, Realty buyer forms and all payment/SOA/commission flows pass",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G20",
+      "description": "Security (auth, CSRF, CORS, sessions, secrets) and deployment rollback rehearsal approved",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G21",
+      "description": "Post-cutover retention and historical report / legal hold policy approved",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    },
+    {
+      "id": "G22",
+      "description": "Owner/DBA signoff for each proposed deletion after measured observation period",
+      "status": "not_run",
+      "evidence_path": "",
+      "reviewer": ""
+    }
+  ]
+}

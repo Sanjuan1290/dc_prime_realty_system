@@ -1,0 +1,330 @@
+import { consumeDoubleCheckToken, requestDoubleCheck } from './doubleCheck'
+
+const DEFAULT_API_BASE_URL = '/api/v1'
+const DEFAULT_TIMEOUT_MS = 75_000
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+const CONFIRMATION_POLICIES = new Set(['compact', 'technical'])
+
+const TECHNICAL_MUTATION_PATTERNS = [
+  /\/user\/(?:login|logout|change-password)$/i,
+  /\/user\/forgot-password(?:\/|$)/i,
+  /\/user\/deactivate\/\d+\/code$/i,
+  /\/user\/reactivate\/\d+(?:\/code)?$/i,
+  /\/upload-signature(?:\/|$)/i,
+  /\/payments\/preview$/i,
+  /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/payments\/preflight$/i,
+  /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/payments\/\d+\/correction-code$/i,
+  /\/projects\/lot-projects\/[^/]+\/listing-imports\/validate$/i,
+  /\/seller-groups\/\d+\/members\/import\/preview$/i,
+  // Read-only manager-assignment checks and verification-code request. The
+  // final bulk edit / restoration is NEVER eligible for technical bypass.
+  /\/seller-groups\/\d+\/managers\/\d+\/replace\/code$/i,
+  /\/seller-groups\/\d+\/members\/bulk-edit\/preview$/i,
+  /\/seller-groups\/\d+\/managers\/replacements\/\d+\/restore\/code$/i,
+  /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/reservation-correction\/preview$/i,
+  /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/reservation-correction\/code$/i,
+  /\/projects\/lot-projects\/[^/]+\/settings\/code$/i,
+  /\/system-settings\/code$/i,
+  /\/projects\/reports\/export-audit$/i,
+  /\/projects\/lot-projects\/[^/]+\/price-list\/print-audit$/i,
+  // Audit-only export and validation preview; neither mutates listing inventory.
+  /\/projects\/lot-projects\/[^/]+\/listing-bulk\/export-audit$/i,
+  /\/projects\/lot-projects\/[^/]+\/listing-bulk\/validate$/i,
+  /\/projects\/lot-projects\/\d+\/edit-preflight$/i,
+  /\/purge-code$/i,
+  /\/audit-logs\/archive\/request$/i,
+  /\/audit-logs\/report\/(?:record|cases)$/i,
+  /\/data-integrity\/(?:unlock|lock)$/i,
+  /\/attendance\/scan$/i,
+  /\/attendance-kiosk\/(?:unlock|lock|scan)$/i,
+  /\/workflow\/notifications\/\d+\/read$/i,
+  // Read-only inbox state (not a review approval or business record change).
+  /\/workflow\/notifications\/read-all$/i,
+]
+
+const normalizeBaseUrl = (value) =>
+  String(value || DEFAULT_API_BASE_URL).trim().replace(/\/+$/, '')
+
+const normalizePath = (value) => {
+  const path = String(value || '').trim()
+  if (!path) return ''
+  return path.startsWith('/') ? path : `/${path}`
+}
+
+const normalizePathWithoutQuery = (value) => normalizePath(value).split('?')[0].replace(/\/+$/, '') || '/'
+
+const parseRequestBody = (body) => {
+  if (body == null || body === '') return null
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    const result = {}
+    body.forEach((value, key) => {
+      const normalized = typeof File !== 'undefined' && value instanceof File
+        ? { name: value.name, size: value.size, type: value.type }
+        : value
+      if (Object.prototype.hasOwnProperty.call(result, key)) {
+        result[key] = Array.isArray(result[key]) ? [...result[key], normalized] : [result[key], normalized]
+      } else {
+        result[key] = normalized
+      }
+    })
+    return result
+  }
+  if (typeof body === 'string') {
+    try { return JSON.parse(body) } catch { return body }
+  }
+  return body
+}
+
+export class ApiError extends Error {
+  constructor(message, { status = 0, code = '', data = null, cause = null } = {}) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = Number(status || 0)
+    this.code = String(code || '')
+    this.data = data
+    this.cause = cause
+  }
+}
+
+export const isAuthenticationError = (error) => Number(error?.status || 0) === 401
+export const isMaintenanceError = (error) => error?.code === 'MAINTENANCE_MODE'
+export const isServerUnavailableError = (error) =>
+  error?.code === 'SERVER_UNAVAILABLE'
+  || error?.code === 'REQUEST_TIMEOUT'
+  || [502, 504].includes(Number(error?.status || 0))
+  || (Number(error?.status || 0) === 503 && !error?.code)
+
+const redirectToAvailabilityPage = (target, state = {}) => {
+  if (typeof window === 'undefined') return
+  if (window.location.pathname === target) return
+  try {
+    window.sessionStorage.setItem('dc_prime_availability_state', JSON.stringify({ ...state, savedAt: Date.now() }))
+  } catch {
+    // Navigation still works when browser storage is unavailable.
+  }
+  window.location.replace(target)
+}
+
+const parseResponseBody = async (response) => {
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) return response.json().catch(() => ({}))
+  const text = await response.text().catch(() => '')
+  // Cloudflare/Render may return an HTML 502 page. Never expose its markup,
+  // internal addresses, or diagnostic content in the application UI.
+  if (/text\/html/i.test(contentType) || /<\s*(?:!doctype\s+html|html|head|body)\b/i.test(text)) {
+    return { message: 'The API server is temporarily unavailable. Please try again after checking its status.' }
+  }
+  return text ? { message: text.slice(0, 500) } : null
+}
+
+// A failed mutation has an uncertain outcome: the database may have committed
+// even when the response was lost. Never navigate away and discard form state.
+const shouldRedirectOnUnavailable = (method, redirectOnUnavailable) =>
+  redirectOnUnavailable && ['GET', 'HEAD'].includes(String(method || '').toUpperCase())
+
+const requireMutationConfirmation = async ({ normalizedPath, method, body, doubleCheck, confirmationHandled, confirmationToken }) => {
+  if (!MUTATING_METHODS.has(method)) return
+
+  if (confirmationToken) {
+    if (!consumeDoubleCheckToken(confirmationToken)) {
+      throw new ApiError('The Final Double-Check confirmation expired. Review the action again.', {
+        status: 409,
+        code: 'DOUBLE_CHECK_TOKEN_INVALID',
+      })
+    }
+    return
+  }
+
+  if (doubleCheck) {
+    const result = await requestDoubleCheck({
+      ...doubleCheck,
+      method,
+      path: normalizedPath,
+      data: doubleCheck.data ?? parseRequestBody(body),
+    })
+    if (!result.confirmed) {
+      throw new ApiError('Review cancelled — you can continue editing. Nothing was saved.', {
+        status: 499,
+        code: 'REVIEW_CANCELLED',
+      })
+    }
+    if (result.token) consumeDoubleCheckToken(result.token)
+    return
+  }
+
+  const policy = String(confirmationHandled || '')
+  if (!CONFIRMATION_POLICIES.has(policy)) {
+    throw new ApiError('This action is missing an explicit confirmation policy.', {
+      status: 409,
+      code: 'MUTATION_CONFIRMATION_REQUIRED',
+      data: { path: normalizedPath, method },
+    })
+  }
+
+  if (policy === 'technical' && !TECHNICAL_MUTATION_PATTERNS.some((pattern) => pattern.test(normalizedPath))) {
+    throw new ApiError('This mutation is not approved as a technical no-review operation.', {
+      status: 409,
+      code: 'TECHNICAL_MUTATION_NOT_ALLOWED',
+      data: { path: normalizedPath, method },
+    })
+  }
+}
+
+export const requestApi = async (
+  path,
+  {
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    redirectOnUnavailable = true,
+    headers,
+    doubleCheck = null,
+    confirmationHandled = '',
+    confirmationToken = '',
+    ...options
+  } = {}
+) => {
+  const apiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_API_URL)
+  const normalizedPath = normalizePath(path)
+  const mutationPath = normalizePathWithoutQuery(path)
+  const url = `${apiBaseUrl}${normalizedPath}`
+  const method = String(options.method || 'GET').toUpperCase()
+  let controller = null
+  let timeoutId = null
+
+  // Final Double-Check is a client-side step. Keep it outside the network
+  // error handler so a UI/configuration problem can never be reported as
+  // "SERVER_UNAVAILABLE" when no HTTP request was made.
+  try {
+    await requireMutationConfirmation({
+      normalizedPath: mutationPath,
+      method,
+      body: options.body,
+      doubleCheck,
+      confirmationHandled,
+      confirmationToken,
+    })
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw new ApiError(error?.message || 'The Final Double-Check could not be opened.', {
+      code: 'CLIENT_CONFIRMATION_ERROR',
+      cause: error,
+    })
+  }
+
+  try {
+    controller = new AbortController()
+    const setTimer = typeof window !== 'undefined' ? window.setTimeout.bind(window) : setTimeout
+    timeoutId = setTimer(() => controller.abort(), timeoutMs)
+
+    const response = await fetch(url, {
+      credentials: 'include',
+      ...options,
+      headers: {
+        ...(options.body && !(typeof FormData !== 'undefined' && options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
+        ...(headers || {}),
+      },
+      signal: controller.signal,
+    })
+
+    const data = await parseResponseBody(response)
+    if (!response.ok) {
+      const error = new ApiError(data?.message || `Request failed with status ${response.status}.`, {
+        status: response.status,
+        code: data?.code || '',
+        data,
+      })
+      if (redirectOnUnavailable && isMaintenanceError(error)) {
+        redirectToAvailabilityPage('/maintenance', { message: error.message })
+      } else if (shouldRedirectOnUnavailable(method, redirectOnUnavailable) && isServerUnavailableError(error)) {
+        redirectToAvailabilityPage('/server-down', { message: error.message })
+      }
+      throw error
+    }
+    return data
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    const apiError = error?.name === 'AbortError'
+      ? new ApiError('The server took too long to respond.', { code: 'REQUEST_TIMEOUT', cause: error })
+      : new ApiError('The server could not be reached.', { code: 'SERVER_UNAVAILABLE', cause: error })
+    if (shouldRedirectOnUnavailable(method, redirectOnUnavailable)) redirectToAvailabilityPage('/server-down', { message: apiError.message })
+    throw apiError
+  } finally {
+    if (timeoutId) {
+      const clearTimer = typeof window !== 'undefined' ? window.clearTimeout.bind(window) : clearTimeout
+      clearTimer(timeoutId)
+    }
+  }
+}
+
+export const requestApiBlob = async (
+  path,
+  {
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    redirectOnUnavailable = true,
+    headers,
+    ...options
+  } = {}
+) => {
+  const apiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_API_URL)
+  const normalizedPath = normalizePath(path)
+  const url = `${apiBaseUrl}${normalizedPath}`
+  let controller = null
+  let timeoutId = null
+
+  try {
+    controller = new AbortController()
+    const setTimer = typeof window !== 'undefined' ? window.setTimeout.bind(window) : setTimeout
+    timeoutId = setTimer(() => controller.abort(), timeoutMs)
+
+    const response = await fetch(url, {
+      credentials: 'include',
+      method: 'GET',
+      ...options,
+      headers: {
+        Accept: '*/*',
+        ...(headers || {}),
+      },
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const data = await parseResponseBody(response)
+      const error = new ApiError(data?.message || `Request failed with status ${response.status}.`, {
+        status: response.status,
+        code: data?.code || '',
+        data,
+      })
+      if (redirectOnUnavailable && isMaintenanceError(error)) {
+        redirectToAvailabilityPage('/maintenance', { message: error.message })
+      } else if (shouldRedirectOnUnavailable(method, redirectOnUnavailable) && isServerUnavailableError(error)) {
+        redirectToAvailabilityPage('/server-down', { message: error.message })
+      }
+      throw error
+    }
+
+    return {
+      blob: await response.blob(),
+      contentType: response.headers.get('content-type') || '',
+      contentDisposition: response.headers.get('content-disposition') || '',
+    }
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    const apiError = error?.name === 'AbortError'
+      ? new ApiError('The server took too long to return the protected file.', { code: 'REQUEST_TIMEOUT', cause: error })
+      : new ApiError('The protected file could not be retrieved from the server.', { code: 'SERVER_UNAVAILABLE', cause: error })
+    if (redirectOnUnavailable) redirectToAvailabilityPage('/server-down', { message: apiError.message })
+    throw apiError
+  } finally {
+    if (timeoutId) {
+      const clearTimer = typeof window !== 'undefined' ? window.clearTimeout.bind(window) : clearTimeout
+      clearTimer(timeoutId)
+    }
+  }
+}
+
+
+
+
+
+
+
+

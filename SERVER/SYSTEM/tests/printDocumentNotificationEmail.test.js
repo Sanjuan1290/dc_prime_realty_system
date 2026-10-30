@@ -1,0 +1,104 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildMissingDocumentsPdfBuffer } from '../services/paymentSoaPdf.service.js';
+
+const dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(dirname, '..', '..', '..');
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
+
+test('Offer to Buy print uses Legal paper and vector reference geometry', () => {
+  const page = read('CLIENT/SYSTEM/src/components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyForm.jsx');
+  const shell = read('CLIENT/SYSTEM/src/components/Lot_Projects/ListingProfileComponents/Printouts/PrintPageShell.jsx');
+
+  assert.doesNotMatch(page, /min-height:\s*276mm/);
+  assert.doesNotMatch(page, /TEMPLATE_URL/);
+  assert.doesNotMatch(page, /otb-template-image/);
+  assert.match(page, /viewBox="0 0 612 1008"/);
+  assert.match(page, /@page otb\s*\{[\s\S]*size:\s*legal portrait/);
+  assert.match(page, /\.otb-page\s*\{[\s\S]*width:\s*8\.5in;[\s\S]*height:\s*14in;/);
+  assert.match(shell, /pageSize === 'legal' \? 'legal portrait'/);
+});
+test('Document Notifications exposes a send email action backed by an authenticated route', () => {
+  const page = read('CLIENT/SYSTEM/src/pages/System/Notifications.jsx');
+  const router = read('SERVER/SYSTEM/routers/System/notifications.routers.js');
+  const controller = read('SERVER/SYSTEM/controllers/System/notifications.controller.js');
+
+assert.match(page, /Send Client Email/);
+  assert.match(page, /notifications\/documents\/\$\{listingId\}\/\$\{clientProfileId\}\/send/);
+  assert.match(router, /documents\/:listingId\/:clientProfileId\/send/);
+  assert.match(controller, /export const sendDocumentNotification/);
+  assert.match(controller, /buildMissingDocumentsPdfBuffer/);
+  assert.match(controller, /contentType:\s*'application\/pdf'/);
+});
+
+test('Payment and document notification emails use the configured hosted Cloudinary logo', () => {
+  const controller = read('SERVER/SYSTEM/controllers/System/notifications.controller.js');
+  const envExample = read('SERVER/SYSTEM/.env.example');
+
+  assert.match(controller, /process\.env\.EMAIL_LOGO_URL/);
+  assert.match(controller, /getEmailLogoUrl\(\)/);
+  assert.match(controller, /<img src=\"\$\{escapeHtml\(getEmailLogoUrl\(\)\)\}/);
+  assert.doesNotMatch(controller, /EMAIL_LOGO_CID/);
+  assert.match(controller, /buildBrandedEmailHtml/);
+  assert.match(envExample, /EMAIL_LOGO_URL=https:\/\/res\.cloudinary\.com\/dvazrmgq9\/image\/upload\/v1784705909\/logo-mobile_2_i0damo\.png/);
+});
+
+test('Missing document requirements attachment is a valid PDF buffer', () => {
+  const buffer = buildMissingDocumentsPdfBuffer({
+    buyerName: 'Sample Buyer',
+    projectName: 'Bailen Project',
+    unitId: 'LA-0001',
+    missingDocuments: ["BUYER'S INFORMATION FORM", 'INTENT TO BUY'],
+    rejectedDocuments: ['CLIENT REGISTRATION FORM'],
+  });
+
+  assert.ok(Buffer.isBuffer(buffer));
+  assert.equal(buffer.subarray(0, 4).toString('latin1'), '%PDF');
+  assert.ok(buffer.length > 1000);
+});
+
+
+const tinyJpeg = Buffer.from(
+  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/AYf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/AYf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Aqf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/Iaf/2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z',
+  'base64'
+);
+
+test('PDF attachments embed the configured logo instead of always drawing the fallback mark', () => {
+  const controller = read('SERVER/SYSTEM/controllers/System/notifications.controller.js');
+  const buffer = buildMissingDocumentsPdfBuffer({
+    buyerName: 'Sample Buyer',
+    projectName: 'Bailen Project',
+    unitId: 'LA-0001',
+    missingDocuments: ['Document 1'],
+    logoImage: { content: tinyJpeg },
+  });
+  const pdfText = buffer.toString('latin1');
+
+  assert.match(controller, /getCloudinaryJpegUrl/);
+  assert.match(controller, /const pdfLogoImage = await getPdfLogoImage\(\)/);
+  assert.match(controller, /logoImage: pdfLogoImage/);
+  assert.match(pdfText, /\/Subtype \/Image/);
+  assert.match(pdfText, /\/Logo Do/);
+});
+
+test('Missing-document numbering continues across both PDF columns', () => {
+  const documents = Array.from({ length: 14 }, (_, index) => `Required Document ${index + 1}`);
+  const buffer = buildMissingDocumentsPdfBuffer({
+    buyerName: 'Sample Buyer',
+    projectName: 'Prime Enclave Project',
+    unitId: 'PE-0103',
+    missingDocuments: documents,
+  });
+  const pdfText = buffer.toString('latin1');
+
+  assert.match(pdfText, /\(1\.\) Tj/);
+  assert.match(pdfText, /\(7\.\) Tj/);
+  assert.match(pdfText, /\(8\.\) Tj/);
+  assert.match(pdfText, /\(14\.\) Tj/);
+});
+
+
+

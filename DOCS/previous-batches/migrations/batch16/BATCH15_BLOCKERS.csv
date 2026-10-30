@@ -1,0 +1,19 @@
+blocker_id,severity,system,finding,required_fix,acceptance_evidence,status
+B15-01,CRITICAL,All,Full Git checkout and production-aligned commit not verified,Pin commit and recover binary media/install lockfiles,Build and test logs on clean checkout,OPEN
+B15-02,CRITICAL,All,Database backup restore never executed in isolated TiDB,Restore and verify source snapshot,Restore log and row checksum signoff,OPEN
+B15-03,CRITICAL,HR,HR backend explicitly rejects NODE_ENV=production,Replace staging guard only after HR production certification,Approved HR prod startup with authentication and smoke tests,OPEN
+B15-04,CRITICAL,HR,HR 17-table copy and user/setting/audit reconciliation not run,Execute Batch 9 staging migration and final delta sync,Row counts checksums actor mapping and payroll reports,OPEN
+B15-05,CRITICAL,Realty,Realty finance currently retains legacy direct employee_payrolls and employee_cash_advances SQL,Activate transferred salary mode only after reconciled backfill,No legacy table references and equal financial totals,OPEN
+B15-06,CRITICAL,Realty,Realty Seller Network import/undo still accesses employees table,Replace direct writes with HR-approved mapping process,Import and undo staging tests with HR DB unavailable,OPEN
+B15-07,CRITICAL,Payroll,Salary corrections reversals cash advances unresolved,Approve movement policy and implement versioned correction events,Reversal and mismatch end-to-end financial tests,OPEN
+B15-08,HIGH,HR,Cloudinary payroll signed receipts and webhook routes not verified,Move protected storage access and verify file links,Authorized access and scan callbacks plus historical receipt verification,OPEN
+B15-09,HIGH,HR,Old attendance scheduler and all legacy writes not proven disabled,Rehearse freeze and verify DB grants/no duplicate jobs,Execution logs and denial checks,OPEN
+B15-10,CRITICAL,Finance,Real Finance TiDB migrations and API/E2E import tests not executed,Deploy isolated staging with actual dependencies and DB migrations,SQL run logs authenticated test runs and real XLSX/ZIP roundtrip,OPEN
+B15-11,CRITICAL,Finance,Export v1 lacks correction/reversal propagation,Introduce approved v2 or formally restrict unresolved cases,Corrections and retries reconcile in both systems,OPEN
+B15-12,HIGH,Finance,Finance launch lacks externally approved export parity,Reconcile independent ledger and approved Realty source export,Line-level and aggregate signed parity report,OPEN
+B15-13,HIGH,Public Website,Separate website application remains scaffold only,Extract frontend while preserving public buyer form Realty API,Website build visual and buyer form smoke tests,OPEN
+B15-14,HIGH,All,Full regression produced 19 failing items with missing modules/assets,Run clean full checkout test suite and review all failures,Zero unexplained baseline failures and full asset inventory,OPEN
+B15-15,HIGH,All,Security and production credentials independently unverified,Test role access CORS CSRF cookies secrets DB grants and rollback,Security acceptance and DBA deployment evidence,OPEN
+B15-16,HIGH,All,Historical audit/report retention and deletion policy not approved,Set retention/legal hold and table-specific owner approval,Signed destruction inventory and restore checkpoint,OPEN
+B15-17,MEDIUM,Workspace,Old Batch 4 checker assumes new apps remain empty placeholders,Apply Batch 15 verifier update and align package naming,Combined workspace checker pass,PREPARED_NOT_MERGED
+B15-18,MEDIUM,HR,Old isolation scanner treated authorized historical migration source reads as runtime leaks,Apply Batch 15 runtime-only checker and separately review migration scripts,HR runtime isolation pass plus DBA-reviewed migration,PREPARED_NOT_MERGED

@@ -1,0 +1,115 @@
+{
+  "schema": "dc_prime_hr_db",
+  "source_database": "dc_prime_realty_system_db",
+  "source_sql_sha256": "31659bb24ca833bb761dabd9e837d18cbc4c25970d123ec435058844f9a25ea4",
+  "original_tables": {
+    "attendance_day_settings": {
+      "columns": 7,
+      "hrFks": 0,
+      "userFks": 1
+    },
+    "attendance_event_participants": {
+      "columns": 4,
+      "hrFks": 2,
+      "userFks": 0
+    },
+    "attendance_events": {
+      "columns": 15,
+      "hrFks": 0,
+      "userFks": 2
+    },
+    "employee_attendance_corrections": {
+      "columns": 9,
+      "hrFks": 1,
+      "userFks": 1
+    },
+    "employee_attendance_records": {
+      "columns": 26,
+      "hrFks": 1,
+      "userFks": 2
+    },
+    "employee_barcode_sequences": {
+      "columns": 5,
+      "hrFks": 0,
+      "userFks": 0
+    },
+    "employee_cash_advance_deductions": {
+      "columns": 10,
+      "hrFks": 2,
+      "userFks": 1
+    },
+    "employee_cash_advances": {
+      "columns": 17,
+      "hrFks": 1,
+      "userFks": 3
+    },
+    "employee_employment_history": {
+      "columns": 19,
+      "hrFks": 2,
+      "userFks": 2
+    },
+    "employee_payroll_corrections": {
+      "columns": 8,
+      "hrFks": 1,
+      "userFks": 1
+    },
+    "employee_payroll_periods": {
+      "columns": 15,
+      "hrFks": 0,
+      "userFks": 1
+    },
+    "employee_payroll_settings": {
+      "columns": 17,
+      "hrFks": 0,
+      "userFks": 1
+    },
+    "employee_payroll_signed_receipts": {
+      "columns": 22,
+      "hrFks": 2,
+      "userFks": 0
+    },
+    "employee_payrolls": {
+      "columns": 78,
+      "hrFks": 2,
+      "userFks": 0
+    },
+    "employee_rest_day_assignments": {
+      "columns": 9,
+      "hrFks": 1,
+      "userFks": 2
+    },
+    "employee_work_schedules": {
+      "columns": 9,
+      "hrFks": 1,
+      "userFks": 0
+    },
+    "employees": {
+      "columns": 27,
+      "hrFks": 0,
+      "userFks": 3
+    }
+  },
+  "hr_owned_settings": [
+    "attendance_default_time_out",
+    "attendance_scheduled_time_in",
+    "attendance_scheduled_time_out",
+    "attendance_break_start",
+    "attendance_break_minutes",
+    "attendance_regular_work_minutes",
+    "attendance_late_after",
+    "attendance_red_highlight_after",
+    "employee_departments_json",
+    "employee_department_codes_json"
+  ],
+  "script_order": [
+    "01_create_database.sql",
+    "02_hr_identity_and_access.sql",
+    "03_hr_business_schema.sql",
+    "04_hr_support_schema.sql"
+  ],
+  "preflight": [
+    "05_source_readonly_preflight.sql",
+    "06_target_readonly_verification.sql"
+  ],
+  "legacy_identity_id_policy": "Preserve existing numeric IDs during Batch 9 staging copy; reserve all new HR account writes until legacy actors are seeded; independent auth credentials only."
+}

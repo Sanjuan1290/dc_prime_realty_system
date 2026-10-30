@@ -1,0 +1,102 @@
+# Database migrations
+
+These files are historical schema/data migrations for existing D&C Prime Realty databases. Keep them in source control even when the current database already contains the resulting columns or data fixes: they document the upgrade path used by older deployments.
+
+## Order
+
+Apply unapplied migrations in filename/date order. Always back up the database first and read each migration header before running it.
+
+## Important distinctions
+
+- `20260718_direct_agent_overrides.sql` is the original direct-agent commission migration.
+- `20260718_direct_agent_overrides_repair.sql` is a resumable repair for databases where the original migration stopped part-way. It is not a duplicate replacement.
+- `20260803_payment_soa_transaction_safety.sql` adds payment/SOA request-key safety.
+- `20260803_financial_transaction_hardening.sql` adds additional uniqueness and financial-transaction safeguards. It is not a duplicate of the payment/SOA migration.
+
+## Verification scripts
+
+Read-only verification SQL does not belong in this migration directory. It lives under `server/scripts/` instead.
+
+Current verification script moved there:
+
+- `server/scripts/verify-downpayment-amount-mode.sql`
+
+That script checks the downpayment amount-mode schema and does not modify data.
+
+## Final Double-Check refactor
+
+The client Final Double-Check refactor does not require a database migration.
+
+## Storage-code and canonical-file migration
+
+`20260810_storage_codes_and_canonical_file_names.sql` adds permanent storage identifiers used by protected Cloudinary assets:
+
+- project storage codes such as `PRJ-LA-001`
+- listing storage codes such as `LST-000042`
+- permanent Document Library codes such as `DOC-ITB`
+- payment storage codes such as `PAY-2026-000061`
+- canonical document version/sequence metadata and payment-proof sequence metadata
+
+Apply this SQL migration before running `npm run migrate:cloudinary-documents`. The Cloudinary script is dry-run by default; only `--apply` changes remote assets/database file metadata.
+
+- `20260907_attendance_settings_and_secure_barcodes.sql` — persistent Attendance Settings and separate secure 10-digit Attendance Barcodes.
+
+
+## 2026-09-26 — Payment notifications and cancellation access
+Run `20260926_payment_notifications_and_cancellation_access.sql` after the RBAC migrations. It adds the Add Payment email-notification toggle. The three new cancellation permissions default OFF for configurable roles and can be enabled from Role & Access Control.
+
+## 2026-10-05 Batch 5: Broker Name and Company Profit cap
+
+`20261005_batch5_broker_name_and_company_profit_cap.sql` drops the unique index on Broker Name (License No., Realty Name and PRC No. stay unique) and adds `system_settings.max_company_profit_percent_of_pool` (default 50).
+
+Run the read-only report `server/scripts/verify-company-profit-and-seller-identity.sql` before and after. It lists In-House Network rates above the new Company Profit cap, active sellers without a PRC No., and PRC/TIN numbers shared by more than one active seller. The new rules only apply when a Network or seller is next saved.
+
+Seller PRC/TIN uniqueness is enforced in the application (`server/services/sellerIdentity.service.js`) inside the save transaction, not by a database index, because PRC/TIN live on `users` while Network membership status lives on `accredited_sellers`.
+
+## 2026-10-05 Batch 6: review workflow fixes
+
+`20261005_batch6_workflow_responders_and_approval_types.sql` adds `operational_reviews.approval_type` and the Audit Case responder reassignment columns, and backfills existing Super Admin reviews as emergency changes so open Audit Cases on them can be answered. The two `ADD CONSTRAINT` statements are the only non-idempotent lines; on a re-run their duplicate-name error can be ignored.
+
+Every action that creates an Operational Review must be registered in `server/config/reviewActions.js` with its department. `createOperationalReview()` rejects unregistered keys.
+
+## 2026-10-06 Batch 7: Marketing Network review permissions
+
+`20261006_batch7_marketing_network_permissions.sql` adds the Network-management and in-house seller create/edit permission keys to the `marketing_staff` and `marketing_head` role defaults. It is TiDB-safe and idempotent through `INSERT ... ON DUPLICATE KEY UPDATE`.
+
+The migration **does not modify existing `user_permissions` rows**. After deployment, use **System > Settings > Role & Access Control > Apply Latest Role Default** for each existing Marketing Staff/Head account that should receive the new defaults. Head inheritance remains structural in the application.
+
+
+## 2026-10-06 Batch 8: role permission default cleanup
+
+`20261006_batch8_role_default_cleanup.sql` removes System Admin and Auditor role-default rows that sit outside their permission ceiling (including the 29 legacy Admin rows still stored for System Admin, which the application already ignored) and adds `system.data_integrity.view` to the System Admin default. Run it after Batch 7. It is idempotent and TiDB-safe.
+
+Role defaults customised in Role & Access Control are kept, and existing `user_permissions` rows are not changed. Use **Apply Latest Role Default** on existing System Admin accounts that should receive Data Integrity access.
+
+
+## 2026-10-06 Batch 9: seed missing role permission defaults
+
+`20261006_batch9_seed_missing_role_defaults.sql` seeds the recommended role templates into `role_permission_defaults`. A database built from a structure-only export never received the earlier seed migrations, which left every Staff role with 1 default permission and every Head with 5. Run it after Batch 8. It is idempotent and TiDB-safe.
+
+A role is seeded only if none of its rows were saved from Role & Access Control, and `INSERT IGNORE` never changes or removes an existing row. Existing `user_permissions` rows are not changed: use **Apply Latest Role Default** on any existing account that should receive the seeded defaults.
+
+## 2026-10-06 Batch 10: one permission model for every non-owner role
+
+`20261006_batch10_single_permission_model.sql` must run after Batch 9 and **together with the matching server release** (deploy the code and run the migration in the same window).
+
+Super Admin and System Admin now have full access. Every other account (Auditor, Staff, Head) holds exactly its stored permission rows; nothing is added at login any more. The migration converts the data so that no account gains or loses access in the switch:
+
+1. Removes stored rows the old rules silently ignored (outside a role's old limits), so they cannot become active.
+2. Stores the keys the old server added at login: each role's old Required keys, and for Heads the current Staff role default they inherited.
+3. Completes each role default into a full template (Head = Staff default + Head extras).
+4. Removes rows for System Admin accounts and the System Admin template, which now always have full access.
+
+It is idempotent (`INSERT IGNORE` only) and TiDB-safe. It was verified on a copy of the 2026-10-06 backup with one test account per role: every non-owner account and template kept exactly the same access; only System Admin changed, to full access.
+
+## 2026-10-06 Batch 13: Staff correction access to Review Center
+
+`20261006_batch13_staff_correction_review_center.sql` runs after Batch 12. It restores `workflow.review_center.view` for Department Staff role defaults **and existing Staff accounts** because returned corrections are now actionable from Review Center.
+
+Staff access remains server-scoped: **Needs My Action** contains only the current user's own `returned_for_correction` reviews, while **History & Tracking** contains only reviews that user originally entered. This migration does not grant Department Head, Auditor, or administrative workflow permissions to Staff.
+
+
+

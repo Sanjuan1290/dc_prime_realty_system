@@ -1,0 +1,1725 @@
+import { isOwnerAdministrator } from '../../../config/permissions.js';
+import bcrypt from 'bcrypt';
+import crypto from 'node:crypto';
+
+import {
+  db,
+  getErrorMessage,
+  slugify,
+  toNullable,
+  toNullableNumber,
+  toActiveStatus,
+  tableExists,
+  columnExists,
+  money,
+  plainDate,
+  formatDateTime,
+  toDisplayValue,
+  safeDeleteByProjectId,
+  normalizeProjectPayload,
+  getListingStatusLabel,
+  normalizeLotType,
+  lotTypeLabel,
+  normalizeListingStatusPayload,
+  formatDocumentsLabel,
+  mapListingRow,
+  mapProjectRows,
+  getProjectBySlug,
+  getProjectDefaultDocuments,
+  getProjectCadastralLots,
+  getListingLookupWhere,
+  computeAgeFromDate,
+  getClientCompletionStatus,
+  mapClientProfile,
+  canEditBuyerProfileForListing,
+  mapProfileListing,
+  getListingDocuments,
+  roundMoneyValue,
+  normalizeDateInput,
+  addMonthsToDate,
+  getOrdinalLabel,
+  getScheduleTotalDue,
+  appendPaymentReference,
+  getPaymentAmountValue,
+  createBalloonPrincipalRow,
+  getRowSortOrder,
+  sortComputedRows,
+  getComputedSoaTerms,
+  createComputedSoaRows,
+  getPaymentTargetRows,
+  allocatePaymentsToComputedRows,
+  recomputeComputedSoaBalances,
+  getExistingSoaScheduleRows,
+  getLatestActiveScheduleGenerationPredicate,
+  canGenerateListingSoa,
+  getListingSoaRows,
+  getRequestToken,
+  getAuthenticatedUser,
+  getUserFullName,
+  getListingForPayment,
+  normalizePaymentType,
+  getPaymentTypeLabel,
+  normalizePaymentMethod,
+  getNextCashReference,
+  mapPaymentRow,
+  getListingPayments,
+  recomputeListingScheduleBalances,
+  applyPaymentToSchedules,
+  reversePaymentAllocations,
+  getPaymentById,
+  dateOrNull,
+  parseMoneyValue,
+  cleanBuyerType,
+  cleanSecondBuyerRole,
+  addIfColumnExists,
+} from '../_shared/lotProject.shared.js';
+import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { PERMISSIONS, roleHasPermission } from '../../../config/permissions.js';
+import { buildAccountFinancialSnapshot } from '../../../services/accountFinancialSnapshot.service.js';
+import { buildAccountContext } from '../../../services/accountContext.service.js';
+import { reconcileCommission } from '../../../services/commissionReconciliation.service.js';
+import { sendEmail } from '../../../services/email.service.js';
+import {
+  buildUnitCommissionAdjustmentPayload,
+  normalizeUnitCommissionAdjustment,
+} from '../../../services/unitCommissionAdjustment.service.js';
+import {
+  hasReleasedCommissionActivity,
+  resolveCommissionBaseAmount,
+} from '../Commissions/commissionHierarchy.service.js';
+import { readBuyerFormStateForProfile } from '../BuyerForms/BuyerForms.controller.js';
+import {
+  hasBuyerFormSchema,
+  resetBuyerFormsForAvailable,
+  revokeOpenBuyerFormLinks,
+} from '../BuyerForms/buyerForm.shared.js';
+import { createProtectedChangeRequest, consumeProtectedChange } from '../../../services/protectedChange.service.js';
+import { assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js';
+import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js';
+
+const getColumnDefinition = async (connection, tableName, columnName) => {
+  const [rows] = await connection.query(
+    `SHOW COLUMNS FROM ${tableName} LIKE ?`,
+    [columnName]
+  );
+
+  return rows[0] || null;
+};
+
+const listingStatusAllowsHold = async (connection) => {
+  const column = await getColumnDefinition(connection, 'lot_project_listings', 'lot_project_listing_status');
+  return String(column?.Type || '').includes("'hold'");
+};
+
+
+const COMMISSION_ADJUSTMENT_ACTION = 'lot_project_commission_adjustment';
+const COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES = Math.max(
+  5,
+  Math.min(Number(process.env.DESTRUCTIVE_ACTION_CODE_EXPIRY_MINUTES || 10), 30)
+);
+const COMMISSION_ADJUSTMENT_CODE_MAX_ATTEMPTS = Math.max(
+  3,
+  Math.min(Number(process.env.DESTRUCTIVE_ACTION_MAX_ATTEMPTS || 5), 10)
+);
+
+const cleanCommissionAdjustmentValue = (value) => String(value ?? '').trim();
+const escapeCommissionAdjustmentHtml = (value = '') => cleanCommissionAdjustmentValue(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+const commissionAdjustmentRequestIp = (req) => cleanCommissionAdjustmentValue(
+  req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip
+).split(',')[0].trim();
+const maskCommissionAdjustmentEmail = (email = '') => {
+  const [local = '', domain = ''] = cleanCommissionAdjustmentValue(email).split('@');
+  if (!domain) return 'your account email';
+  return `${local.slice(0, 2)}${'*'.repeat(Math.max(local.length - 2, 3))}@${domain}`;
+};
+const commissionAdjustmentVerificationSecret = () => {
+  const secret = cleanCommissionAdjustmentValue(
+    process.env.DESTRUCTIVE_ACTION_CODE_SECRET ||
+    process.env.AUDIT_DELETE_CODE_SECRET ||
+    process.env.JWT_SECRET
+  );
+  if (!secret) {
+    throw Object.assign(
+      new Error('Set DESTRUCTIVE_ACTION_CODE_SECRET for sensitive commission verification.'),
+      { statusCode: 500 }
+    );
+  }
+  return secret;
+};
+const hashCommissionAdjustmentCode = (code) => crypto
+  .createHmac('sha256', commissionAdjustmentVerificationSecret())
+  .update(cleanCommissionAdjustmentValue(code))
+  .digest('hex');
+const commissionAdjustmentCodeMatches = (code, expected) => {
+  const actual = Buffer.from(hashCommissionAdjustmentCode(code), 'hex');
+  const expectedBuffer = Buffer.from(cleanCommissionAdjustmentValue(expected), 'hex');
+  return actual.length === expectedBuffer.length && crypto.timingSafeEqual(actual, expectedBuffer);
+};
+const roundCommissionRateValue = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 10000) / 10000;
+
+const hashCommissionAdjustmentPayload = (payload) => crypto
+  .createHash('sha256')
+  .update(JSON.stringify(payload))
+  .digest('hex');
+
+const sendCommissionAdjustmentCodeEmail = async ({
+  to,
+  name,
+  code,
+  unitId,
+  accountReference,
+  groupRate,
+  allocatedRate,
+  reason,
+}) => {
+  const companyName = cleanCommissionAdjustmentValue(process.env.COMPANY_NAME) || 'D&C Prime Realty';
+  const safeCompanyName = escapeCommissionAdjustmentHtml(companyName);
+  const safeName = escapeCommissionAdjustmentHtml(name || 'Super Admin');
+  const safeUnitId = escapeCommissionAdjustmentHtml(unitId);
+  const safeAccountReference = escapeCommissionAdjustmentHtml(accountReference || '-');
+  const safeReason = escapeCommissionAdjustmentHtml(reason);
+
+  await sendEmail({
+    to,
+    subject: `Unit commission adjustment code - ${unitId}`,
+    text: [
+      `Hello ${name || 'Super Admin'},`,
+      '',
+      `Your verification code is ${code}.`,
+      `Unit: ${unitId}`,
+      `Account: ${accountReference || '-'}`,
+      `Unit Network Distribution Rate: ${Number(groupRate || 0).toFixed(4)}%`,
+      `Allocated Rate: ${Number(allocatedRate || 0).toFixed(4)}%`,
+      `Reason: ${reason}`,
+      `The code expires in ${COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES} minutes.`,
+      '',
+      'Do not share this code. Ignore this email if you did not request this commission adjustment.',
+      '',
+      companyName,
+    ].join('\n'),
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#0f172a">
+        <h2>${safeCompanyName}</h2>
+        <p>Hello ${safeName},</p>
+        <p>Use this code to authorize the unit-level commission adjustment for <strong>${safeUnitId}</strong> (${safeAccountReference}).</p>
+        <div style="font-size:30px;font-weight:800;letter-spacing:8px;padding:18px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;text-align:center">${code}</div>
+        <p><strong>Unit Network Distribution Rate:</strong> ${Number(groupRate || 0).toFixed(4)}%<br/>
+        <strong>Allocated Rate:</strong> ${Number(allocatedRate || 0).toFixed(4)}%<br/>
+        <strong>Reason:</strong> ${safeReason}</p>
+        <p>This code expires in ${COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES} minutes.</p>
+        <p style="color:#991b1b"><strong>This changes the saved commission snapshot for this buyer account only. Group defaults are not changed.</strong></p>
+      </div>
+    `,
+  });
+};
+
+const getRowUnpaidAmount = (row = {}) => roundMoneyValue(
+  Math.max(getScheduleTotalDue(row) - Number(row.amountPaid || 0), 0)
+);
+
+const applyActualPaymentStateToListing = (listing = {}, soaRows = []) => {
+  if (!soaRows.length) return listing;
+
+  const lastRow = soaRows[soaRows.length - 1] || {};
+  const actualRemainingBalance = roundMoneyValue(Number(lastRow.endingBalance || 0));
+  const unpaidScheduledDue = roundMoneyValue(
+    soaRows.reduce((sum, row) => sum + getRowUnpaidAmount(row), 0)
+  );
+  const paymentCount = Number(listing.payment_count || listing.paymentCount || 0);
+  const isFullyPaid = actualRemainingBalance <= 0.009 && unpaidScheduledDue <= 0.009 && paymentCount > 0;
+
+  const nextListing = {
+    ...listing,
+    balance: money(actualRemainingBalance),
+    balanceAmount: actualRemainingBalance,
+    unpaidScheduledDue,
+    payment_status: paymentCount === 0 ? 'Unpaid' : isFullyPaid ? 'Paid' : 'Partial',
+  };
+
+  if (isFullyPaid && String(nextListing.rawStatus || '').toLowerCase() === 'sold') {
+    nextListing.listing_status = 'Fully Paid';
+    nextListing.status = 'Fully Paid';
+    nextListing.soldSubstatus = 'fully_paid';
+  }
+
+  return nextListing;
+};
+
+
+const commissionRoleOrder = {
+  external_group: 0,
+  sales_agent: 1,
+  unit_manager: 2,
+  sales_director: 3,
+  division_manager: 4,
+};
+
+const formatCommissionRole = (role = '') =>
+  String(role || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+/**
+ * Loads all commission evidence for one unit. The lock option is used during
+ * recalculation so another request cannot release a stage while rows are being
+ * rebuilt.
+ */
+const loadListingCommissionSnapshot = async (
+  connection,
+  listingId,
+  { lock = false, clientProfileId = 0, accountId = 0 } = {}
+) => {
+  if (!(await tableExists(connection, 'lot_project_commissions'))) {
+    return { commissionRows: [], releaseRows: [], receiptRows: [] };
+  }
+
+  const [commissionRows] = await connection.query(
+    `
+      SELECT
+        c.*,
+        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS seller_name,
+        sg.seller_group_name,
+        TRIM(CONCAT_WS(' ', reports.first_name, reports.middle_name, reports.last_name)) AS reports_under
+      FROM lot_project_commissions c
+      LEFT JOIN accredited_sellers acs
+        ON acs.accredited_seller_id = c.accredited_seller_id
+      LEFT JOIN users u
+        ON u.id = acs.user_id
+      LEFT JOIN seller_groups sg
+        ON sg.seller_group_id = acs.seller_group_id
+      LEFT JOIN users reports
+        ON reports.id = acs.accredited_seller_reports_under_user_id
+      WHERE c.lot_project_listing_id = ?
+        AND (? = 0 OR c.lot_project_client_profile_id = ?)
+        AND (? = 0 OR c.lot_project_account_id = ? OR c.lot_project_account_id IS NULL)
+      ORDER BY
+        FIELD(c.commission_role, 'sales_agent', 'unit_manager', 'sales_director', 'division_manager'),
+        c.lot_project_commission_id
+      ${lock ? 'FOR UPDATE' : ''}
+    `,
+    [
+      listingId,
+      Number(clientProfileId || 0),
+      Number(clientProfileId || 0),
+      Number(accountId || 0),
+      Number(accountId || 0),
+    ]
+  );
+
+  const commissionIds = commissionRows.map((row) => Number(row.lot_project_commission_id));
+  let releaseRows = [];
+
+  if (
+    commissionIds.length &&
+    (await tableExists(connection, 'lot_project_commission_releases'))
+  ) {
+    const placeholders = commissionIds.map(() => '?').join(',');
+    const [rows] = await connection.query(
+      `
+        SELECT *
+        FROM lot_project_commission_releases
+        WHERE lot_project_commission_id IN (${placeholders})
+        ORDER BY
+          FIELD(release_stage, '1st Release', '2nd Release', '3rd Release', '4th Release', 'Retention'),
+          lot_project_commission_release_id
+        ${lock ? 'FOR UPDATE' : ''}
+      `,
+      commissionIds
+    );
+
+    releaseRows = rows;
+  }
+
+  let receiptRows = [];
+  if (await tableExists(connection, 'lot_project_commission_receipts')) {
+    const [rows] = await connection.query(
+      `
+        SELECT
+          lot_project_commission_receipt_id,
+          receipt_status,
+          total_amount,
+          reference_number,
+          receipt_date
+        FROM lot_project_commission_receipts
+        WHERE lot_project_listing_id = ?
+          AND (? = 0 OR lot_project_client_profile_id = ?)
+          AND (? = 0 OR lot_project_account_id = ? OR lot_project_account_id IS NULL)
+        ${lock ? 'FOR UPDATE' : ''}
+      `,
+      [
+        listingId,
+        Number(clientProfileId || 0),
+        Number(clientProfileId || 0),
+        Number(accountId || 0),
+        Number(accountId || 0),
+      ]
+    );
+
+    receiptRows = rows;
+  }
+
+  return { commissionRows, releaseRows, receiptRows };
+};
+
+const summarizeCommissionReleaseGuard = (snapshot = {}) => {
+  const commissionRows = snapshot.commissionRows || [];
+  const releaseRows = snapshot.releaseRows || [];
+  const receiptRows = snapshot.receiptRows || [];
+
+  const releasedAmount = roundMoneyValue(
+    commissionRows.reduce(
+      (sum, row) => sum + Number(row.released_commission_amount || 0),
+      0
+    )
+  );
+
+  const releasedCommissionCount = commissionRows.filter(
+    (row) =>
+      Number(row.released_commission_amount || 0) > 0 ||
+      ['Partially Released', 'Released'].includes(row.commission_status)
+  ).length;
+
+  const releasedStageCount = releaseRows.filter(
+    (row) =>
+      row.release_status === 'Released' ||
+      Boolean(row.actual_release_date) ||
+      Boolean(row.released_by_user_id)
+  ).length;
+
+  const receiptCount = receiptRows.length;
+
+  return {
+    commissionCount: commissionRows.length,
+    releasedAmount,
+    releasedCommissionCount,
+    releasedStageCount,
+    receiptCount,
+    hasReleasedActivity: hasReleasedCommissionActivity({
+      releasedAmount,
+      releasedCommissionCount,
+      releasedStageCount,
+      receiptCount,
+    }),
+  };
+};
+
+const buildCommissionAdjustmentState = ({
+  listingStatus,
+  clientProfileStatus,
+  assignedSellerId,
+  snapshot,
+} = {}) => {
+  const guard = summarizeCommissionReleaseGuard(snapshot);
+
+  if (String(listingStatus || '').toLowerCase() !== 'sold') {
+    return {
+      ...guard,
+      allowed: false,
+      reason: 'Commission adjustment is available only for a reserved or sold unit.',
+    };
+  }
+
+  if (
+    String(clientProfileStatus || '').toLowerCase() !== 'active' ||
+    !Number(assignedSellerId || 0)
+  ) {
+    return {
+      ...guard,
+      allowed: false,
+      reason: 'The unit does not have an active assigned seller.',
+    };
+  }
+
+  if (guard.commissionCount <= 0) {
+    return {
+      ...guard,
+      allowed: false,
+      reason: 'This reservation does not have a saved commission distribution to adjust.',
+    };
+  }
+
+  if (guard.hasReleasedActivity) {
+    return {
+      ...guard,
+      allowed: false,
+      reason:
+        'Commission adjustment is locked because a commission release or release receipt already exists.',
+    };
+  }
+
+  return {
+    ...guard,
+    allowed: true,
+    reason:
+      'No commission has been released. The saved rates for this buyer account can be adjusted without changing Group Settings.',
+  };
+};
+
+const getSnapshotCommissionStatus = (row = {}, releases = []) => {
+  const gross = Number(row.gross_commission_amount || row.grossCommission || 0);
+  const released = releases
+    .filter((release) => release.release_status === 'Released')
+    .reduce((sum, release) => sum + Number(release.net_release_amount || 0), 0);
+
+  if (row.commission_status === 'Cancelled') return 'Cancelled';
+  if (gross > 0 && released >= gross) return 'Released';
+  if (releases.some((release) => release.release_status === 'On Hold')) return 'On Hold';
+  if (releases.some((release) => release.release_status === 'Eligible')) return 'Eligible';
+  if (released > 0) return 'Partially Released';
+  return row.commission_status || 'Pending';
+};
+
+const mapCommissionSnapshotRows = (rows = [], releaseRows = []) => {
+  const releasesByCommission = releaseRows.reduce((map, release) => {
+    const commissionId = Number(release.lot_project_commission_id || 0);
+    if (!map.has(commissionId)) map.set(commissionId, []);
+    map.get(commissionId).push(release);
+    return map;
+  }, new Map());
+
+  return [...rows]
+    .sort(
+      (left, right) =>
+        (commissionRoleOrder[left.commission_role] || 99) -
+          (commissionRoleOrder[right.commission_role] || 99) ||
+        Number(left.lot_project_commission_id || 0) -
+          Number(right.lot_project_commission_id || 0)
+    )
+    .map((row) => {
+      const commissionId = Number(row.lot_project_commission_id || row.commissionId || 0);
+      const releases = releasesByCommission.get(commissionId) || [];
+      const grossCommission = Number(row.gross_commission_amount ?? row.grossCommission ?? 0);
+      const reconciliation = reconcileCommission({
+        grossCommission,
+        releases,
+        fallbackReleased: Number(row.released_commission_amount ?? row.releasedAmount ?? 0),
+      });
+      const releasedAmount = reconciliation.released;
+      const eligibleAmount = reconciliation.eligibleUnreleased;
+      const cashAdvanceDeduction = reconciliation.deductions;
+      const remainingAmount = reconciliation.remaining;
+
+      return {
+        commissionId,
+        accreditedSellerId: Number(row.accredited_seller_id || row.accreditedSellerId || 0),
+        sellerName:
+          row.seller_display_name_snapshot || row.seller_name || row.sellerName || '-',
+        role: row.commission_role || row.role || '-',
+        roleLabel: formatCommissionRole(row.commission_role || row.role),
+        sellerGroup:
+          row.seller_group_name_snapshot || row.seller_group_name || row.sellerGroup || '-',
+        reportsUnder: row.reports_under || row.reportsUnder || '-',
+        commissionBase: Number(row.commission_base_amount ?? row.commissionBase ?? 0),
+        rate: Number(row.commission_rate ?? row.rate ?? 0),
+        commissionType:
+          row.commission_rate_type === 'direct' || row.commission_seller_type === 'selling_agent'
+            ? 'Direct'
+            : 'Override',
+        grossCommission,
+        releasedAmount,
+        eligibleAmount,
+        cashAdvanceDeduction,
+        remainingAmount,
+        status: getSnapshotCommissionStatus(row, releases),
+        sellerType: row.commission_seller_type || row.sellerType || '-',
+        saleType: row.commission_sale_type || row.saleType || '-',
+      };
+    });
+};
+
+const getBuyerAccountStatusLabel = (status = '') => ({
+  active: 'Sold / Active',
+  pending_cancellation: 'Pending Cancellation',
+  cancelled: 'Cancelled',
+  closed_fully_paid: 'Fully Paid',
+  deletion_pending: 'Deletion Pending',
+}[String(status || '').trim().toLowerCase()] || 'Historical Account');
+
+export const getLotProjectListingProfile = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const requestedAccountId = Number(req.params.accountId || 0);
+    const isAccountRoute = Boolean(req.params.accountId);
+    const actor = req.authUser || req.user || {};
+    const canUsePrintouts = roleHasPermission(actor, PERMISSIONS.LOT_PRINTOUTS_USE);
+    const canViewPayments = roleHasPermission(actor, PERMISSIONS.LOT_PAYMENTS_VIEW) || canUsePrintouts;
+    const canViewDocuments = roleHasPermission(actor, PERMISSIONS.LOT_BUYER_DOCUMENTS_VIEW) || canUsePrintouts;
+    const canManageBuyerDocuments = roleHasPermission(actor, PERMISSIONS.LOT_BUYER_DOCUMENTS_UPDATE);
+    const canViewCommissions = roleHasPermission(actor, PERMISSIONS.LOT_COMMISSIONS_VIEW);
+    const project = await getProjectBySlug(slug);
+
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+    if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
+    if (isAccountRoute && (!Number.isInteger(requestedAccountId) || requestedAccountId <= 0)) {
+      return res.status(400).json({ message: 'A valid buyer account id is required.' });
+    }
+    if (!(await tableExists(connection, 'lot_project_listings'))) {
+      return res.status(500).json({ message: 'lot_project_listings table does not exist.' });
+    }
+
+    if (!(await tableExists(connection, 'lot_project_accounts'))) {
+      return res.status(500).json({ message: 'Buyer account migration is incomplete.' });
+    }
+
+    const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
+    const hasAnnualInterestRate = await columnExists(connection, 'lot_project_listings', 'annual_interest_rate');
+    const hasAssignedSellerColumn = await columnExists(connection, 'lot_project_client_profiles', 'assigned_accredited_seller_id');
+    const hasSellerPrcNo = await columnExists(connection, 'users', 'prc_no');
+    const hasSellerAddress = await columnExists(connection, 'users', 'address');
+    const lookup = getListingLookupWhere(listingLookup);
+
+    const cadastralSelect = hasListingCadastralLinks
+      ? `(
+          SELECT GROUP_CONCAT(c.lot_project_cadastral_lot_number ORDER BY c.lot_project_cadastral_lot_number SEPARATOR ', ')
+          FROM lot_project_listing_cadastral_lots lcl
+          INNER JOIN lot_project_cadastral_lot_numbers c
+            ON c.lot_project_cadastral_lot_number_id = lcl.lot_project_cadastral_lot_number_id
+          WHERE lcl.lot_project_listing_id = l.lot_project_listing_id
+        ) AS cadastral_lots,`
+      : `NULL AS cadastral_lots,`;
+
+    const annualInterestSelect = hasAnnualInterestRate ? 'l.annual_interest_rate,' : '0 AS annual_interest_rate,';
+    const sellerNameSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(TRIM(CONCAT_WS(' ', assignedSeller.first_name, assignedSeller.middle_name, assignedSeller.last_name)), ''), NULLIF(TRIM(CONCAT_WS(' ', seller.first_name, seller.middle_name, seller.last_name)), '')) AS seller_name,`
+      : `NULLIF(TRIM(CONCAT_WS(' ', seller.first_name, seller.middle_name, seller.last_name)), '') AS seller_name,`;
+    const sellerRoleSelect = hasAssignedSellerColumn
+      ? `COALESCE(assignedSeller.role, seller.role) AS seller_role,`
+      : `seller.role AS seller_role,`;
+    const sellerEmailSelect = hasAssignedSellerColumn
+      ? `COALESCE(assignedSeller.email, seller.email) AS seller_email,`
+      : `seller.email AS seller_email,`;
+    const sellerContactSelect = hasAssignedSellerColumn
+      ? `COALESCE(assignedSeller.contact_no, seller.contact_no) AS seller_contact_no,`
+      : `seller.contact_no AS seller_contact_no,`;
+    const sellerTinSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(assignedSeller.tin_no, ''), NULLIF(seller.tin_no, '')) AS seller_tin_no,`
+      : `NULLIF(seller.tin_no, '') AS seller_tin_no,`;
+    const sellerFirstNameSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(assignedSeller.first_name, ''), NULLIF(seller.first_name, '')) AS seller_first_name,`
+      : `NULLIF(seller.first_name, '') AS seller_first_name,`;
+    const sellerMiddleNameSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(assignedSeller.middle_name, ''), NULLIF(seller.middle_name, '')) AS seller_middle_name,`
+      : `NULLIF(seller.middle_name, '') AS seller_middle_name,`;
+    const sellerLastNameSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(assignedSeller.last_name, ''), NULLIF(seller.last_name, '')) AS seller_last_name,`
+      : `NULLIF(seller.last_name, '') AS seller_last_name,`;
+    const sellerPrcSelect = hasSellerPrcNo
+      ? (hasAssignedSellerColumn
+        ? `COALESCE(NULLIF(assignedSeller.prc_no, ''), NULLIF(seller.prc_no, '')) AS seller_prc_no,`
+        : `NULLIF(seller.prc_no, '') AS seller_prc_no,`)
+      : `NULL AS seller_prc_no,`;
+    const sellerAddressSelect = hasSellerAddress
+      ? (hasAssignedSellerColumn
+        ? `COALESCE(NULLIF(assignedSeller.address, ''), NULLIF(seller.address, '')) AS seller_address,`
+        : `NULLIF(seller.address, '') AS seller_address,`)
+      : `NULL AS seller_address,`;
+    const sellerGroupSelect = hasAssignedSellerColumn
+      ? `COALESCE(assignedSg.seller_group_name, sg.seller_group_name) AS seller_group_name,`
+      : `sg.seller_group_name AS seller_group_name,`;
+    const sellerStatusSelect = hasAssignedSellerColumn
+      ? `COALESCE(assignedAcs.accredited_seller_status, acs.accredited_seller_status) AS seller_status,`
+      : `acs.accredited_seller_status AS seller_status,`;
+    const sellerAccreditationSelect = hasAssignedSellerColumn
+      ? `COALESCE(assignedAcs.accredited_seller_accreditation_date, acs.accredited_seller_accreditation_date) AS seller_accreditation_date,`
+      : `acs.accredited_seller_accreditation_date AS seller_accreditation_date,`;
+    const reportsUnderSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(TRIM(CONCAT_WS(' ', assignedReports.first_name, assignedReports.middle_name, assignedReports.last_name)), ''), NULLIF(TRIM(CONCAT_WS(' ', sellerReports.first_name, sellerReports.middle_name, sellerReports.last_name)), '')) AS reports_under,`
+      : `NULLIF(TRIM(CONCAT_WS(' ', sellerReports.first_name, sellerReports.middle_name, sellerReports.last_name)), '') AS reports_under,`;
+    const assignedUserSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(TRIM(CONCAT_WS(' ', assignedSeller.first_name, assignedSeller.middle_name, assignedSeller.last_name)), ''), NULLIF(TRIM(CONCAT_WS(' ', seller.first_name, seller.middle_name, seller.last_name)), '')) AS assigned_user_name`
+      : `NULLIF(TRIM(CONCAT_WS(' ', seller.first_name, seller.middle_name, seller.last_name)), '') AS assigned_user_name`;
+    const assignedSellerJoin = hasAssignedSellerColumn
+      ? `LEFT JOIN accredited_sellers assignedAcs ON assignedAcs.accredited_seller_id = cp.assigned_accredited_seller_id
+         LEFT JOIN users assignedSeller ON assignedSeller.id = assignedAcs.user_id
+         LEFT JOIN seller_groups assignedSg ON assignedSg.seller_group_id = assignedAcs.seller_group_id
+         LEFT JOIN users assignedReports ON assignedReports.id = assignedAcs.accredited_seller_reports_under_user_id`
+      : ``;
+
+    const selectedAccountJoin = isAccountRoute
+      ? `INNER JOIN lot_project_accounts current_account
+           ON current_account.lot_project_account_id = ?
+          AND current_account.lot_project_listing_id = l.lot_project_listing_id
+          AND current_account.lot_project_id = l.lot_project_id`
+      : `LEFT JOIN lot_project_accounts current_account
+           ON current_account.lot_project_account_id = l.current_account_id`;
+    const selectedAccountParams = isAccountRoute ? [requestedAccountId] : [];
+
+    const [rows] = await connection.query(
+      `
+        SELECT
+          l.*,
+          ${annualInterestSelect}
+          ${cadastralSelect}
+          cp.*,
+          current_account.lot_project_account_id,
+          current_account.account_reference,
+          current_account.account_status,
+          current_account.buyer_name_snapshot,
+          current_account.unit_id_snapshot,
+          current_account.reservation_date,
+          current_account.cancellation_date,
+          current_account.closed_at,
+          current_account.cancellation_reason AS account_cancellation_reason,
+          current_account.settlement_notes AS account_settlement_notes,
+          payment_summary.total_paid,
+          payment_summary.payment_count,
+          payment_summary.latest_payment_date,
+          payment_summary.latest_payment_amount,
+          cancellation_history.cancellation_refund_type,
+          COALESCE(cancellation_history.cancellation_reason, current_account.cancellation_reason) AS cancellation_reason,
+          COALESCE(cancellation_history.cash_collected_at_cancellation, current_account.cash_collected_at_cancellation) AS cash_collected_at_cancellation,
+          COALESCE(cancellation_history.refund_amount, current_account.refund_amount) AS refund_amount,
+          COALESCE(cancellation_history.discontinued_amount, current_account.discontinued_amount) AS discontinued_amount,
+          cancellation_history.refund_date,
+          cancellation_history.refund_reference,
+          COALESCE(cancellation_history.cancellation_settlement_notes, current_account.settlement_notes) AS cancellation_settlement_notes,
+          cancellation_history.released_commission_amount_at_cancellation,
+          cancellation_history.cancelled_at,
+          cancellation_history.sale_data_archived_at,
+          COALESCE(cp.soa_first_due_date, schedule_summary.first_due_date) AS first_due_date,
+          ${sellerNameSelect}
+          ${sellerRoleSelect}
+          ${sellerEmailSelect}
+          ${sellerContactSelect}
+          ${sellerTinSelect}
+          ${sellerFirstNameSelect}
+          ${sellerMiddleNameSelect}
+          ${sellerLastNameSelect}
+          ${sellerPrcSelect}
+          ${sellerAddressSelect}
+          ${sellerGroupSelect}
+          ${sellerStatusSelect}
+          ${sellerAccreditationSelect}
+          ${reportsUnderSelect}
+          commission.commission_rate,
+          commission.gross_commission_amount,
+          commission.released_commission_amount AS released_amount,
+          commission.commission_status,
+          ${assignedUserSelect}
+        FROM lot_project_listings l
+        ${selectedAccountJoin}
+        LEFT JOIN lot_project_client_profiles cp
+          ON cp.lot_project_client_profile_id = current_account.lot_project_client_profile_id
+        LEFT JOIN (
+          SELECT
+            lot_project_account_id,
+            COALESCE(SUM(lot_project_payment_amount), 0) AS total_paid,
+            COUNT(*) AS payment_count,
+            MAX(lot_project_payment_date) AS latest_payment_date,
+            SUBSTRING_INDEX(GROUP_CONCAT(lot_project_payment_amount ORDER BY lot_project_payment_date DESC, lot_project_payment_id DESC), ',', 1) AS latest_payment_amount
+          FROM lot_project_payments
+          WHERE lot_project_payment_status = 'Verified'
+          GROUP BY lot_project_account_id
+        ) payment_summary ON payment_summary.lot_project_account_id = current_account.lot_project_account_id
+        LEFT JOIN (
+          SELECT
+            lot_project_account_id,
+            COALESCE(
+              MIN(CASE WHEN schedule_status IN ('Unpaid', 'Partial') AND LOWER(description) NOT LIKE '%reservation%' THEN due_date END),
+              MIN(CASE WHEN LOWER(description) LIKE '%downpayment%' THEN due_date END),
+              MIN(CASE WHEN LOWER(description) LIKE '%monthly%' THEN due_date END),
+              MIN(due_date)
+            ) AS first_due_date
+          FROM lot_project_payment_schedules schedule_row
+          WHERE ${getLatestActiveScheduleGenerationPredicate('schedule_row')}
+          GROUP BY lot_project_account_id
+        ) schedule_summary ON schedule_summary.lot_project_account_id = current_account.lot_project_account_id
+        LEFT JOIN lot_project_reservation_history cancellation_history
+          ON cancellation_history.lot_project_reservation_history_id = current_account.lot_project_reservation_history_id
+
+        LEFT JOIN (
+          SELECT
+            lot_project_account_id,
+            lot_project_client_profile_id,
+            CAST(SUBSTRING_INDEX(
+              GROUP_CONCAT(
+                accredited_seller_id
+                ORDER BY FIELD(commission_seller_type, 'selling_agent', 'main_seller', 'hierarchy_seller'), lot_project_commission_id
+                SEPARATOR ','
+              ),
+              ',',
+              1
+            ) AS UNSIGNED) AS accredited_seller_id,
+            SUM(commission_rate) AS commission_rate,
+            SUM(gross_commission_amount) AS gross_commission_amount,
+            SUM(released_commission_amount) AS released_commission_amount,
+            CASE
+              WHEN SUM(commission_status = 'Cancelled') = COUNT(*) THEN 'Cancelled'
+              WHEN SUM(commission_status = 'On Hold') > 0 THEN 'On Hold'
+              WHEN SUM(commission_status = 'Released') = COUNT(*) THEN 'Released'
+              WHEN SUM(commission_status IN ('Released', 'Partially Released')) > 0 THEN 'Partially Released'
+              WHEN SUM(commission_status = 'Eligible') > 0 THEN 'Eligible'
+              ELSE 'Pending'
+            END AS commission_status
+          FROM lot_project_commissions
+          GROUP BY lot_project_account_id, lot_project_client_profile_id
+        ) commission ON commission.lot_project_account_id = current_account.lot_project_account_id
+        ${assignedSellerJoin}
+        LEFT JOIN accredited_sellers acs ON acs.accredited_seller_id = commission.accredited_seller_id
+        LEFT JOIN users seller ON seller.id = acs.user_id
+        LEFT JOIN seller_groups sg ON sg.seller_group_id = acs.seller_group_id
+        LEFT JOIN users sellerReports ON sellerReports.id = acs.accredited_seller_reports_under_user_id
+        WHERE l.lot_project_id = ?
+          AND ${lookup.sql}
+        LIMIT 1
+      `,
+      [...selectedAccountParams, project.lot_project_id, ...lookup.params]
+    );
+
+    const row = rows[0];
+    if (!row) {
+      return res.status(404).json({
+        message: isAccountRoute ? 'Buyer account not found for this listing.' : 'Listing not found.',
+      });
+    }
+
+    const selectedAccountId = Number(row.lot_project_account_id || 0);
+    const readOnly = Boolean(
+      isAccountRoute && Number(row.current_account_id || 0) !== selectedAccountId
+    );
+    const accountContext = buildAccountContext({ account: row, listing: row, readOnly });
+    row.isHistoricalEntry = accountContext.isHistoricalEntry;
+    row.isAccountHistory = accountContext.isAccountHistory;
+
+    const documents = canViewDocuments
+      ? await getListingDocuments(
+          connection,
+          project.lot_project_id,
+          row.lot_project_listing_id,
+          row.lot_project_client_profile_id,
+          slug,
+          selectedAccountId
+        )
+      : [];
+    const payments = canViewPayments
+      ? await getListingPayments(
+          connection,
+          project.lot_project_id,
+          row.lot_project_listing_id,
+          row.lot_project_client_profile_id,
+          selectedAccountId
+        )
+      : [];
+    const soaRows = canViewPayments
+      ? await getListingSoaRows(
+          connection,
+          project.lot_project_id,
+          row.lot_project_listing_id,
+          row,
+          payments,
+          { accountId: selectedAccountId, readOnly }
+        )
+      : [];
+    const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
+    const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
+    let companyAddress = '';
+    if (await tableExists(connection, 'system_settings')) {
+      const [companyRows] = await connection.query(
+        `
+          SELECT company_address
+          FROM system_settings
+          WHERE system_setting_id = 1
+          LIMIT 1
+        `
+      );
+      companyAddress = String(companyRows[0]?.company_address || '').trim();
+    }
+    let buyerForm = { currentLink: null, latestSubmission: null, pendingSubmission: null };
+    if (canViewDocuments || canManageBuyerDocuments) {
+      try {
+        buyerForm = await readBuyerFormStateForProfile(connection, row.lot_project_listing_id, row.lot_project_account_id);
+      } catch (buyerFormError) {
+        buyerForm = {
+          currentLink: null,
+          latestSubmission: null,
+          pendingSubmission: null,
+          migrationRequired: true,
+          message: buyerFormError?.message || 'Buyer form migration is required.',
+        };
+      }
+    }
+    const commissionSnapshot = canViewCommissions
+      ? await loadListingCommissionSnapshot(
+          connection,
+          row.lot_project_listing_id,
+          {
+            clientProfileId: row.lot_project_client_profile_id,
+            accountId: selectedAccountId,
+          }
+        )
+      : { commissionRows: [], releaseRows: [] };
+    const savedCommissionHierarchy = mapCommissionSnapshotRows(
+      commissionSnapshot.commissionRows,
+      commissionSnapshot.releaseRows
+    );
+    const fallbackCommissionBase = resolveCommissionBaseAmount(row);
+    const savedCommissionBase = savedCommissionHierarchy.find((item) => Number(item.commissionBase || 0) > 0)?.commissionBase || 0;
+    const commissionAdjustment = {
+      ...buildCommissionAdjustmentState({
+        listingStatus: row.lot_project_listing_status,
+        clientProfileStatus: row.lot_project_client_profile_status,
+        assignedSellerId: row.assigned_accredited_seller_id,
+        snapshot: commissionSnapshot,
+      }),
+      currentHierarchy: savedCommissionHierarchy,
+      commissionBase: roundMoneyValue(savedCommissionBase > 0 ? savedCommissionBase : fallbackCommissionBase),
+      groupRate: roundCommissionRateValue(
+        savedCommissionHierarchy.reduce((sum, item) => sum + Number(item.rate || 0), 0)
+      ),
+      hasInvalidSnapshot: savedCommissionHierarchy.some((item) =>
+        Number(item.commissionBase || 0) <= 0 || Number(item.rate || 0) <= 0 || Number(item.grossCommission || 0) <= 0
+      ),
+    };
+    const sellerName = row.seller_name || '-';
+    const hasSelectedClientProfile = Boolean(row.lot_project_client_profile_id);
+    const clientProfile = hasSelectedClientProfile
+      ? mapClientProfile(row, sellerName)
+      : { profileStatus: 'not_reserved', buyerType: 'single', seller: '-' };
+
+    let mappedListing = applyActualPaymentStateToListing(
+      mapProfileListing(row, project, documents),
+      soaRows
+    );
+
+    if (readOnly) {
+      const accountStatusLabel = getBuyerAccountStatusLabel(row.account_status);
+      mappedListing = {
+        ...mappedListing,
+        unit_id: row.unit_id_snapshot || mappedListing.unit_id,
+        unitCode: row.unit_id_snapshot || mappedListing.unitCode,
+        buyer_name: row.buyer_full_name || row.buyer_name_snapshot || mappedListing.buyer_name,
+        listing_status: accountStatusLabel,
+        status: accountStatusLabel,
+        rawStatus: row.account_status,
+        canEditBuyerProfile: false,
+        canUsePayments: true,
+        isHistoricalEntry: accountContext.isHistoricalEntry,
+        isAccountHistory: true,
+        accountId: selectedAccountId,
+        accountReference: row.account_reference,
+        accountStatus: row.account_status,
+      };
+    }
+
+    if (!canViewPayments) {
+      mappedListing = {
+        ...mappedListing,
+        balance: 'Restricted',
+        balanceAmount: null,
+      };
+    }
+
+    const financialSnapshot = canViewPayments
+      ? buildAccountFinancialSnapshot({
+          account: row,
+          listing: { ...row, ...mappedListing },
+          soaRows,
+          payments,
+          commissions: commissionSnapshot.commissionRows,
+          releases: commissionSnapshot.releaseRows,
+          readOnly,
+        })
+      : null;
+
+    return res.json({
+      success: true,
+      data: {
+        project: {
+          ...project,
+          id: project.lot_project_id,
+          name: project.lot_project_name,
+          slug: project.lot_project_slug,
+          location: project.lot_project_location,
+          locationCode: project.lot_project_location_code,
+          administrator: project.lot_project_administrator_name,
+          companyAddress,
+          cadastralLots,
+          defaultDocuments,
+        },
+        listing: {
+          ...mappedListing,
+          commissionAdjustment: canViewCommissions ? commissionAdjustment : null,
+          // Temporary compatibility alias for clients that still read the previous key.
+          commissionRecalculation: canViewCommissions ? commissionAdjustment : null,
+        },
+        account: selectedAccountId
+          ? {
+              id: selectedAccountId,
+              accountReference: row.account_reference,
+              status: row.account_status,
+              statusLabel: getBuyerAccountStatusLabel(row.account_status),
+              isCurrent: Number(row.current_account_id || 0) === selectedAccountId,
+              reservationDate: row.reservation_date,
+              cancellationDate: row.cancellation_date,
+              closedAt: row.closed_at,
+              buyerName: row.buyer_full_name || row.buyer_name_snapshot || '-',
+              unitId: row.unit_id_snapshot || row.lot_project_listing_unit_id,
+            }
+          : null,
+        readOnly,
+        financialSnapshot,
+        client: clientProfile,
+        soaRows,
+        payments,
+        documents,
+        buyerForm,
+      },
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+/**
+ * Rebuilds the commission rows for one unit from the assigned seller's current
+ * hierarchy. Existing released commissions are immutable and always block this
+ * operation.
+ */
+const loadCommissionAdjustmentContext = async (connection, req, { lock = false } = {}) => {
+  const slug = cleanCommissionAdjustmentValue(req.params.projectSlug);
+  const listingLookup = cleanCommissionAdjustmentValue(req.params.listingId);
+  const project = await getProjectBySlug(slug);
+
+  if (!project) throw Object.assign(new Error('Lot project not found.'), { statusCode: 404 });
+  if (!listingLookup) throw Object.assign(new Error('Listing id is required.'), { statusCode: 400 });
+
+  const lookup = getListingLookupWhere(listingLookup, 'l');
+  const [rows] = await connection.query(
+    `
+      SELECT
+        l.lot_project_listing_id,
+        l.lot_project_listing_unit_id,
+        l.lot_project_listing_status,
+        l.lot_project_listing_sold_substatus,
+        l.current_account_id,
+        l.lot_project_listing_area_sqm,
+        l.lot_project_listing_price_per_sqm,
+        l.lot_project_listing_installment_price_per_sqm,
+        l.lot_project_listing_cash_price_per_sqm,
+        l.lot_project_listing_net_selling_price,
+        l.lot_project_listing_tcp,
+        account.lot_project_account_id,
+        account.account_reference,
+        account.account_status,
+        cp.lot_project_client_profile_id,
+        cp.lot_project_client_profile_status,
+        cp.assigned_accredited_seller_id,
+        cp.sale_channel,
+        cp.soa_selected_base_selling_price,
+        cp.soa_selected_price_per_sqm,
+        cp.soa_selected_net_selling_price,
+        cp.soa_selected_tcp,
+        assignedAcs.accredited_seller_status AS assigned_seller_status,
+        assignedUser.status AS assigned_user_status,
+        TRIM(CONCAT_WS(' ', assignedUser.first_name, assignedUser.middle_name, assignedUser.last_name)) AS assigned_seller_name
+      FROM lot_project_listings l
+      INNER JOIN lot_project_accounts account
+        ON account.lot_project_account_id = l.current_account_id
+      INNER JOIN lot_project_client_profiles cp
+        ON cp.lot_project_client_profile_id = account.lot_project_client_profile_id
+      LEFT JOIN accredited_sellers assignedAcs
+        ON assignedAcs.accredited_seller_id = cp.assigned_accredited_seller_id
+      LEFT JOIN users assignedUser
+        ON assignedUser.id = assignedAcs.user_id
+      WHERE l.lot_project_id = ?
+        AND ${lookup.sql}
+      LIMIT 1
+      ${lock ? 'FOR UPDATE' : ''}
+    `,
+    [project.lot_project_id, ...lookup.params]
+  );
+
+  const listing = rows[0];
+  if (!listing) throw Object.assign(new Error('Listing or current buyer account not found.'), { statusCode: 404 });
+  if (String(listing.lot_project_listing_status || '').toLowerCase() !== 'sold') {
+    throw Object.assign(new Error('Only a reserved or sold unit can have its commission adjusted.'), { statusCode: 400 });
+  }
+  if (
+    !listing.lot_project_client_profile_id ||
+    String(listing.lot_project_client_profile_status || '').toLowerCase() !== 'active' ||
+    String(listing.account_status || '').toLowerCase() !== 'active'
+  ) {
+    throw Object.assign(new Error('The unit does not have an active current buyer account.'), { statusCode: 400 });
+  }
+  if (!Number(listing.assigned_accredited_seller_id || 0)) {
+    throw Object.assign(new Error('The unit does not have an assigned seller.'), { statusCode: 400 });
+  }
+  if (listing.assigned_seller_status !== 'active' || listing.assigned_user_status !== 'active') {
+    throw Object.assign(new Error('The assigned seller account is not active.'), { statusCode: 400 });
+  }
+
+  const snapshot = await loadListingCommissionSnapshot(
+    connection,
+    listing.lot_project_listing_id,
+    {
+      lock,
+      clientProfileId: listing.lot_project_client_profile_id,
+      accountId: listing.lot_project_account_id,
+    }
+  );
+  const state = buildCommissionAdjustmentState({
+    listingStatus: listing.lot_project_listing_status,
+    clientProfileStatus: listing.lot_project_client_profile_status,
+    assignedSellerId: listing.assigned_accredited_seller_id,
+    snapshot,
+  });
+  const currentRows = mapCommissionSnapshotRows(snapshot.commissionRows, snapshot.releaseRows);
+  const savedBase = currentRows.find((row) => Number(row.commissionBase || 0) > 0)?.commissionBase || 0;
+  const commissionBase = roundMoneyValue(savedBase > 0 ? savedBase : resolveCommissionBaseAmount(listing));
+
+  return { project, listing, snapshot, state, currentRows, commissionBase };
+};
+
+const normalizeCommissionAdjustmentRequest = (req, context) => {
+  const reason = cleanCommissionAdjustmentValue(req.body?.reason);
+  if (reason.length < 10) {
+    throw Object.assign(new Error('Enter an adjustment reason with at least 10 characters.'), { statusCode: 400 });
+  }
+  if (context.commissionBase <= 0) {
+    throw Object.assign(new Error('The saved sale does not have a valid commission base amount.'), { statusCode: 409 });
+  }
+
+  const adjustment = normalizeUnitCommissionAdjustment({
+    groupRate: req.body?.groupRate,
+    rates: req.body?.rates,
+    currentRows: context.currentRows,
+  });
+
+  return { reason, adjustment };
+};
+
+const getAdjustedCommissionPreview = (context, adjustment) => {
+  const rateByCommission = new Map(adjustment.rates.map((row) => [row.commissionId, row.rate]));
+  return context.currentRows.map((row) => {
+    const rate = Number(rateByCommission.get(Number(row.commissionId)) || 0);
+    const commissionBase = Number(row.commissionBase || 0) > 0
+      ? Number(row.commissionBase)
+      : context.commissionBase;
+    const grossCommission = roundMoneyValue(commissionBase * (rate / 100));
+    return {
+      ...row,
+      commissionBase,
+      rate,
+      grossCommission,
+      remainingAmount: Math.max(roundMoneyValue(grossCommission - Number(row.cashAdvanceDeduction || 0)), 0),
+    };
+  });
+};
+
+export const requestLotProjectListingCommissionAdjustmentCode = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const actor = req.authUser || await getAuthenticatedUser(req);
+    if (!actor?.id) return res.status(401).json({ message: 'Authentication is required.' });
+
+    await connection.beginTransaction();
+    const context = await loadCommissionAdjustmentContext(connection, req, { lock: true });
+    if (!context.state.allowed) {
+      await connection.rollback();
+      return res.status(409).json({ message: context.state.reason, data: { commissionAdjustment: context.state } });
+    }
+
+    const { reason, adjustment } = normalizeCommissionAdjustmentRequest(req, context);
+    const payload = buildUnitCommissionAdjustmentPayload({
+      listingId: context.listing.lot_project_listing_id,
+      accountId: context.listing.lot_project_account_id,
+      clientProfileId: context.listing.lot_project_client_profile_id,
+      groupRate: adjustment.groupRate,
+      rates: adjustment.rates,
+      reason,
+      userId: actor.id,
+    });
+    const entityId = Number(context.listing.lot_project_account_id);
+
+    if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+      const auditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
+        auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
+        entityType: 'lot_project_commission_account',
+        entityId,
+      });
+      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for this controlled commission correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
+      await assertEntityNotReviewLocked(connection, {
+        actor: req.authUser,
+        entityType: 'lot_project_commission_account',
+        entityId,
+        allowReviewId: auditCase.operational_review_id,
+      });
+      await connection.commit();
+      return res.json({ success: true, message: `${auditCase.case_number} authorizes this controlled commission correction.`, data: { status: 'approved', directCorrection: true, authorizationType: 'audit_case', auditCaseId: auditCase.audit_case_id, caseNumber: auditCase.case_number, before: context.currentRows, after: getAdjustedCommissionPreview(context, adjustment) } });
+    }
+
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: 'lot_project_commission_account', entityId });
+
+    if (actor.role === 'accounting_head') {
+      await connection.commit();
+      return res.json({ success: true, message: 'Accounting Head may apply this exact commission adjustment directly. It will be sent to the Auditor after saving.', data: { status: 'approved', directHeadApproval: true, authorizationType: 'department_head', before: context.currentRows, after: getAdjustedCommissionPreview(context, adjustment) } });
+    }
+
+    if (isOwnerAdministrator(actor)) {
+      const password = String(req.body?.password || '');
+      if (!password) throw Object.assign(new Error('Your password is required for emergency verification.'), { statusCode: 400 });
+      if (!actor.password_hash || !(await bcrypt.compare(password, actor.password_hash))) throw Object.assign(new Error('Your password is incorrect.'), { statusCode: 401 });
+      if (!actor.email) throw Object.assign(new Error('The Super Admin account must have an email address.'), { statusCode: 400 });
+      if (!(await tableExists(connection, 'destructive_action_verifications'))) throw Object.assign(new Error('Sensitive-action verification table is missing. Apply the latest database schema first.'), { statusCode: 500 });
+      const payloadHash = hashCommissionAdjustmentPayload(payload);
+      const code = String(crypto.randomInt(100000, 1000000));
+      await connection.query(`UPDATE destructive_action_verifications SET status='expired' WHERE user_id=? AND action_type=? AND status='pending'`, [actor.id, COMMISSION_ADJUSTMENT_ACTION]);
+      const [insertResult] = await connection.query(
+        `INSERT INTO destructive_action_verifications (user_id,action_type,entity_type,entity_id,code_hash,payload_hash,reason,attempt_count,max_attempts,expires_at,status,request_ip)
+         VALUES (?,?,'lot_project_account',?,?,?,?,0,?,DATE_ADD(NOW(), INTERVAL ? MINUTE),'pending',?)`,
+        [actor.id, COMMISSION_ADJUSTMENT_ACTION, String(entityId), hashCommissionAdjustmentCode(code), payloadHash, reason, COMMISSION_ADJUSTMENT_CODE_MAX_ATTEMPTS, COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES, commissionAdjustmentRequestIp(req)]
+      );
+      await sendCommissionAdjustmentCodeEmail({
+        to: actor.email, name: getUserFullName(actor), code,
+        unitId: context.listing.lot_project_listing_unit_id,
+        accountReference: context.listing.account_reference,
+        groupRate: adjustment.groupRate, allocatedRate: adjustment.allocatedRate, reason,
+      });
+      await connection.commit();
+      return res.json({ success: true, message: `Emergency verification code sent to ${maskCommissionAdjustmentEmail(actor.email)}.`, data: { verificationId: Number(insertResult.insertId), maskedEmail: maskCommissionAdjustmentEmail(actor.email), expiresInMinutes: COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES, emergency: true, before: context.currentRows, after: getAdjustedCommissionPreview(context, adjustment) } });
+    }
+
+    const approval = await createProtectedChangeRequest(connection, {
+      actor,
+      actionKey: 'commission.adjust_unit',
+      department: 'accounting',
+      projectId: context.project.lot_project_id,
+      entityType: 'lot_project_commission_account',
+      entityId,
+      entityLabel: `Unit ${context.listing.lot_project_listing_unit_id} — ${context.project.lot_project_name}`,
+      payload,
+      reason,
+    });
+    await writeAuditLog(connection, req, {
+      action: 'create', module: 'Review Center', entityType: 'protected_change_request', entityId: String(approval.requestId || entityId),
+      entityLabel: approval.requestNumber || context.listing.account_reference || String(entityId), title: 'Requested Accounting Head approval',
+      description: `Requested Head approval to adjust the saved unit commission for ${context.listing.lot_project_listing_unit_id}.`,
+      metadata: { approval, accountId: entityId, groupRate: adjustment.groupRate, rates: adjustment.rates },
+    });
+    await connection.commit();
+    return res.json({
+      success: true,
+      message: approval.status === 'approved' ? 'Accounting Head approval is already available.' : 'Approval request sent to the Accounting Head. Apply the exact adjustment after it is approved.',
+      data: { status: approval.status, approvalRequestId: approval.requestId, requestNumber: approval.requestNumber, expiresAt: approval.expiresAt, before: context.currentRows, after: getAdjustedCommissionPreview(context, adjustment) },
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(Number(error?.statusCode || 0) || 400).json({ code: error?.code, message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const adjustLotProjectListingCommission = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const actor = req.authUser || await getAuthenticatedUser(req);
+    if (!actor?.id) return res.status(401).json({ message: 'Authentication is required.' });
+
+    await connection.beginTransaction();
+    const context = await loadCommissionAdjustmentContext(connection, req, { lock: true });
+    if (!context.state.allowed) {
+      await connection.rollback();
+      return res.status(409).json({ message: context.state.reason, data: { commissionAdjustment: context.state } });
+    }
+    const { reason, adjustment } = normalizeCommissionAdjustmentRequest(req, context);
+    const payload = buildUnitCommissionAdjustmentPayload({
+      listingId: context.listing.lot_project_listing_id,
+      accountId: context.listing.lot_project_account_id,
+      clientProfileId: context.listing.lot_project_client_profile_id,
+      groupRate: adjustment.groupRate,
+      rates: adjustment.rates,
+      reason,
+      userId: actor.id,
+    });
+    const entityId = Number(context.listing.lot_project_account_id);
+    let authorization = null;
+    let allowReviewId = null;
+
+    if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+      const auditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
+        auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
+        entityType: 'lot_project_commission_account',
+        entityId,
+      });
+      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for this controlled commission correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
+      authorization = { type: 'audit_case', auditCase };
+      allowReviewId = auditCase.operational_review_id;
+    }
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: 'lot_project_commission_account', entityId, allowReviewId });
+
+    if (!authorization && actor.role === 'accounting_head') {
+      authorization = { type: 'department_head', headPreApprovedByUserId: actor.id };
+    }
+    if (!authorization && isOwnerAdministrator(actor)) {
+      const verificationId = Number(req.body?.verificationId || 0);
+      const code = cleanCommissionAdjustmentValue(req.body?.code);
+      if (!verificationId) return res.status(400).json({ message: 'Emergency verification request is required.' });
+      if (!/^\d{6}$/.test(code)) return res.status(400).json({ message: 'Enter the six-digit email verification code.' });
+      const expectedPayloadHash = hashCommissionAdjustmentPayload(payload);
+      const [verificationRows] = await connection.query(
+        `SELECT *, expires_at < NOW() AS is_expired FROM destructive_action_verifications
+         WHERE destructive_action_verification_id=? AND user_id=? AND action_type=? AND entity_type='lot_project_account' AND entity_id=? LIMIT 1 FOR UPDATE`,
+        [verificationId, actor.id, COMMISSION_ADJUSTMENT_ACTION, String(entityId)]
+      );
+      const verification = verificationRows[0];
+      if (!verification || verification.status !== 'pending') throw Object.assign(new Error('Verification request is no longer active.'), { statusCode: 400 });
+      if (Number(verification.is_expired || 0) === 1) {
+        await connection.query(`UPDATE destructive_action_verifications SET status='expired' WHERE destructive_action_verification_id=?`, [verificationId]);
+        await connection.commit();
+        return res.status(400).json({ message: 'This verification code has expired. Request a new code.' });
+      }
+      if (cleanCommissionAdjustmentValue(verification.payload_hash) !== expectedPayloadHash) {
+        await connection.query(`UPDATE destructive_action_verifications SET status='expired' WHERE destructive_action_verification_id=?`, [verificationId]);
+        await connection.commit();
+        return res.status(409).json({ message: 'The proposed commission changed after verification. Review the rates and request a new code.' });
+      }
+      const attemptCount = Number(verification.attempt_count || 0) + 1;
+      if (!commissionAdjustmentCodeMatches(code, verification.code_hash)) {
+        const status = attemptCount >= Number(verification.max_attempts || COMMISSION_ADJUSTMENT_CODE_MAX_ATTEMPTS) ? 'locked' : 'pending';
+        await connection.query(`UPDATE destructive_action_verifications SET attempt_count=?, status=? WHERE destructive_action_verification_id=?`, [attemptCount, status, verificationId]);
+        await connection.commit();
+        return res.status(status === 'locked' ? 429 : 401).json({ message: status === 'locked' ? 'Too many incorrect codes. Request a new verification code.' : 'Verification code is incorrect.' });
+      }
+      authorization = { type: 'emergency_super_admin', verificationId, attemptCount, headPreApprovedByUserId: actor.id };
+    }
+    if (!authorization) {
+      const approvalRequestId = Number(req.body?.approvalRequestId || req.body?.approval_request_id || 0);
+      if (!approvalRequestId) throw Object.assign(new Error('Accounting Head approval is required before this commission adjustment can be applied.'), { statusCode: 409, code: 'HEAD_APPROVAL_REQUIRED' });
+      const approval = await consumeProtectedChange(connection, {
+        requestId: approvalRequestId,
+        actor,
+        actionKey: 'commission.adjust_unit',
+        entityType: 'lot_project_commission_account',
+        entityId,
+        payload,
+      });
+      authorization = { type: 'head_approval', approvalRequestId, headPreApprovedByUserId: approval.reviewed_by_head_user_id };
+    }
+
+    const rateByCommission = new Map(adjustment.rates.map((row) => [row.commissionId, row.rate]));
+    const releasesByCommission = context.snapshot.releaseRows.reduce((map, release) => {
+      const commissionId = Number(release.lot_project_commission_id || 0);
+      if (!map.has(commissionId)) map.set(commissionId, []);
+      map.get(commissionId).push(release);
+      return map;
+    }, new Map());
+
+    for (const row of context.snapshot.commissionRows) {
+      const commissionId = Number(row.lot_project_commission_id || 0);
+      const rate = Number(rateByCommission.get(commissionId) || 0);
+      const commissionBase = Number(row.commission_base_amount || 0) > 0
+        ? Number(row.commission_base_amount)
+        : context.commissionBase;
+      const gross = roundMoneyValue(commissionBase * (rate / 100));
+      const releases = releasesByCommission.get(commissionId) || [];
+      let totalDeductions = 0;
+
+      for (const release of releases) {
+        const grossRelease = roundMoneyValue(gross * (Number(release.release_percent || 0) / 100));
+        const deduction = roundMoneyValue(Number(release.deduction_amount || 0));
+        if (deduction > grossRelease + 0.009) {
+          throw Object.assign(
+            new Error(`${formatCommissionRole(row.commission_role)} cannot be reduced to ${rate.toFixed(4)}% because an existing deduction is greater than the adjusted milestone amount.`),
+            { statusCode: 409 }
+          );
+        }
+        const netRelease = roundMoneyValue(Math.max(grossRelease - deduction, 0));
+        totalDeductions = roundMoneyValue(totalDeductions + deduction);
+        await connection.query(
+          `UPDATE lot_project_commission_releases
+           SET gross_release_amount = ?, net_release_amount = ?
+           WHERE lot_project_commission_release_id = ?`,
+          [grossRelease, netRelease, release.lot_project_commission_release_id]
+        );
+      }
+
+      const remaining = roundMoneyValue(Math.max(gross - totalDeductions, 0));
+      await connection.query(
+        `UPDATE lot_project_commissions
+         SET commission_base_amount = ?,
+             commission_rate = ?,
+             gross_commission_amount = ?,
+             released_commission_amount = 0,
+             net_remaining_commission_amount = ?,
+             lot_project_account_id = ?,
+             updated_at = NOW()
+         WHERE lot_project_commission_id = ?
+           AND lot_project_client_profile_id = ?`,
+        [
+          commissionBase,
+          rate,
+          gross,
+          remaining,
+          context.listing.lot_project_account_id,
+          commissionId,
+          context.listing.lot_project_client_profile_id,
+        ]
+      );
+    }
+
+    const updatedSnapshot = await loadListingCommissionSnapshot(
+      connection,
+      context.listing.lot_project_listing_id,
+      {
+        lock: true,
+        clientProfileId: context.listing.lot_project_client_profile_id,
+        accountId: context.listing.lot_project_account_id,
+      }
+    );
+    const updatedRows = mapCommissionSnapshotRows(updatedSnapshot.commissionRows, updatedSnapshot.releaseRows);
+    const updatedAllocatedRate = roundCommissionRateValue(updatedRows.reduce((sum, row) => sum + Number(row.rate || 0), 0));
+    if (!updatedRows.length || Math.abs(updatedAllocatedRate - adjustment.groupRate) > 0.0001) {
+      throw Object.assign(new Error('Adjusted commission did not reconcile to the designated Unit Network Distribution Rate. No changes were saved.'), { statusCode: 409 });
+    }
+
+    if (authorization.type === 'emergency_super_admin') {
+      await connection.query(
+        `UPDATE destructive_action_verifications
+         SET status = 'used', attempt_count = ?, verified_at = NOW(), used_at = NOW()
+         WHERE destructive_action_verification_id = ?`,
+        [authorization.attemptCount, authorization.verificationId]
+      );
+    }
+
+    let workflow = null;
+    if (authorization.type === 'audit_case') {
+      workflow = await advanceAuditCaseToRecheck(connection, {
+        auditCase: authorization.auditCase,
+        actor,
+        correctionSummary: `Adjusted commission for ${context.listing.lot_project_listing_unit_id}: ${reason}`,
+        afterSnapshot: { projectSlug: req.params.projectSlug, listingId: context.listing.lot_project_listing_id, accountId: entityId, groupRate: adjustment.groupRate, hierarchy: updatedRows },
+        metadata: { accountId: entityId, listingId: context.listing.lot_project_listing_id },
+        notificationTitle: `Commission correction needs Auditor recheck · ${authorization.auditCase.case_number}`,
+      });
+    } else {
+      workflow = await createOperationalReview(connection, {
+        actor,
+        actionKey: 'commission.adjust_unit',
+        department: 'accounting',
+        projectId: context.project.lot_project_id,
+        entityType: 'lot_project_commission_account',
+        entityId,
+        entityLabel: `Unit ${context.listing.lot_project_listing_unit_id} — ${context.project.lot_project_name}`,
+        beforeSnapshot: { projectSlug: req.params.projectSlug, listingId: context.listing.lot_project_listing_id, accountId: entityId, groupRate: Number(context.currentRows.reduce((sum,row)=>sum+Number(row.rate||0),0).toFixed(4)), hierarchy: context.currentRows },
+        afterSnapshot: { projectSlug: req.params.projectSlug, listingId: context.listing.lot_project_listing_id, accountId: entityId, groupRate: adjustment.groupRate, hierarchy: updatedRows },
+        headPreApprovedByUserId: authorization.headPreApprovedByUserId || null,
+      });
+    }
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Commissions',
+      entityType: 'lot_project_account',
+      entityId: String(context.listing.lot_project_account_id),
+      entityLabel: `Unit ${context.listing.lot_project_listing_unit_id} — ${context.project.lot_project_name}`,
+      title: 'Adjusted unit commission rates',
+      description: `Adjusted the saved commission rates for ${context.listing.lot_project_listing_unit_id}. Network Settings were not changed.`,
+      metadata: {
+        accountId: Number(context.listing.lot_project_account_id),
+        accountReference: context.listing.account_reference || null,
+        assignedAccreditedSellerId: Number(context.listing.assigned_accredited_seller_id || 0),
+        assignedSellerName: context.listing.assigned_seller_name || null,
+        commissionBase: context.commissionBase,
+        unitGroupRate: adjustment.groupRate,
+        allocatedRate: adjustment.allocatedRate,
+        unallocatedRate: 0,
+        adjustmentReason: reason,
+        verificationId: authorization.verificationId || null,
+        authorizationType: authorization.type,
+        emailVerification: authorization.type === 'emergency_super_admin' ? 'verified' : null,
+        groupSettingsModified: false,
+        reviewId: workflow?.reviewId || null,
+        reviewNumber: workflow?.reviewNumber || null,
+        before: context.currentRows,
+        after: updatedRows,
+      },
+    });
+
+    await connection.commit();
+    return res.json({
+      success: true,
+      message: `Commission rates for ${context.listing.lot_project_listing_unit_id} were adjusted successfully. Network Settings were not changed.`,
+      data: {
+        unitId: context.listing.lot_project_listing_unit_id,
+        accountReference: context.listing.account_reference,
+        groupRate: adjustment.groupRate,
+        allocatedRate: adjustment.allocatedRate,
+        unallocatedRate: 0,
+        previousHierarchy: context.currentRows,
+        updatedHierarchy: updatedRows,
+        workflow,
+        commissionAdjustment: {
+          ...buildCommissionAdjustmentState({
+            listingStatus: context.listing.lot_project_listing_status,
+            clientProfileStatus: context.listing.lot_project_client_profile_status,
+            assignedSellerId: context.listing.assigned_accredited_seller_id,
+            snapshot: updatedSnapshot,
+          }),
+          currentHierarchy: updatedRows,
+        },
+      },
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    console.error('Adjust unit commission failed:', {
+      code: error?.code,
+      message: error?.message,
+      sqlMessage: error?.sqlMessage,
+    });
+    return res.status(Number(error?.statusCode || 0) || 400).json({
+      success: false,
+      message: getErrorMessage(error),
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+export const holdLotProjectListing = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const clientName = String(req.body.clientName || req.body.hold_client_name || '').trim();
+    const holdNote = String(req.body.note || req.body.hold_note || '').trim();
+
+    if (!clientName) return res.status(400).json({ message: 'Client name is required.' });
+
+    const project = await getProjectBySlug(slug);
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+
+    const lookup = getListingLookupWhere(listingLookup);
+    const [rows] = await connection.query(
+      `
+        SELECT l.*
+        FROM lot_project_listings l
+        WHERE l.lot_project_id = ?
+          AND ${lookup.sql}
+        LIMIT 1
+      `,
+      [project.lot_project_id, ...lookup.params]
+    );
+
+    const listing = rows[0];
+    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+    if (listing.lot_project_listing_status !== 'available') {
+      return res.status(400).json({ message: 'Only available listings can be put on hold.' });
+    }
+
+    if (!(await listingStatusAllowsHold(connection))) {
+      return res.status(400).json({
+        message: "Listing status enum is missing 'hold'. Run server/migrations/20260708_fix_hold_listing_fields.sql first.",
+      });
+    }
+
+    const requiredHoldColumns = ['hold_client_name', 'hold_note', 'hold_created_at', 'hold_created_by_user_id'];
+    for (const column of requiredHoldColumns) {
+      if (!(await columnExists(connection, 'lot_project_listings', column))) {
+        return res.status(400).json({ message: 'Hold fields are missing. Run server/migrations/20260708_fix_hold_listing_fields.sql first.' });
+      }
+    }
+
+    const updateColumns = [
+      'lot_project_listing_status = ?',
+      'hold_client_name = ?',
+      'hold_note = ?',
+      'hold_created_at = NOW()',
+      'hold_created_by_user_id = ?',
+    ];
+    const updateParams = ['hold', clientName, holdNote || null, req.authUser?.id || null];
+
+    if (await columnExists(connection, 'lot_project_listings', 'lot_project_listing_sold_substatus')) {
+      updateColumns.splice(1, 0, 'lot_project_listing_sold_substatus = NULL');
+    }
+
+    updateParams.push(project.lot_project_id, listing.lot_project_listing_id);
+
+    await connection.beginTransaction();
+
+    await connection.query(
+      `
+        UPDATE lot_project_listings
+        SET ${updateColumns.join(', ')}
+        WHERE lot_project_id = ?
+          AND lot_project_listing_id = ?
+      `,
+      updateParams
+    );
+
+    if (await hasBuyerFormSchema(connection)) {
+      await revokeOpenBuyerFormLinks(connection, listing.lot_project_listing_id, { status: 'superseded' });
+      await connection.query(
+        `UPDATE lot_project_listings SET buyer_form_generation = buyer_form_generation + 1 WHERE lot_project_listing_id = ?`,
+        [listing.lot_project_listing_id]
+      );
+    }
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Listings',
+      entityType: 'lot_project_listing',
+      entityId: String(listing.lot_project_listing_id),
+      entityLabel: `Unit ${listing.lot_project_listing_unit_id} — ${project.lot_project_name}`,
+      title: 'Placed listing on hold',
+      description: `Placed ${listing.lot_project_listing_unit_id} on hold for ${clientName}.`,
+      metadata: { clientName, holdNote },
+    });
+
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: `Listing held for ${clientName}.`,
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    console.error('Hold listing failed:', {
+      code: error?.code,
+      errno: error?.errno,
+      sqlState: error?.sqlState,
+      sqlMessage: error?.sqlMessage,
+    });
+
+    const sqlMessage = String(error?.sqlMessage || error?.message || '');
+
+    if (sqlMessage.includes('lot_project_listing_sold_substatus')) {
+      return res.status(400).json({
+        message: 'Hold failed because your database is missing lot_project_listing_sold_substatus. Apply the latest listing schema/migration or use the updated Hold controller that checks this column first.',
+      });
+    }
+
+    if (sqlMessage.toLowerCase().includes('data truncated') || sqlMessage.includes("lot_project_listing_status")) {
+      return res.status(400).json({
+        message: "Hold failed because the lot_project_listing_status enum in your active database does not allow 'hold'. Run SHOW COLUMNS FROM lot_project_listings LIKE 'lot_project_listing_status' and update the enum to include hold.",
+      });
+    }
+
+    if (sqlMessage.includes('hold_client_name') || sqlMessage.includes('hold_note') || sqlMessage.includes('hold_created_at') || sqlMessage.includes('hold_created_by_user_id')) {
+      return res.status(400).json({
+        message: 'Hold failed because one or more hold columns are missing. Run the hold fields migration on the same database your server is using.',
+      });
+    }
+
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const unholdLotProjectListing = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+
+    const project = await getProjectBySlug(slug);
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+
+    const lookup = getListingLookupWhere(listingLookup);
+    const [rows] = await connection.query(
+      `
+        SELECT l.*
+        FROM lot_project_listings l
+        WHERE l.lot_project_id = ?
+          AND ${lookup.sql}
+        LIMIT 1
+      `,
+      [project.lot_project_id, ...lookup.params]
+    );
+
+    const listing = rows[0];
+    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+    if (listing.lot_project_listing_status !== 'hold') {
+      return res.status(400).json({ message: 'Only held listings can be unheld.' });
+    }
+
+    const buyerFormSchemaAvailable = await hasBuyerFormSchema(connection);
+    if (buyerFormSchemaAvailable && Number(listing.pending_buyer_form_submission_id || 0) > 0) {
+      return res.status(400).json({
+        message: 'This hold came from a buyer form submission. Reject the submission to return the unit to available.',
+      });
+    }
+
+    const updateColumns = [
+      'lot_project_listing_status = ?',
+    ];
+    const updateParams = ['available'];
+
+    if (await columnExists(connection, 'lot_project_listings', 'lot_project_listing_sold_substatus')) {
+      updateColumns.push('lot_project_listing_sold_substatus = NULL');
+    }
+
+    const holdColumns = ['hold_client_name', 'hold_note', 'hold_created_at', 'hold_created_by_user_id'];
+    for (const column of holdColumns) {
+      if (await columnExists(connection, 'lot_project_listings', column)) {
+        updateColumns.push(`${column} = NULL`);
+      }
+    }
+
+    updateParams.push(project.lot_project_id, listing.lot_project_listing_id);
+
+    await connection.beginTransaction();
+
+    await connection.query(
+      `
+        UPDATE lot_project_listings
+        SET ${updateColumns.join(', ')}
+        WHERE lot_project_id = ?
+          AND lot_project_listing_id = ?
+      `,
+      updateParams
+    );
+
+    if (buyerFormSchemaAvailable) {
+      await resetBuyerFormsForAvailable(connection, listing.lot_project_listing_id);
+    }
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Listings',
+      entityType: 'lot_project_listing',
+      entityId: String(listing.lot_project_listing_id),
+      entityLabel: `Unit ${listing.lot_project_listing_unit_id} — ${project.lot_project_name}`,
+      title: 'Removed listing hold',
+      description: `Returned ${listing.lot_project_listing_unit_id} to available status.`,
+      metadata: { previousHoldClientName: listing.hold_client_name || null },
+    });
+
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: 'Listing returned to available.',
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    console.error('Unhold listing failed:', {
+      code: error?.code,
+      errno: error?.errno,
+      sqlState: error?.sqlState,
+      sqlMessage: error?.sqlMessage,
+    });
+
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+
+

@@ -1,0 +1,44 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8');
+
+const accredited = read('../../../CLIENT/SYSTEM/src/pages/System/Accredited.jsx');
+const sellerGroup = read('../../../CLIENT/SYSTEM/src/pages/System/SellerGroup.jsx');
+const sellerGroupDetails = read('../../../CLIENT/SYSTEM/src/pages/System/SellerGroupDetails.jsx');
+const settings = read('../../../CLIENT/SYSTEM/src/pages/System/Settings.jsx');
+const roleAccess = read('../../../CLIENT/SYSTEM/src/components/System/settingsComponents/RoleAccessControl.jsx');
+const app = read('../../../CLIENT/SYSTEM/src/App.jsx');
+
+test('Accredited Sellers is the entry point for In-House and External Networks', () => {
+  assert.match(accredited, /In-House Networks/);
+  assert.match(accredited, /External Networks/);
+  assert.match(accredited, /SYSTEM_SELLER_GROUPS_VIEW/);
+  assert.match(accredited, /accredited\/groups\/in-house/);
+  assert.match(accredited, /accredited\/groups\/external/);
+  assert.match(sellerGroup, /Back to Accredited Sellers/);
+  assert.match(sellerGroup, /accredited\/groups/);
+  assert.match(sellerGroupDetails, /accredited\/groups/);
+});
+
+test('new Accredited Seller group routes are canonical and old Users group routes redirect', () => {
+  assert.match(app, /path="accredited\/groups\/in-house"/);
+  assert.match(app, /path="accredited\/groups\/external"/);
+  assert.match(app, /LegacySellerGroupRedirect/);
+  assert.match(app, /path="users\/groups\/in-house"/);
+  assert.match(app, /path="users\/groups\/external"/);
+});
+
+test('Role & Access Control is a compact Settings card and expands only on demand', () => {
+  assert.match(settings, /Role &amp; Access Control/);
+  assert.match(settings, /Manage Role & Access/);
+  assert.match(settings, /showRoleAccess/);
+  assert.match(settings, /canViewRoleAccess && showRoleAccess \? <RoleAccessControl \/> : null/);
+  assert.doesNotMatch(settings, /canManage && isEditing \? <RoleAccessControl \/> : null/);
+  assert.match(roleAccess, /Save Role Defaults/);
+  assert.match(roleAccess, /Existing users keep their current direct permissions until Apply Latest Role Default/);
+});
+
+
+

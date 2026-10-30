@@ -1,37 +1,12 @@
-# Dependencies
 node_modules/
-**/node_modules/
-
-# Environment files
+dist/
 .env
 .env.*
-**/.env
-**/.env.*
 !.env.example
-!**/.env.example
-
-# Builds and coverage
-dist/
-**/dist/
-build/
-**/build/
-coverage/
-**/coverage/
-
-# Logs
+!.env.deployment.example
 *.log
-logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# OS and editor files
+*.pem
+*.key
 .DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-isrgrootx1.pem
-
-
+# Never commit original data dumps from production.
+**/*BACKUP_WITH_DATA*.sql

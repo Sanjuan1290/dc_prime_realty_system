@@ -1,0 +1,20 @@
+/* Scoped panel motion; does not modify any existing modal. */
+@keyframes dcActionBackdropIn { from { opacity: 0 } to { opacity: 1 } }
+@keyframes dcActionBackdropOut { from { opacity: 1 } to { opacity: 0 } }
+@keyframes dcActionPanelIn {
+  from { opacity: 0; transform: translateY(14px) scale(.975) }
+  to { opacity: 1; transform: translateY(0) scale(1) }
+}
+@keyframes dcActionPanelOut {
+  from { opacity: 1; transform: translateY(0) scale(1) }
+  to { opacity: 0; transform: translateY(8px) scale(.985) }
+}
+.dc-action-overlay--in { animation: dcActionBackdropIn 190ms ease-out both }
+.dc-action-overlay--out { animation: dcActionBackdropOut 160ms ease-in both }
+.dc-action-panel--in { animation: dcActionPanelIn 210ms cubic-bezier(.2,.8,.2,1) both }
+.dc-action-panel--out { animation: dcActionPanelOut 160ms ease-in both }
+@media (prefers-reduced-motion: reduce) {
+  .dc-action-overlay--in, .dc-action-overlay--out, .dc-action-panel--in, .dc-action-panel--out { animation: none !important }
+  .dc-action-choice, .dc-action-choice__arrow { transition: none !important }
+}
+
