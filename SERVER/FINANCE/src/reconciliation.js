@@ -11,12 +11,12 @@ export async function getFinanceReconciliation(query={},pool=getPool()){
     const [ledgerRows]=await conn.execute(`SELECT id,source_system,source_transaction_id,source_revision_sha256,
       DATE_FORMAT(transaction_date,'%Y-%m-%d') AS transaction_date,kind,amount,status,category_id
       FROM finance_transactions WHERE source_system<>'manual' AND transaction_date BETWEEN ? AND ?
-      ORDER BY id LIMIT ?`,[from,to,MAX_RECON_ROWS+1]);
+      ORDER BY id LIMIT ${MAX_RECON_ROWS+1}`,[from,to]);
     const [receiptRows]=await conn.execute(`SELECT i.batch_id,i.decision,i.transaction_id,i.source_system,i.source_transaction_id,
       i.source_revision_sha256,i.category_id,i.source_row_json,b.total_rows,b.selected_money_in,b.selected_money_out
       FROM finance_import_items i JOIN finance_import_batches b ON b.id=i.batch_id
       WHERE b.status='committed' AND b.source_from<=? AND b.source_to>=?
-      ORDER BY b.id,i.row_number LIMIT ?`,[to,from,MAX_RECON_ROWS+1]);
+      ORDER BY b.id,i.\`row_number\` LIMIT ${MAX_RECON_ROWS+1}`,[to,from]);
     const [aggregateRows]=await conn.execute(`SELECT source_system,kind,
       COALESCE(SUM(CASE WHEN transaction_date < ? THEN amount ELSE 0 END),0) AS opening_amount,
       COALESCE(SUM(CASE WHEN transaction_date >= ? THEN amount ELSE 0 END),0) AS period_amount

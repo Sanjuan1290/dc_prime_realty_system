@@ -96,9 +96,9 @@ export async function getDashboard(query={}) {
   const opening=toCents(r.opening_balance),incoming=toCents(r.money_in),outgoing=toCents(r.money_out);
   return {from,to,currency:'PHP',opening_balance:pesos(opening),money_in:pesos(incoming),money_out:pesos(outgoing),net_change:pesos(incoming-outgoing),closing_balance:pesos(opening+incoming-outgoing),total_posted:Number(r.total_posted)};
 }
-export async function listAudit(query={}) {
+export async function listAudit(query={},pool=getPool()) {
   const page=Number(query.page??1);if(!Number.isSafeInteger(page)||page<1||page>100000)throw problem('INVALID_PAGE','Invalid page.');
-  const [rows]=await getPool().execute('SELECT id,actor_user_id,action,entity_type,entity_id,metadata_json,created_at FROM finance_audit_logs ORDER BY id DESC LIMIT 50 OFFSET ?',[(page-1)*50]);
+  const [rows]=await pool.execute(`SELECT id,actor_user_id,action,entity_type,entity_id,metadata_json,created_at FROM finance_audit_logs ORDER BY id DESC LIMIT 50 OFFSET ${(page-1)*50}`);
   return {items:rows,page};
 }
 

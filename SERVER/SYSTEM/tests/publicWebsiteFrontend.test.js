@@ -39,7 +39,7 @@ test('site header uses the original gold logo, new navigation and responsive mob
  assert.match(logo,/brand\.logo/)
  assert.match(header,/aria-expanded=\{open\}/)
  assert.match(header,/\/book-tripping/)
- assert.match(css,/font-family:'Manrope'/)
+ assert.match(css,/font-family:'Poppins'/)
  assert.match(css,/@media \(max-width:670px\)/)
  assert.doesNotMatch(css,/Libre Baskerville/)
  assert.ok(exists('CLIENT/WEBSITE/public/website/images/redesign/dc-prime-logo-gold.png'))

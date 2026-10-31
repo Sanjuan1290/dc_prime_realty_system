@@ -3804,7 +3804,7 @@ CREATE TABLE IF NOT EXISTS finance_import_batches (
 CREATE TABLE IF NOT EXISTS finance_import_items (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   batch_id CHAR(36) NOT NULL,
-  row_number INT UNSIGNED NOT NULL,
+  `row_number` INT UNSIGNED NOT NULL,
   source_system VARCHAR(64) NOT NULL,
   source_transaction_id VARCHAR(180) NOT NULL,
   source_revision_sha256 CHAR(64) NOT NULL,
@@ -3815,7 +3815,7 @@ CREATE TABLE IF NOT EXISTS finance_import_items (
   transaction_id BIGINT UNSIGNED NULL,
   source_row_json JSON NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_finance_import_row (batch_id,row_number),
+  UNIQUE KEY uq_finance_import_row (batch_id,`row_number`),
   KEY idx_finance_import_source (source_system,source_transaction_id),
   FOREIGN KEY (batch_id) REFERENCES finance_import_batches(id) ON DELETE RESTRICT,
   FOREIGN KEY (category_id) REFERENCES finance_categories(id) ON DELETE RESTRICT,

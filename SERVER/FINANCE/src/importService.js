@@ -46,16 +46,17 @@ export async function previewImport(body,actor,options={}){
     }
     await conn.execute(`INSERT INTO finance_import_batches(id,source_system,export_id,file_name,file_sha256,file_format,source_from,source_to,source_generated_at,manifest_json,total_rows,selected_money_in,selected_money_out,created_by,created_at)
       VALUES(?,'realty',?,?,?,?,?,?,?,?,?,?,?, ?,UTC_TIMESTAMP())`,[id,String(data.manifest.export_id||''),file.filename,fileHash,file.format,data.manifest.period.from,data.manifest.period.to,data.manifest.generated_at,JSON.stringify(data.manifest),data.rows.length,data.totals.money_in,data.totals.money_out,actor.id]);
-    for(const item of items)await conn.execute(`INSERT INTO finance_import_items(batch_id,row_number,source_system,source_transaction_id,source_revision_sha256,source_category,source_kind,category_id,decision,source_row_json)
+    for(const item of items)await conn.execute(`INSERT INTO finance_import_items(batch_id,\`row_number\`,source_system,source_transaction_id,source_revision_sha256,source_category,source_kind,category_id,decision,source_row_json)
       VALUES(?,?,?,?,?,?,?,?,?,?)`,[id,item.row_number,item.source_system,item.source_transaction_id,item.source_revision_sha256,item.source_category,item.kind,item.category_id,item.decision,JSON.stringify(item.row)]);
     await audit(conn,actor.id,'finance.import.preview','import_batch',id,{file_sha256:fileHash,counts:counts(items),selected_totals:data.totals});
     return {batch_id:id,expires_in_minutes:60,file_sha256:fileHash,manifest:{export_id:data.manifest.export_id,period:data.manifest.period,salary_source:data.manifest.salary_source},selected_totals:data.totals,counts:counts(items),ready:items.every(x=>['new','duplicate'].includes(x.decision)),items:items.map(({row,...rest})=>rest)};
   });
 }
-export async function listImportBatches(query={}){
-  const page=Math.max(1,Math.min(1000,Number(query.page)||1));
-  const [rows]=await getPool().execute(`SELECT id,file_name,file_sha256,status,source_from,source_to,total_rows,selected_money_in,selected_money_out,created_at,committed_at,result_json
-    FROM finance_import_batches ORDER BY created_at DESC LIMIT 50 OFFSET ?`,[(page-1)*50]);
+export async function listImportBatches(query={},pool=getPool()){
+  const page=Number(query.page??1);
+  if(!Number.isSafeInteger(page)||page<1||page>1000)invalid('INVALID_PAGE','Choose a valid import history page.');
+  const [rows]=await pool.execute(`SELECT id,file_name,file_sha256,status,source_from,source_to,total_rows,selected_money_in,selected_money_out,created_at,committed_at,result_json
+    FROM finance_import_batches ORDER BY created_at DESC LIMIT 50 OFFSET ${(page-1)*50}`);
   return {items:rows,page};
 }
 export async function commitImport(batchId,actor){
@@ -68,7 +69,7 @@ export async function commitImport(batchId,actor){
     if(String(batch.created_by)!==String(actor.id))invalid('IMPORT_OWNER','Only the user who prepared this preview can confirm it.',403);
     const [fresh]=await conn.execute('SELECT created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 60 MINUTE) AS fresh FROM finance_import_batches WHERE id=?',[batchId]);
     if(Number(fresh[0]?.fresh)!==1)invalid('PREVIEW_EXPIRED','Import preview expired. Upload and preview again.',409);
-    const [items]=await conn.execute('SELECT * FROM finance_import_items WHERE batch_id=? ORDER BY row_number FOR UPDATE',[batchId]);
+    const [items]=await conn.execute('SELECT * FROM finance_import_items WHERE batch_id=? ORDER BY `row_number` FOR UPDATE',[batchId]);
     if(items.length!==Number(batch.total_rows))invalid('PREVIEW_CHANGED','Preview row count changed.',409);
     const mapping=await categories(conn);
     const tally={imported:0,duplicate:0};let addedIncome=0n,addedExpense=0n;

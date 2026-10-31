@@ -1,0 +1,326 @@
+{
+  "checks": [
+    {
+      "app": "WEBSITE",
+      "name": "1440px /",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "1440px /properties",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "1440px /properties/prime-enclave-maragondon",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "1440px /about-us",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "1440px /blog",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "1440px /contact-us",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "1440px /book-tripping",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "1440px /no-such-qa-page",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "SYSTEM",
+      "name": "1440px login metrics",
+      "status": "PASS",
+      "metrics": {
+        "width": 1440,
+        "scroll": 1440,
+        "margin": "0px",
+        "font": "Poppins, Arial, Helvetica, sans-serif",
+        "broken": [],
+        "h1": "D&C Prime Realty internal system"
+      }
+    },
+    {
+      "app": "SYSTEM",
+      "name": "1440px unauthenticated login and layout",
+      "status": "PASS"
+    },
+    {
+      "app": "HR",
+      "name": "1440px login metrics",
+      "status": "PASS",
+      "metrics": {
+        "width": 1440,
+        "scroll": 1440,
+        "margin": "0px",
+        "font": "Poppins, Arial, Helvetica, sans-serif",
+        "broken": [],
+        "h1": "HR & Payroll"
+      }
+    },
+    {
+      "app": "HR",
+      "name": "1440px unauthenticated login and layout",
+      "status": "PASS"
+    },
+    {
+      "app": "FINANCE",
+      "name": "1440px login metrics",
+      "status": "PASS",
+      "metrics": {
+        "width": 1440,
+        "scroll": 1440,
+        "margin": "0px",
+        "font": "Poppins, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "broken": [],
+        "h1": "Finance Management"
+      }
+    },
+    {
+      "app": "FINANCE",
+      "name": "1440px unauthenticated login and layout",
+      "status": "PASS"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "390px /",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "390px /properties",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "390px /properties/prime-enclave-maragondon",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "390px /about-us",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "390px /blog",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "390px /contact-us",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "390px /book-tripping",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "390px /no-such-qa-page",
+      "status": "FAIL",
+      "reason": "Expected values to be strictly equal:\n\n'8px' !== '0px'\n"
+    },
+    {
+      "app": "WEBSITE",
+      "name": "mobile navigation Escape and keyboard focus",
+      "status": "PASS"
+    },
+    {
+      "app": "SYSTEM",
+      "name": "390px login metrics",
+      "status": "PASS",
+      "metrics": {
+        "width": 390,
+        "scroll": 390,
+        "margin": "0px",
+        "font": "Poppins, Arial, Helvetica, sans-serif",
+        "broken": [],
+        "h1": "D&C Prime Realty internal system"
+      }
+    },
+    {
+      "app": "SYSTEM",
+      "name": "390px unauthenticated login and layout",
+      "status": "PASS"
+    },
+    {
+      "app": "HR",
+      "name": "390px login metrics",
+      "status": "PASS",
+      "metrics": {
+        "width": 390,
+        "scroll": 390,
+        "margin": "0px",
+        "font": "Poppins, Arial, Helvetica, sans-serif",
+        "broken": [],
+        "h1": "HR & Payroll"
+      }
+    },
+    {
+      "app": "HR",
+      "name": "390px unauthenticated login and layout",
+      "status": "PASS"
+    },
+    {
+      "app": "FINANCE",
+      "name": "390px login metrics",
+      "status": "PASS",
+      "metrics": {
+        "width": 390,
+        "scroll": 390,
+        "margin": "0px",
+        "font": "Poppins, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "broken": [],
+        "h1": "Finance Management"
+      }
+    },
+    {
+      "app": "FINANCE",
+      "name": "390px unauthenticated login and layout",
+      "status": "PASS"
+    },
+    {
+      "app": "FINANCE",
+      "name": "real browser login, dashboard and refresh persistence",
+      "status": "PASS"
+    },
+    {
+      "app": "FINANCE",
+      "name": "audit/import/reconciliation tabs execute successfully",
+      "status": "PASS"
+    },
+    {
+      "app": "FINANCE",
+      "name": "390px authenticated metrics",
+      "status": "PASS",
+      "metrics": {
+        "width": 390,
+        "scroll": 390,
+        "margin": "0px",
+        "font": "Poppins, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "broken": [],
+        "h1": "Dashboard"
+      }
+    },
+    {
+      "app": "FINANCE",
+      "name": "390px authenticated dashboard has no horizontal overflow",
+      "status": "PASS"
+    },
+    {
+      "app": "HR",
+      "name": "1440px employees metrics",
+      "status": "PASS",
+      "metrics": {
+        "width": 1440,
+        "scroll": 1440,
+        "margin": "0px",
+        "font": "Poppins, Arial, Helvetica, sans-serif",
+        "broken": [],
+        "h1": "Employees"
+      }
+    },
+    {
+      "app": "HR",
+      "name": "real browser login, employee page and nested refresh",
+      "status": "PASS"
+    },
+    {
+      "app": "SYSTEM",
+      "name": "1440px authenticated metrics",
+      "status": "PASS",
+      "metrics": {
+        "width": 1440,
+        "scroll": 1440,
+        "margin": "0px",
+        "font": "Poppins, Arial, Helvetica, sans-serif",
+        "broken": [],
+        "h1": "Dashboard"
+      }
+    },
+    {
+      "app": "SYSTEM",
+      "name": "real browser login and nested refresh",
+      "status": "PASS"
+    },
+    {
+      "app": "ALL",
+      "name": "all three browser sessions persist independently",
+      "status": "PASS"
+    },
+    {
+      "app": "ALL",
+      "name": "no uncaught browser exceptions or local 500/asset errors",
+      "status": "PASS"
+    }
+  ],
+  "errors": [],
+  "requests": [
+    {
+      "url": "/api/v1/user/me",
+      "status": 401
+    },
+    {
+      "url": "/hr-api/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "url": "/finance-api/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "url": "/api/v1/user/me",
+      "status": 401
+    },
+    {
+      "url": "/hr-api/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "url": "/finance-api/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "url": "/finance-api/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "url": "/hr-api/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "url": "/api/v1/user/me",
+      "status": 401
+    }
+  ]
+}

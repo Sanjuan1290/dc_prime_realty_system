@@ -1,0 +1,64 @@
+[
+  {
+    "app": "SYSTEM",
+    "environment": "live/development; read-only diagnosis only",
+    "checks": [],
+    "database": "dc_prime_realty_system_db",
+    "engine": "8.0.11-TiDB-v8.5.3-serverless",
+    "tableCount": 108,
+    "status": "PASS"
+  },
+  {
+    "app": "HR",
+    "environment": "live/development; read-only diagnosis only",
+    "checks": [],
+    "database": "dc_prime_hr_db",
+    "engine": "8.0.11-TiDB-v8.5.3-serverless",
+    "tableCount": 28,
+    "status": "PASS"
+  },
+  {
+    "app": "FINANCE",
+    "environment": "live/development; read-only diagnosis only",
+    "checks": [
+      {
+        "name": "dashboard",
+        "status": "PASS"
+      },
+      {
+        "name": "transactions",
+        "status": "PASS"
+      },
+      {
+        "name": "categories",
+        "status": "PASS"
+      },
+      {
+        "name": "audit",
+        "status": "FAIL",
+        "code": "ER_WRONG_ARGUMENTS",
+        "errno": 1210,
+        "sqlState": "HY000"
+      },
+      {
+        "name": "imports",
+        "status": "FAIL",
+        "code": "ER_WRONG_ARGUMENTS",
+        "errno": 1210,
+        "sqlState": "HY000"
+      },
+      {
+        "name": "reconciliation",
+        "status": "FAIL",
+        "code": "ER_WRONG_ARGUMENTS",
+        "errno": 1210,
+        "sqlState": "HY000"
+      }
+    ],
+    "database": "dc_prime_finance_db",
+    "engine": "8.0.11-TiDB-v8.5.3-serverless",
+    "tableCount": 8,
+    "failedSql": "SELECT id,file_name,file_sha256,status,source_from,source_to,total_rows,selected_money_in,selected_money_out,created_at,committed_at,result_json\n    FROM finance_import_batches ORDER BY created_at DESC LIMIT 50 OFFSET ?",
+    "status": "FAIL"
+  }
+]

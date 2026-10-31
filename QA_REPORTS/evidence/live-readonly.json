@@ -1,0 +1,54 @@
+[
+  {
+    "app": "SYSTEM",
+    "environment": "live/development; read-only diagnosis only",
+    "checks": [],
+    "database": "dc_prime_realty_system_db",
+    "engine": "8.0.11-TiDB-v8.5.3-serverless",
+    "tableCount": 108,
+    "status": "PASS"
+  },
+  {
+    "app": "HR",
+    "environment": "live/development; read-only diagnosis only",
+    "checks": [],
+    "database": "dc_prime_hr_db",
+    "engine": "8.0.11-TiDB-v8.5.3-serverless",
+    "tableCount": 28,
+    "status": "PASS"
+  },
+  {
+    "app": "FINANCE",
+    "environment": "live/development; read-only diagnosis only",
+    "checks": [
+      {
+        "name": "dashboard",
+        "status": "PASS"
+      },
+      {
+        "name": "transactions",
+        "status": "PASS"
+      },
+      {
+        "name": "categories",
+        "status": "PASS"
+      },
+      {
+        "name": "audit",
+        "status": "PASS"
+      },
+      {
+        "name": "imports",
+        "status": "PASS"
+      },
+      {
+        "name": "reconciliation",
+        "status": "PASS"
+      }
+    ],
+    "database": "dc_prime_finance_db",
+    "engine": "8.0.11-TiDB-v8.5.3-serverless",
+    "tableCount": 8,
+    "status": "PASS"
+  }
+]

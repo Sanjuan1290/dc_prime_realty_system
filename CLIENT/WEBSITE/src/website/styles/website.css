@@ -1,4 +1,6 @@
-
+html{font-family:'Poppins',Arial,Helvetica,sans-serif}
+body{margin:0;font-family:inherit}
+#root{min-height:100vh}
 .website-shell {--dc-dark:#101414;--dc-ink:#1c2422;--dc-muted:#66716c;--dc-border:#e2e4df;--dc-gold:#d5ae61;--dc-gold-dark:#af8134;--dc-paper:#fff;--dc-tint:#f6f7f3;font-family:'Poppins',Arial,Helvetica,sans-serif;color:var(--dc-ink);background:var(--dc-paper);font-size:15px;line-height:1.65;min-height:100vh;-webkit-font-smoothing:antialiased}
 .website-shell *{box-sizing:border-box}
 .website-shell h1,.website-shell h2,.website-shell h3,.website-shell h4,.website-shell p{margin-top:0}

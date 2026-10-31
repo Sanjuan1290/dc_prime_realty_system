@@ -79,6 +79,208 @@ export const ensureEmployeePayrollSchema = async (connection) => {
   await connection.query('SELECT employee_payroll_period_id FROM employee_payroll_periods LIMIT 0');
 };
 
+// Payroll helpers were lost during the standalone HR extraction. They operate
+// only on the HR connection supplied by the caller and never change schema.
+const ensurePeriodRow = async (connection, period) => {
+  await connection.query(`
+    INSERT INTO employee_payroll_periods (period_label, period_start, period_end, period_type, scheduled_release_date, payroll_status)
+    VALUES (?, ?, ?, ?, ?, 'draft')
+    ON DUPLICATE KEY UPDATE
+      period_label = VALUES(period_label),
+      period_type = VALUES(period_type),
+      scheduled_release_date = IF(payroll_status = 'draft', COALESCE(scheduled_release_date, VALUES(scheduled_release_date)), scheduled_release_date)
+  `, [period.periodLabel, period.periodStart, period.periodEnd, period.periodType, period.scheduledReleaseDate]);
+
+  const [rows] = await connection.query(`
+    SELECT * FROM employee_payroll_periods
+    WHERE period_start = ? AND period_end = ?
+    LIMIT 1
+  `, [period.periodStart, period.periodEnd]);
+  const row = rows[0];
+  if (!row) throw payrollError('Unable to create the payroll period.', 'PAYROLL_PERIOD_CREATE_FAILED', 500);
+  if (row.payroll_status !== 'draft') {
+    throw payrollError('This payroll period is no longer Draft and cannot generate or recalculate Draft payroll.', 'PAYROLL_PERIOD_NOT_DRAFT', 409);
+  }
+  return row;
+};
+
+const getEmployee = async (connection, employeeId) => {
+  const [rows] = await connection.query(`
+    SELECT e.*, ${buildEmployeeNameSql('e')} AS full_name
+    FROM employees e
+    WHERE e.employee_id = ? AND e.employee_status <> 'archived'
+    LIMIT 1
+  `, [employeeId]);
+  if (!rows[0]) throw payrollError('Employee not found.', 'EMPLOYEE_NOT_FOUND', 404);
+  return rows[0];
+};
+
+const warningList = ({ period, attendanceThrough, attendance, attendanceRows = [], compensation, payrollSettings }) => {
+  const warnings = [];
+  if (attendanceThrough < period.periodEnd) {
+    warnings.push(`Draft attendance is provisional through ${attendanceThrough}. Recalculate after later attendance is recorded.`);
+  }
+  const missing = [];
+  if (attendance.overtimeMinutes && payrollSettings.regular_ot_multiplier === null) missing.push('Regular OT Multiplier');
+  if (attendance.restDayOvertimeMinutes && payrollSettings.rest_day_ot_multiplier === null) missing.push('Rest Day OT Multiplier');
+  if (attendance.regularHolidayMinutes && payrollSettings.regular_holiday_multiplier === null) missing.push('Holiday Multiplier');
+  if (attendance.specialHolidayMinutes && payrollSettings.special_holiday_multiplier === null) missing.push('Holiday Multiplier');
+  if (attendance.nightDifferentialMinutes && payrollSettings.night_differential_percentage === null) missing.push('Night Differential Percentage');
+  if (missing.length) {
+    warnings.push(`Payroll Settings are incomplete for recorded premium hours: ${[...new Set(missing)].join(', ')}. Unconfigured money rules remain ₱0.00 until the Draft is recalculated after settings are completed.`);
+  }
+  const holidayIssue = holidayOvertimeWarning(findUnsupportedHolidayOvertime(attendanceRows));
+  if (holidayIssue) warnings.push(holidayIssue);
+  if (attendance.doublePayMinutes) {
+    warnings.push('Double-pay attendance is present. Its hours are preserved in the attendance breakdown, but no payroll money rule is applied because the master plan does not define a double-pay multiplier.');
+  }
+  if (Number(compensation.attendance_bonus || 0) > 0 && payrollSettings.attendance_bonus_rule === 'not_configured') {
+    warnings.push('Attendance Bonus is entered for this employee but not included yet. Your company has not approved a payment rule. Open Payroll Settings → Attendance Bonus, then recalculate this draft.');
+  }
+  return warnings;
+};
+
+const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+const upsertDraftPayroll = async (connection, payload) => {
+  const [existingRows] = await connection.query(`
+    SELECT employee_payroll_id, payroll_status
+    FROM employee_payrolls
+    WHERE employee_payroll_period_id = ? AND employee_id = ?
+    LIMIT 1 FOR UPDATE
+  `, [payload.periodId, payload.employeeId]);
+  const existing = existingRows[0] || null;
+  if (existing && existing.payroll_status !== 'draft') {
+    throw payrollError('This employee payroll is no longer Draft and cannot be recalculated.', 'EMPLOYEE_PAYROLL_NOT_DRAFT', 409);
+  }
+
+  const legacyLateDeduction = roundMoney(payload.lateMinutes * payload.minuteRate);
+  const legacyAbsenceDeduction = roundMoney(payload.absenceMinutes * payload.minuteRate);
+  const grossPay = roundMoney(
+    payload.halfMonthBasic
+      + payload.overtimePay
+      + payload.restDayOvertimePay
+      + payload.regularHolidayPay
+      + payload.specialHolidayPay
+      + payload.nightDifferentialPay
+      + payload.riceAllowance
+      + payload.transportationAllowance
+      + payload.attendanceBonus
+      + payload.manualAdditionsTotal
+  );
+  const commonValues = [
+    payload.employmentHistoryId,
+    payload.employeeName,
+    payload.position,
+    payload.department,
+    payload.employmentStatus,
+    payload.monthlyBasic,
+    payload.hourlyRate,
+    payload.halfMonthBasic,
+    payload.halfMonthBasic,
+    payload.dailyRate,
+    payload.minuteRate,
+    payload.regularWorkingMinutes,
+    payload.attendanceCalculatedThrough,
+    payload.expectedRegularMinutes,
+    payload.regularAttendedMinutes,
+    payload.ptoMinutes,
+    payload.regularHolidayMinutes,
+    payload.specialHolidayMinutes,
+    payload.lateMinutes,
+    payload.absenceMinutes,
+    payload.tardinessAbsenceMinutes,
+    payload.overtimeMinutes,
+    payload.restDayOvertimeMinutes,
+    payload.nightDifferentialMinutes,
+    payload.attendanceDeduction,
+    payload.overtimePay,
+    payload.restDayOvertimePay,
+    payload.regularHolidayPay,
+    payload.specialHolidayPay,
+    payload.nightDifferentialPay,
+    payload.riceAllowance,
+    payload.transportationAllowance,
+    payload.attendanceBonus,
+    payload.manualAdditionsTotal,
+    payload.manualDeductionsTotal,
+    payload.netFundRelease,
+    JSON.stringify(payload.payrollSettingsSnapshot || null),
+    payload.calculationVersion,
+    JSON.stringify(payload.warnings || []),
+    JSON.stringify(payload.attendanceBreakdown || []),
+    payload.expectedRegularMinutes * 60,
+    payload.regularAttendedMinutes * 60,
+    payload.ptoMinutes * 60,
+    payload.regularHolidayMinutes * 60,
+    payload.specialHolidayMinutes * 60,
+    payload.lateMinutes * 60,
+    legacyLateDeduction,
+    payload.absenceDays,
+    legacyAbsenceDeduction,
+    payload.overtimeMinutes * 60,
+    payload.nightDifferentialMinutes * 60,
+    grossPay,
+    payload.netFundRelease,
+  ];
+
+  if (existing) {
+    await connection.query(`
+      UPDATE employee_payrolls SET
+        employment_history_id = ?, employee_name_snapshot = ?, position_snapshot = ?, department_snapshot = ?, employment_status_snapshot = ?,
+        monthly_salary_snapshot = ?, hourly_rate_snapshot = ?, base_salary = ?, half_month_basic = ?, daily_rate = ?, minute_rate = ?,
+        regular_working_minutes_snapshot = ?, attendance_calculated_through = ?, expected_regular_minutes = ?, regular_attended_minutes = ?, pto_minutes = ?,
+        regular_holiday_minutes = ?, special_holiday_minutes = ?, late_minutes = ?, absence_minutes = ?, tardiness_absence_minutes = ?,
+        overtime_minutes = ?, rest_day_overtime_minutes = ?, night_differential_minutes = ?, attendance_deduction = ?,
+        overtime_pay = ?, rest_day_overtime_pay = ?, regular_holiday_pay = ?, special_holiday_pay = ?, night_differential_pay = ?,
+        rice_allowance = ?, transportation_allowance = ?, attendance_bonus = ?, manual_additions_total = ?, manual_deductions_total = ?, net_fund_release = ?,
+        payroll_settings_snapshot_json = ?, calculation_version = ?, calculation_warnings_json = ?, attendance_breakdown_json = ?,
+        scheduled_regular_seconds = ?, regular_attended_seconds = ?, paid_time_off_seconds = ?, regular_holiday_seconds = ?, special_holiday_seconds = ?,
+        late_seconds = ?, late_deduction = ?, absent_days = ?, absence_deduction = ?, overtime_seconds = ?,
+        night_differential_seconds = ?, gross_pay = ?, net_pay = ?, undertime_seconds = 0, undertime_deduction = 0,
+        cash_advance_deduction = 0, other_adjustments = 0, attendance_bonus_eligible = ?,
+        attendance_bonus_note = ?, payroll_status = 'draft'
+      WHERE employee_payroll_id = ?
+    `, [...commonValues, payload.attendanceBonusEligible ? 1 : 0, payload.attendanceBonusNote, existing.employee_payroll_id]);
+    return Number(existing.employee_payroll_id);
+  }
+
+  const [result] = await connection.query(`
+    INSERT INTO employee_payrolls (
+      employee_payroll_period_id, employee_id,
+      employment_history_id, employee_name_snapshot, position_snapshot, department_snapshot, employment_status_snapshot,
+      monthly_salary_snapshot, hourly_rate_snapshot, base_salary, half_month_basic, daily_rate, minute_rate,
+      regular_working_minutes_snapshot, attendance_calculated_through, expected_regular_minutes, regular_attended_minutes, pto_minutes,
+      regular_holiday_minutes, special_holiday_minutes, late_minutes, absence_minutes, tardiness_absence_minutes,
+      overtime_minutes, rest_day_overtime_minutes, night_differential_minutes, attendance_deduction,
+      overtime_pay, rest_day_overtime_pay, regular_holiday_pay, special_holiday_pay, night_differential_pay,
+      rice_allowance, transportation_allowance, attendance_bonus, manual_additions_total, manual_deductions_total, net_fund_release,
+      payroll_settings_snapshot_json, calculation_version, calculation_warnings_json, attendance_breakdown_json,
+      scheduled_regular_seconds, regular_attended_seconds, paid_time_off_seconds, regular_holiday_seconds, special_holiday_seconds,
+      late_seconds, late_deduction, absent_days, absence_deduction, overtime_seconds,
+      night_differential_seconds, gross_pay, net_pay,
+      undertime_seconds, undertime_deduction, cash_advance_deduction, other_adjustments,
+      attendance_bonus_eligible, attendance_bonus_note, payroll_status
+    ) VALUES (
+      ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?, ?,
+      0, 0, 0, 0,
+      ?, ?, 'draft'
+    )
+  `, [payload.periodId, payload.employeeId, ...commonValues, payload.attendanceBonusEligible ? 1 : 0, payload.attendanceBonusNote]);
+  return Number(result.insertId);
+};
+
 export const calculateAndStoreDraftPayroll = async (connection, {
   employeeId,
   period,

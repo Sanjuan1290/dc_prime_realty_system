@@ -15,7 +15,10 @@ rmSync(dist, { recursive: true, force: true })
 mkdirSync(dist, { recursive: true })
 for (const { name, output, api } of apps) {
   const cwd = join(client, name)
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  // npm.cmd cannot be executed directly by spawnSync on Windows. Reuse the
+  // npm CLI that launched this script so paths with spaces remain literal.
+  const npmCli = process.env.npm_execpath
+  if (!npmCli || !existsSync(npmCli)) throw new Error('Run this script with npm run build:all.')
   const lockfile = join(cwd, 'package-lock.json')
   const hasLockfile = existsSync(lockfile)
   if (hasLockfile) {
@@ -32,9 +35,10 @@ for (const { name, output, api } of apps) {
     const childEnv = { ...process.env, DC_MULTI_APP_BUILD: '1', ...api }
     delete childEnv.npm_config_local_prefix
     delete childEnv.NPM_CONFIG_LOCAL_PREFIX
-    const result = spawnSync(npm, ['--prefix', cwd, ...args], {
+    const result = spawnSync(process.execPath, [npmCli, '--prefix', cwd, ...args], {
       cwd: client, stdio: 'inherit', env: childEnv,
     })
+    if (result.error) throw result.error
     if (result.status !== 0) process.exit(result.status || 1)
   }
   run([...install, '--no-audit', '--no-fund'])
