@@ -2,6 +2,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 const get=(rel)=>fs.readFileSync(new URL('../'+rel,import.meta.url),'utf8')
+test('attendance export is a named, scrollable modal with keyboard focus management',()=>{
+ const modal=get('src/components/System/employeeComponents/AttendanceExportModal.jsx')
+ assert.match(modal,/items-start justify-center overflow-y-auto/)
+ assert.match(modal,/role="dialog" aria-modal="true" aria-labelledby="attendance-export-title"/)
+ assert.match(modal,/useModalFocus\(onClose, \{busy:isExporting\}\)/)
+ assert.match(modal,/data-dialog-close/)
+})
 test('HR application has three permission-scoped modules',()=>{
  const app=get('src/App.jsx')
  for(const route of ['employees','attendance-records','payroll'])assert.ok(app.includes("path:'"+route+"'"))

@@ -176,10 +176,10 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
 
   return (
     <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/50 p-4">
-      <div className="mx-auto my-6 max-w-6xl rounded-3xl bg-white shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-labelledby="create-system-user-title" className="mx-auto my-6 max-w-6xl rounded-3xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 p-5">
-          <div><h2 className="text-xl font-black">Create System User</h2><p className="text-sm text-slate-500">Create the account from role defaults, then customize its authoritative permissions and project scope.</p></div>
-          <button type="button" onClick={onClose} className="rounded-xl px-3 py-2 font-black text-slate-500">✕</button>
+          <div><h2 id="create-system-user-title" className="text-xl font-black">Create System User</h2><p className="text-sm text-slate-500">Create the account from role defaults, then customize its authoritative permissions and project scope.</p></div>
+          <button type="button" onClick={onClose} aria-label="Close create system user" className="shrink-0 rounded-xl px-3 py-2 font-black text-slate-500">✕</button>
         </div>
 
         <div className="border-b border-slate-100 px-5 py-4">

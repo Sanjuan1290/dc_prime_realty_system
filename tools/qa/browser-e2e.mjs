@@ -5,7 +5,7 @@ import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 const root=fileURLToPath(new URL('../../',import.meta.url)),base='http://127.0.0.1:4179';
-const evidence=resolve(root,'QA_REPORTS/evidence');mkdirSync(evidence,{recursive:true});
+const evidence=resolve(root,process.env.QA_EVIDENCE_DIR||'QA_REPORTS/evidence');mkdirSync(evidence,{recursive:true});
 const checks=[],errors=[],requests=[];
 const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});
 const context=await browser.newContext();const page=await context.newPage();
@@ -24,7 +24,7 @@ try {
     for(const [app,path] of [['SYSTEM','/system/portal'],['HR','/hr/login'],['FINANCE','/finance/']])await check(app,`${width}px unauthenticated login and layout`,async()=>{await context.clearCookies();await go(path);await page.locator('input[type=email]').waitFor();await layout(app,`${width}px login`);await screenshot(`${app.toLowerCase()}-login-${width}`)});
   }
   await page.setViewportSize({width:1440,height:1000});
-  await check('FINANCE','real browser login, dashboard and refresh persistence',async()=>{await login('/finance/','admin@qa.invalid');await page.getByText('Financial summary',{exact:true}).waitFor();assert.match(await page.locator('.tile strong').first().innerText(),/₱/);await screenshot('finance-dashboard');await go('/finance/');await page.getByText('Financial summary',{exact:true}).waitFor()});
+  await check('FINANCE','real browser login, dashboard and refresh persistence',async()=>{await login('/finance/','admin@qa.invalid');await page.getByText('Financial summary',{exact:true}).waitFor();await page.waitForFunction(()=>document.querySelector('.tile strong')?.textContent.includes('₱'));assert.match(await page.locator('.tile strong').first().innerText(),/₱/);await screenshot('finance-dashboard');await go('/finance/');await page.getByText('Financial summary',{exact:true}).waitFor()});
   await check('FINANCE','audit/import/reconciliation tabs execute successfully',async()=>{for(const text of ['Audit log','Finance imports','Reconciliation']){await page.getByRole('button',{name:text,exact:true}).click();await page.waitForTimeout(450);assert.doesNotMatch(await page.innerText('body'),/SERVER_ERROR|Finance request failed/)}});
   await check('FINANCE','390px authenticated dashboard has no horizontal overflow',async()=>{await page.setViewportSize({width:390,height:844});await go('/finance/');await page.getByText('Financial summary',{exact:true}).waitFor();await layout('FINANCE','390px authenticated');await screenshot('finance-dashboard-mobile')});
   await page.setViewportSize({width:1440,height:1000});

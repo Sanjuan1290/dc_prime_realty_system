@@ -5,6 +5,11 @@ import {createReadStream,mkdirSync,statSync,readFileSync,writeSync,openSync,clos
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {resolve,extname,sep} from 'node:path';
 import {proxy} from '../../CLIENT/shared/proxy.js';
+import {onRequest as portal} from '../../CLIENT/functions/portal.js';
+import {onRequest as portalChild} from '../../CLIENT/functions/portal/[[path]].js';
+import {onRequest as systemPage} from '../../CLIENT/functions/system/[[path]].js';
+import {onRequest as hrPage} from '../../CLIENT/functions/hr/[[path]].js';
+import {onRequest as financePage} from '../../CLIENT/functions/finance/[[path]].js';
 const root=fileURLToPath(new URL('../../',import.meta.url)),runtime=resolve(root,'QA_REPORTS/.runtime');
 mkdirSync(runtime,{recursive:true});
 const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>/^(PATH|SystemRoot|WINDIR|TEMP|TMP|COMSPEC|PATHEXT|LOCALAPPDATA|APPDATA|USERPROFILE)$/i.test(k)));
@@ -34,6 +39,17 @@ const dist=resolve(root,'CLIENT/dist');
 const server=createServer(async(req,res)=>{
   try {
     const url=new URL(req.url,'http://127.0.0.1:4179');
+    // Exercise the deployed Pages handlers, including legacy redirects, rather
+    // than teaching this adapter an independent copy of their routing rules.
+    const handler=url.pathname==='/portal'?portal:url.pathname.startsWith('/portal/')?portalChild:
+      [['system',systemPage],['hr',hrPage],['finance',financePage]].find(([app])=>url.pathname===`/${app}`||url.pathname.startsWith(`/${app}/`))?.[1];
+    if(handler){
+      const result=await handler({request:new Request(url),next:()=>null,env:{ASSETS:{fetch:async target=>{
+        const file=resolve(dist,'.'+new URL(target).pathname,'index.html');
+        return new Response(readFileSync(file),{headers:{'content-type':'text/html','cache-control':'no-store'}});
+      }}}});
+      if(result){res.statusCode=result.status;for(const [k,v] of result.headers)res.setHeader(k,v);return res.end(Buffer.from(await result.arrayBuffer()));}
+    }
     const routes=[['/finance-api','finance','FINANCE_API_ORIGIN'],['/hr-api','hr','HR_API_ORIGIN'],['/api','system','SYSTEM_API_ORIGIN']];
     const api=routes.find(([prefix])=>url.pathname.startsWith(prefix+'/'));
     if(api){

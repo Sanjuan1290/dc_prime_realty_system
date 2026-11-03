@@ -383,3 +383,13 @@ body{margin:0;font-family:inherit}
 }
 
 
+
+
+/* Public WEBSITE 404 screen: these styles are explicit, even when utilities are unavailable. */
+.website-shell .dc-not-found {width:min(100% - 32px, 720px);margin:0 auto;padding:76px 16px 88px;text-align:center;}
+.website-shell .dc-not-found-mark {display:block;width:80px;height:80px;max-width:100%;margin:0 auto;object-fit:contain;}
+.website-shell .dc-not-found-code {margin:22px 0 8px;font-size:12px;line-height:1.4;font-weight:700;letter-spacing:.2em;color:#806014;}
+.website-shell .dc-not-found h1 {margin:0;font-size:clamp(28px,5vw,36px);letter-spacing:-.03em;line-height:1.3;color:#1c2422;}
+.website-shell .dc-not-found-description {margin:15px auto 0;max-width:520px;font-size:15px;line-height:1.75;color:#616c65;}
+.website-shell .dc-not-found-action {margin-top:25px;}
+@media (max-width: 640px) { .website-shell .dc-not-found {padding-top:56px;padding-bottom:68px;} }

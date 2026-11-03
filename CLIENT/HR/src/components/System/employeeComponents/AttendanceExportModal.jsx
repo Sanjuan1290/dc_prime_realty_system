@@ -3,6 +3,7 @@ import { FiDownload, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import { useFetch } from '../../../utils/useFetch'
 import { downloadAttendanceWorkbook } from '../../../utils/attendanceExcelExport'
+import useModalFocus from '../../../utils/useModalFocus'
 
 const inputClass = 'h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
 
@@ -80,6 +81,7 @@ const AttendanceExportModal = ({ onClose, attendanceSettings = {} }) => {
   const [customTo, setCustomTo] = useState(`${initialMonth}-15`)
   const [notice, setNotice] = useState(null)
   const [isExporting, setIsExporting] = useState(false)
+  const dialogRef = useModalFocus(onClose, {busy:isExporting})
   const attendanceDefaults = useMemo(() => getExportRulesFromSettings(attendanceSettings), [attendanceSettings])
   const [rules, setRules] = useState(() => getExportRulesFromSettings(attendanceSettings))
 
@@ -147,15 +149,15 @@ const AttendanceExportModal = ({ onClose, attendanceSettings = {} }) => {
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
-      <section className="w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-sm">
+      <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="attendance-export-title" tabIndex={-1} className="my-auto w-full max-w-2xl shrink-0 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.15em] text-emerald-700">Attendance Report</p>
-            <h2 className="mt-1 text-xl font-black text-slate-950">Export Attendance Excel</h2>
+            <h2 id="attendance-export-title" className="mt-1 text-xl font-black text-slate-950">Export Attendance Excel</h2>
             <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">Downloads one workbook with one worksheet for every active employee. Rest Days and historical Rest Day changes are applied automatically.</p>
           </div>
-          <button type="button" onClick={onClose} disabled={isExporting} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40" aria-label="Close export modal"><FiX /></button>
+          <button data-dialog-close type="button" onClick={onClose} disabled={isExporting} className="shrink-0 rounded-xl p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40" aria-label="Close export modal"><FiX /></button>
         </header>
 
         <div className="grid gap-5 p-5 sm:p-6">

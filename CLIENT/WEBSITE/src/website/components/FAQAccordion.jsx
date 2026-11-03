@@ -20,7 +20,7 @@ const FAQAccordion = ({ items }) => {
         const open = index === openIndex
         return (
           <article id={`faq-${index + 1}`} key={item.question} className="scroll-mt-24 overflow-hidden rounded-[14px] border border-[#ded9ce] bg-white">
-            <button type="button" onClick={() => setOpenIndex(open ? -1 : index)} className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left" aria-expanded={open} aria-controls={`faq-panel-${index + 1}`}>
+            <button type="button" onClick={() => setOpenIndex(open ? -1 : index)} className="flex w-full cursor-pointer items-center justify-between gap-4 border-0 bg-transparent px-4 py-4 text-left" aria-expanded={open} aria-controls={`faq-panel-${index + 1}`}>
               <span className="text-[13px] font-semibold text-[#26231e]">{item.question}</span>
               <FiChevronDown className={`h-4 w-4 shrink-0 text-[#806014] transition ${open ? 'rotate-180' : ''}`} />
             </button>

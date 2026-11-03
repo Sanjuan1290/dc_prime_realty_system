@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
-    "prebuild": "node ../scripts/restore-website-media.mjs --check",
+    "predev": "npm run generate:css",
+    "prebuild": "node ../scripts/restore-website-media.mjs --check && npm run generate:css && node --test tests/uiRegression.test.mjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:ui": "node --test tests/uiRegression.test.mjs",
+    "generate:css": "node scripts/generate-utilities.mjs"
   },
   "dependencies": {
     "react": "^19.2.7",
@@ -16,7 +19,10 @@
     "react-router-dom": "^7.17.0"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "4.1.10",
     "@vitejs/plugin-react": "^6.0.3",
+    "postcss": "8.5.32",
+    "tailwindcss": "4.1.10",
     "vite": "^8.1.1"
   }
 }
