@@ -1,4 +1,5 @@
 import { consumeDoubleCheckToken, requestDoubleCheck } from './doubleCheck'
+import { getRenderStartupError, getRetryAfterSeconds } from '../../../shared/upstreamAvailability.js'
 
 const DEFAULT_API_BASE_URL = '/api/v1'
 const DEFAULT_TIMEOUT_MS = 75_000
@@ -76,13 +77,14 @@ const parseRequestBody = (body) => {
 }
 
 export class ApiError extends Error {
-  constructor(message, { status = 0, code = '', data = null, cause = null } = {}) {
+  constructor(message, { status = 0, code = '', data = null, cause = null, retryAfterSeconds = 0 } = {}) {
     super(message)
     this.name = 'ApiError'
     this.status = Number(status || 0)
     this.code = String(code || '')
     this.data = data
     this.cause = cause
+    this.retryAfterSeconds = getRetryAfterSeconds(data?.retryAfterSeconds ?? retryAfterSeconds)
   }
 }
 
@@ -90,6 +92,7 @@ export const isAuthenticationError = (error) => Number(error?.status || 0) === 4
 export const isMaintenanceError = (error) => error?.code === 'MAINTENANCE_MODE'
 export const isServerUnavailableError = (error) =>
   error?.code === 'SERVER_UNAVAILABLE'
+  || error?.code === 'SERVER_WAKING_UP'
   || error?.code === 'REQUEST_TIMEOUT'
   || [502, 504].includes(Number(error?.status || 0))
   || (Number(error?.status || 0) === 503 && !error?.code)
@@ -107,8 +110,15 @@ const redirectToAvailabilityPage = (target, state = {}) => {
 }
 
 const parseResponseBody = async (response) => {
+  const startupError = getRenderStartupError(response)
+  if (startupError) return startupError
   const contentType = response.headers.get('content-type') || ''
   if (contentType.includes('application/json')) return response.json().catch(() => ({}))
+  if (response.status === 429) return {
+    code: 'RATE_LIMITED',
+    message: 'Too many requests. Please wait before trying again.',
+    retryAfterSeconds: getRetryAfterSeconds(response.headers.get('retry-after'), 60),
+  }
   const text = await response.text().catch(() => '')
   // Cloudflare/Render may return an HTML 502 page. Never expose its markup,
   // internal addresses, or diagnostic content in the application UI.
@@ -232,6 +242,7 @@ export const requestApi = async (
         status: response.status,
         code: data?.code || '',
         data,
+        retryAfterSeconds: getRetryAfterSeconds(response.headers.get('retry-after')),
       })
       if (redirectOnUnavailable && isMaintenanceError(error)) {
         redirectToAvailabilityPage('/maintenance', { message: error.message })
@@ -293,6 +304,7 @@ export const requestApiBlob = async (
         status: response.status,
         code: data?.code || '',
         data,
+        retryAfterSeconds: getRetryAfterSeconds(response.headers.get('retry-after')),
       })
       if (redirectOnUnavailable && isMaintenanceError(error)) {
         redirectToAvailabilityPage('/maintenance', { message: error.message })

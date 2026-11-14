@@ -30,3 +30,9 @@ The tests deliberately create transactions, attendance and payroll records in th
 `node tools/qa/read-only-diagnostics.mjs` is separate: it reads the configured server `.env` files and checks the existing TiDB databases. It does not start services or jobs. Its Finance and attendance application queries are restricted to `SELECT`; it reports status and schema metadata without outputting business records or credentials.
 
 Evidence goes to `QA_REPORTS/evidence`; database runtime files go to `QA_REPORTS/.runtime`. Both directories are ignored by Git. Stop the adapter and disposable MySQL process when finished.
+
+## API startup recovery
+
+After building the local bundles, run `node tools/qa/startup-recovery-browser.mjs`. It starts its own loopback server, runs the real Pages proxy with simulated provider failures, and verifies the production SYSTEM sign-in bundle. It needs no database or running application services. The cases cover startup status failures, failed login during startup, application login limits, HTML rate-limit responses, session outages and gateway errors. It checks retry countdowns, preserved form fields and absence of automatic password resubmission.
+
+`node tools/qa/live-api-diagnostics.mjs` makes three unauthenticated GET requests to the deployed health, public status and current-user endpoints. It never signs in. `--wait-for-health` makes one health request with a longer timeout; `--include-direct` additionally checks the documented Render origin. Its output includes HTTP status and selected routing headers, without credentials. A `401` from `/user/me` is expected without a session.

@@ -1,4 +1,5 @@
 // Cloudflare Pages proxy: individual upstreams, no browser-visible secrets.
+import { normalizeUpstreamAvailability } from './upstreamAvailability.js'
 const TIMEOUT = 120_000
 const knownCookies = {
   hr: new Set(['hr_auth_session', 'hr_attendance_kiosk_session']),
@@ -39,11 +40,11 @@ export async function proxy({ request, env }, { originVar, prefix, system }) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), TIMEOUT)
   try {
-    const upstream = await fetch(target, {
+    const upstream = await normalizeUpstreamAvailability(await fetch(target, {
       method: request.method, headers,
       body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
       redirect: 'manual', signal: controller.signal,
-    })
+    }))
     const responseHeaders = new Headers(upstream.headers)
     responseHeaders.delete('content-length')
     responseHeaders.set('cache-control', 'private, no-store')

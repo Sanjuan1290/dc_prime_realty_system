@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import useCurrentUser from '../utils/useCurrentUser'
 import StatusAlert from '../components/Shared/StatusAlert'
@@ -29,16 +29,40 @@ const Login = () => {
   const [rememberMe, setRememberMe] = useState(Boolean(rememberedEmail))
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [notice, setNotice] = useState(null)
+  const [retryUntil, setRetryUntil] = useState(0)
+  const [now, setNow] = useState(Date.now)
 
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const { data: currentUser, isLoading, isFetched } = useCurrentUser()
-  const { data: systemStatus } = useQuery({
+  const { data: currentUser, isLoading, isFetched, error: sessionError } = useCurrentUser({
+    redirectOnUnavailable: false,
+    refetchOnWindowFocus: false,
+  })
+  const { data: systemStatus, error: statusError } = useQuery({
     queryKey: ['public-system-status'],
-    queryFn: () => requestApi('/system-status'),
+    queryFn: () => requestApi('/system-status', { redirectOnUnavailable: false }),
     staleTime: 30_000,
     retry: false,
+    refetchOnWindowFocus: false,
   })
+
+  useEffect(() => {
+    const delay = Math.max(sessionError?.retryAfterSeconds || 0, statusError?.retryAfterSeconds || 0)
+    if (delay) setRetryUntil((previous) => Math.max(previous, Date.now() + delay * 1000))
+  }, [sessionError, statusError])
+
+  useEffect(() => {
+    setNow(Date.now())
+    if (retryUntil <= Date.now()) return
+    const timer = window.setInterval(() => {
+      const current = Date.now()
+      setNow(current)
+      if (current >= retryUntil) window.clearInterval(timer)
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [retryUntil])
+
+  const retrySeconds = Math.max(0, Math.ceil((retryUntil - now) / 1000))
 
   const signinMutation = useMutation({
     mutationKey: ['currentUser'],
@@ -47,6 +71,9 @@ const Login = () => {
       body: JSON.stringify({ email, password, rememberMe }),
       confirmationHandled: 'technical',
     }),
+    onError: (error) => {
+      if (error.retryAfterSeconds) setRetryUntil(Date.now() + error.retryAfterSeconds * 1000)
+    },
     onSuccess: (data) => {
       try {
         if (rememberMe) {
@@ -148,6 +175,7 @@ const Login = () => {
               <form
                 onSubmit={(event) => {
                   event.preventDefault()
+                  if (signinMutation.isPending || retrySeconds > 0) return
                   setNotice(null)
                   signinMutation.mutate()
                 }}
@@ -189,9 +217,10 @@ const Login = () => {
                   {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={() => setNotice(null)} /> : null}
                   {signinMutation.isPending ? <StatusAlert type="loading" message="Signing in..." /> : null}
                   {signinMutation.isError ? <StatusAlert type="error" message={signinMutation.error.message} /> : null}
+                  {!signinMutation.isError && retrySeconds > 0 ? <StatusAlert type="warning" message={statusError?.message || sessionError?.message || 'The API server is waking up. Please wait before trying again.'} /> : null}
 
-                  <button type="submit" disabled={signinMutation.isPending} className="h-11 w-full rounded-lg bg-blue-600 text-sm font-semibold tracking-wide text-white transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-blue-300">
-                    {signinMutation.isPending ? 'Signing in' : 'Sign in'}
+                  <button type="submit" disabled={signinMutation.isPending || retrySeconds > 0} className="h-11 w-full rounded-lg bg-blue-600 text-sm font-semibold tracking-wide text-white transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-blue-300">
+                    {signinMutation.isPending ? 'Signing in' : retrySeconds > 0 ? `Try again in ${retrySeconds}s` : 'Sign in'}
                   </button>
                 </div>
 

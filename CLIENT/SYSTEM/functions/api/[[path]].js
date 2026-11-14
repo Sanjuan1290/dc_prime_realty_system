@@ -1,3 +1,5 @@
+import { normalizeUpstreamAvailability } from '../../../shared/upstreamAvailability.js'
+
 const PROXY_TIMEOUT_MS = 190_000
 
 const normalizeOrigin = (value) =>
@@ -28,7 +30,7 @@ export const onRequest = async ({ request, env }) => {
   const timeoutId = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS)
 
   try {
-    const upstream = await fetch(targetUrl, {
+    const upstream = await normalizeUpstreamAvailability(await fetch(targetUrl, {
       method: request.method,
       headers,
       body: ['GET', 'HEAD'].includes(request.method)
@@ -36,7 +38,7 @@ export const onRequest = async ({ request, env }) => {
         : request.body,
       redirect: 'manual',
       signal: controller.signal,
-    })
+    }))
 
     const responseHeaders = new Headers(upstream.headers)
     responseHeaders.delete('content-length')

@@ -8,6 +8,7 @@
     "test:api": "node --test api.e2e.test.mjs",
     "test:attendance": "node --test attendance.e2e.test.mjs",
     "test:finance-attendance:browser": "node finance-attendance-browser.mjs",
+    "test:startup-recovery": "node startup-recovery-browser.mjs",
     "test:browser": "node browser-e2e.mjs",
     "test:ui": "node ui-verification.mjs",
     "test:ui:live": "node ui-live-verification.mjs",
