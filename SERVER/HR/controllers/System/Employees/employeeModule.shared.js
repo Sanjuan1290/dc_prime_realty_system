@@ -13,14 +13,18 @@ export const dateOnly = (value) => {
   if (!value) return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
   const text = String(value).trim();
-  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
-  return match?.[1] || null;
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})(?:$|[T ])/);
+  if (!match) return null;
+  const parsed = new Date(`${match[1]}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === match[1]
+    ? match[1]
+    : null;
 };
 
 export const timeOnly = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const text = String(value).trim();
-  const match = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  const match = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (!match) return null;
   const hour = Number(match[1]);
   const minute = Number(match[2]);

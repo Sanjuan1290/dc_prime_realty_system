@@ -1,0 +1,32 @@
+# Local verification
+
+Run from the repository root using Node 22+ with dependencies installed in the individual application directories and `tools/qa`. Browser scripts use installed Chrome; the focused browser script also accepts `QA_CHROME_PATH`.
+
+```powershell
+node tools/qa/check-project.mjs
+node tools/qa/check-project.mjs --build
+```
+
+The unit runner uses dummy credentials and a closed local database port. The build runner uses existing dependencies, produces combined local bundles in `CLIENT/dist`, and keeps HR editing and kiosk mode disabled. Neither command deploys anything.
+
+API/browser checks require the disposable database from `setup-local-db.mjs` and the real service adapter from `serve-local.mjs`. On Windows, initialize a separate MySQL data directory under `QA_REPORTS/.runtime/mysql`, then run it on **loopback port 13307** using `--no-defaults`, `--bind-address=127.0.0.1` and `--mysqlx=OFF`. Do not point this harness at an existing database. Setup validates both the server port and exact data directory before creating the empty schemas and synthetic accounts. `--reset` recreates only those schemas on that verified disposable instance.
+
+```powershell
+node tools/qa/setup-local-db.mjs
+node tools/qa/serve-local.mjs
+```
+
+Keep the adapter running in one terminal. From another terminal, run these in order on a fresh QA dataset:
+
+```powershell
+node --test tools/qa/api.e2e.test.mjs
+node --test tools/qa/attendance.e2e.test.mjs
+node tools/qa/browser-e2e.mjs
+node tools/qa/finance-attendance-browser.mjs
+```
+
+The tests deliberately create transactions, attendance and payroll records in the disposable database. Repeat a complete run after stopping the adapter and resetting that disposable dataset; start the adapter again before testing. The adapter does not load application `.env` files and uses only synthetic local credentials. Its payroll jobs and import writes run only against that QA instance.
+
+`node tools/qa/read-only-diagnostics.mjs` is separate: it reads the configured server `.env` files and checks the existing TiDB databases. It does not start services or jobs. Its Finance and attendance application queries are restricted to `SELECT`; it reports status and schema metadata without outputting business records or credentials.
+
+Evidence goes to `QA_REPORTS/evidence`; database runtime files go to `QA_REPORTS/.runtime`. Both directories are ignored by Git. Stop the adapter and disposable MySQL process when finished.

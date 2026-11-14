@@ -20,6 +20,38 @@ for(const app of ['SYSTEM','HR','FINANCE']) {
     result.database=identity[0].db;result.engine=identity[0].version;
     const [tables]=await pool.execute('SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=DATABASE()');
     result.tableCount=tables.length;
+    if(app==='HR') {
+      Object.assign(process.env,env);
+      const {db:hrPool}=await import('../../SERVER/HR/db/connect.js');
+      const {getAttendanceRecords,getAttendanceCalendar}=await import('../../SERVER/HR/controllers/System/Employees/AttendanceSimple.controller.js');
+      const {getAttendanceExportData}=await import('../../SERVER/HR/controllers/System/Employees/AttendanceExport.controller.js');
+      const {getAttendanceSettings}=await import('../../SERVER/HR/controllers/System/Employees/AttendanceSettings.controller.js');
+      const getConnection=hrPool.getConnection.bind(hrPool);
+      hrPool.getConnection=async()=>{
+        const connection=await getConnection();
+        // Even an accidental controller change cannot write to the configured database.
+        return new Proxy(connection,{get(target,key){
+          if(key==='query'||key==='execute')return async(sql,values)=>{
+            if(typeof sql!=='string'||!/^\s*SELECT\b/i.test(sql))throw Object.assign(new Error('Read-only diagnostics refused a non-SELECT statement.'),{code:'READ_ONLY_GUARD'});
+            return target[key](sql,values);
+          };
+          const value=target[key];return typeof value==='function'?value.bind(target):value;
+        }});
+      };
+      try {
+        for(const [name,controller,query] of [
+          ['attendance',getAttendanceRecords,{dateFrom:'2026-10-01',dateTo:'2026-10-31'}],
+          ['attendance_calendar',getAttendanceCalendar,{month:'2026-10'}],
+          ['attendance_excel_data',getAttendanceExportData,{dateFrom:'2026-10-01',dateTo:'2026-10-31'}],
+          ['attendance_settings',getAttendanceSettings,{}],
+        ]){
+          let status=200;
+          const response={status(code){status=code;return this},json(){return this}};
+          try{await controller({query},response);result.checks.push({name,status:status===200?'PASS':'FAIL',httpStatus:status})}
+          catch(e){result.checks.push({name,status:'FAIL',code:e.code||e.name})}
+        }
+      }finally{await hrPool.end()}
+    }
     if(app==='FINANCE') {
       Object.assign(process.env,env);
       const {getPool}=await import('../../SERVER/FINANCE/src/db.js');
@@ -28,7 +60,7 @@ for(const app of ['SYSTEM','HR','FINANCE']) {
       const {getFinanceReconciliation}=await import('../../SERVER/FINANCE/src/reconciliation.js');
       // Capture the SQL template only, without credentials, values or row data.
       const financePool=getPool(), execute=financePool.execute.bind(financePool);
-      financePool.execute=async(sql,values)=>{try{return await execute(sql,values)}catch(e){result.failedSql=sql;throw e}};
+      financePool.execute=async(sql,values)=>{if(typeof sql!=='string'||!/^\s*SELECT\b/i.test(sql))throw Object.assign(new Error('Read-only diagnostics refused a non-SELECT statement.'),{code:'READ_ONLY_GUARD'});try{return await execute(sql,values)}catch(e){result.failedSql=sql;throw e}};
       for(const [name,fn] of Object.entries({dashboard:()=>getDashboard({from:'2026-10-01',to:'2026-10-30'}),transactions:()=>listTransactions({from:'2026-10-01',to:'2026-10-30'}),categories:()=>listCategories(),audit:()=>listAudit(),imports:()=>listImportBatches(),reconciliation:()=>getFinanceReconciliation({from:'2026-10-01',to:'2026-10-30'})})){
         try {await fn();result.checks.push({name,status:'PASS'});}catch(e){result.checks.push({name,status:'FAIL',code:e.code,errno:e.errno,sqlState:e.sqlState});}
       }
@@ -41,3 +73,4 @@ for(const app of ['SYSTEM','HR','FINANCE']) {
 }
 mkdirSync(resolve(root,'QA_REPORTS/evidence'),{recursive:true});
 writeFileSync(resolve(root,'QA_REPORTS/evidence/live-readonly.json'),JSON.stringify(results,null,2));
+if(results.some(result=>result.status!=='PASS'))process.exitCode=1;

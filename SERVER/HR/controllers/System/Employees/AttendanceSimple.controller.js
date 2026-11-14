@@ -25,6 +25,8 @@ const normalizeEmployeeIds = (value) => Array.from(new Set((Array.isArray(value)
 // Earlier Time Out is permitted only as next-day Time Out, within 16 hours.
 const isEventTimeOutBeforeTimeIn = (timeIn, timeOut) => Boolean(timeIn && timeOut && timeOut < timeIn);
 const invalidAttendanceClockRange = (timeIn, timeOut) => Boolean(timeIn && timeOut && !getAttendanceShift(timeIn, timeOut));
+const invalidProvidedClockTime = (value) => value !== null && value !== undefined
+  && String(value).trim() !== '' && !timeOnly(value);
 const previousDate = (day) => new Date(Date.parse(`${day}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
 
 const getEmployeeByBarcode = async (connection, barcode) => {
@@ -1019,6 +1021,10 @@ export const createManualAttendance = async (req, res) => {
     const reason =
       cleanText(req.body.reason);
 
+    if ([req.body.actual_time_in, req.body.actual_time_out].some(invalidProvidedClockTime)) {
+      return res.status(400).json({ message: 'Enter valid Time In and Time Out clock times.' });
+    }
+
     if (
       !employeeId ||
       !attendanceDate
@@ -1244,6 +1250,10 @@ export const correctAttendanceRecord = async (req, res) => {
       cleanText(
         req.body.reason
       );
+
+    if ([req.body.actual_time_in, req.body.actual_time_out].some(invalidProvidedClockTime)) {
+      return res.status(400).json({ message: 'Enter valid Time In and Time Out clock times.' });
+    }
 
     if (!attendanceId) {
       return res.status(400).json({

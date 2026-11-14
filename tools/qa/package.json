@@ -3,7 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:unit": "node check-project.mjs",
+    "build:qa": "node check-project.mjs --build",
     "test:api": "node --test api.e2e.test.mjs",
+    "test:attendance": "node --test attendance.e2e.test.mjs",
+    "test:finance-attendance:browser": "node finance-attendance-browser.mjs",
     "test:browser": "node browser-e2e.mjs",
     "test:ui": "node ui-verification.mjs",
     "test:ui:live": "node ui-live-verification.mjs",

@@ -10,3 +10,5 @@ dist/
 .DS_Store
 # Never commit original data dumps from production.
 **/*BACKUP_WITH_DATA*.sql
+QA_REPORTS/.runtime/
+QA_REPORTS/evidence/
