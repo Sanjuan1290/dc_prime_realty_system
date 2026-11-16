@@ -1,3 +1,4 @@
+import {locksSoaFirstDueDate,planSoaDueDateUpdates} from '../../../services/soaFirstDueDate.service.js';
 import { isOwnerAdministrator } from '../../../config/permissions.js';
 import bcrypt from 'bcrypt';
 import {
@@ -2027,6 +2028,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
 
 export const updateLotProjectListingSoaTerms = async (req, res) => {
   const connection = await db.getConnection();
+  let transactionStarted=false;
 
   try {
     const user = await getAuthenticatedUser(req);
@@ -2039,6 +2041,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
 
     const lookup = getListingLookupWhere(listingLookup);
+    await connection.beginTransaction();transactionStarted=true;
 
     const [listingRows] = await connection.query(
       `
@@ -2050,7 +2053,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
           ON cp.lot_project_client_profile_id = account.lot_project_client_profile_id
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}
-        LIMIT 1
+        LIMIT 1 FOR UPDATE
       `,
       [project.lot_project_id, ...lookup.params]
     );
@@ -2058,19 +2061,15 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     const listing = listingRows[0];
     if (!listing) return res.status(404).json({ message: 'Reserved listing not found.' });
 
-    const paymentCount = await tableExists(connection, 'lot_project_payments')
-      ? (await connection.query(
-          `
-            SELECT COUNT(*) AS total
-            FROM lot_project_payments
-            WHERE lot_project_id = ?
-              AND lot_project_listing_id = ?
-              AND lot_project_client_profile_id = ?
-              AND lot_project_payment_status <> 'Cancelled'
-          `,
-          [project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id]
-        ))[0][0]?.total
-      : 0;
+    const [recordedPayments] = await tableExists(connection, 'lot_project_payments')
+      ? await connection.query(`SELECT lot_project_payment_type,lot_project_payment_status
+          FROM lot_project_payments WHERE lot_project_id=? AND lot_project_listing_id=?
+          AND lot_project_client_profile_id=? AND lot_project_account_id=?
+          AND lot_project_payment_status<>'Cancelled'`,
+        [project.lot_project_id,listing.lot_project_listing_id,listing.lot_project_client_profile_id,listing.lot_project_account_id])
+      : [[]];
+    const paymentCount=recordedPayments.length;
+    const firstDueDateLocked=recordedPayments.some(locksSoaFirstDueDate);
 
     const dpDiscountPercentage = Number(req.body.dpDiscountPercentage ?? req.body.soa_dp_discount_percentage ?? listing.soa_dp_discount_percentage ?? 0);
     const downpaymentPercentage = Number(req.body.downpaymentPercentage ?? req.body.soa_downpayment_percentage ?? listing.soa_downpayment_percentage ?? 30);
@@ -2145,14 +2144,15 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
 
     const sameNumber = (left, right) => Math.abs(Number(left || 0) - Number(right || 0)) < 0.000001;
     const currentFirstDueDate = dateOrNull(listing.soa_first_due_date);
-    const structuralTermsChanged =
+    const otherStructuralTermsChanged =
       !sameNumber(dpDiscountPercentage, listing.soa_dp_discount_percentage) ||
       !sameNumber(downpaymentPercentage, listing.soa_downpayment_percentage) ||
       Number(downpaymentTerms) !== Number(listing.soa_downpayment_terms ?? 3) ||
       Number(monthlyTerms) !== Number(listing.soa_monthly_terms ?? 36) ||
       Number(reservationFeeAppliedToDownpayment) !== Number(listing.soa_reservation_fee_applied_to_downpayment || 0) ||
-      firstDueDate !== currentFirstDueDate ||
       Number(isHistoricalEntry) !== Number(currentHistoricalEntry);
+    const firstDueDateChanged=firstDueDate!==currentFirstDueDate;
+    const structuralTermsChanged=otherStructuralTermsChanged||firstDueDateChanged;
     const penaltyTermsChanged =
       !sameNumber(dailyPenaltyRate, listing.soa_penalty_rate_percent) ||
       Number(penaltyGraceDays) !== Number(listing.soa_penalty_grace_days ?? 0) ||
@@ -2170,11 +2170,13 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       }
     }
 
-    if (Number(paymentCount || 0) > 0 && structuralTermsChanged) {
+    if (Number(paymentCount || 0) > 0 && otherStructuralTermsChanged) {
       return res.status(400).json({
         message: 'Downpayment and amortization terms cannot be changed after payments are recorded. Penalty rate and grace period can still be updated.',
       });
     }
+
+    if(firstDueDateChanged&&firstDueDateLocked)return res.status(409).json({message:'First Due Date cannot be changed after a downpayment or installment payment is recorded.'});
 
     const updateColumns = [];
     const updateParams = [];
@@ -2199,8 +2201,6 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     await addProfileUpdate('soa_penalty_rate_percent', dailyPenaltyRate);
     await addProfileUpdate('soa_penalty_grace_days', penaltyGraceDays);
     await addProfileUpdate('soa_penalty_effective_from', penaltyEffectiveFrom);
-
-    await connection.beginTransaction();
 
     if (updateColumns.length > 0) {
       await connection.query(
@@ -2240,6 +2240,13 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       const terms = getComputedSoaTerms(updatedListing, []);
       const computedRows = recomputeComputedSoaBalances(createComputedSoaRows(terms), terms);
 
+      if(Number(paymentCount)>0){
+        const savedRows=await getExistingSoaScheduleRows(connection,project.lot_project_id,listing.lot_project_listing_id,listing.lot_project_client_profile_id,listing.lot_project_account_id);
+        const changes=planSoaDueDateUpdates(savedRows,computedRows);
+        if(!changes.length)throw Object.assign(new Error('This account has no existing installment schedule to re-date safely.'),{statusCode:409});
+        for(const change of changes)await connection.query(`UPDATE lot_project_payment_schedules SET due_date=?,updated_at=NOW()
+          WHERE lot_project_payment_schedule_id=? AND lot_project_account_id=? AND schedule_status<>'Cancelled'`,[change.dueDate,change.id,listing.lot_project_account_id]);
+      }else{
       // Keep the previous zero-payment schedule as account history instead of deleting it.
       await connection.query(
         `
@@ -2327,9 +2334,12 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       }
     }
 
+    }
+
     if (await tableExists(connection, 'lot_project_payment_schedules')) {
       const refreshedListing = {
         ...listing,
+        soa_first_due_date:firstDueDate,
         soa_penalty_calculation_method: 'daily',
         soa_penalty_rate_percent: dailyPenaltyRate,
         soa_penalty_grace_days: penaltyGraceDays,
@@ -2368,7 +2378,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       },
     });
 
-    await connection.commit();
+    await connection.commit();transactionStarted=false;
 
     return res.json({
       success: true,
@@ -2392,9 +2402,10 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       },
     });
   } catch (error) {
-    await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    if(transactionStarted){await connection.rollback();transactionStarted=false;}
+    return res.status(error.statusCode||500).json({ message: getErrorMessage(error) });
   } finally {
+    if(transactionStarted)await connection.rollback();
     connection.release();
   }
 };

@@ -1,4 +1,5 @@
 import { formatPhilippineCalendarDate } from '../../../../utils/formatDateTime'
+import { locksSoaFirstDueDate } from '../../../../utils/soaFirstDueDate'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useSearchParams } from 'react-router-dom'
@@ -529,7 +530,7 @@ const todayManila = () => new Intl.DateTimeFormat('en-CA', {
 }).format(new Date())
 const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => index)
 
-const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, onSave }) => {
+const SoaTermsModal = ({ listing = {}, payments = [], isSaving = false, serverAlert, onClose, onSave }) => {
   const initialDailyPenaltyRate = String(getListingValue(listing, ['soaPenaltyRatePercent'], DEFAULT_DAILY_PENALTY_RATE))
   const [step, setStep] = useState(1)
   const [form, setForm] = useState(() => ({
@@ -550,7 +551,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
   )
   const [modalAlert, setModalAlert] = useState({
     type: 'info',
-    message: 'Payment schedule fields lock after a payment is recorded. Daily penalty rate, grace period, and penalty effective date stay editable.',
+    message: 'First Due Date stays editable after reservation and locks once a downpayment or installment payment is recorded. Other payment terms lock after any payment. Penalty settings stay editable.',
   })
 
   useEffect(() => {
@@ -568,6 +569,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
   const listingStartingDate = String(getListingValue(listing, ['soaStartingDate', 'starting_date'], '') || '')
   const listingInterestRate = Number(getListingValue(listing, ['annualInterestRate'], 0))
   const hasRecordedPayments = Number(getListingValue(listing, ['payment_count'], 0)) > 0
+  const firstDueDateLocked = payments.some(locksSoaFirstDueDate)
   const firstDueMinimum = listingStartingDate || undefined
   const selectedPenaltyRateOption = penaltyRateMode === 'custom'
     ? 'custom'
@@ -601,7 +603,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
   }
 
   const validateScheduleAndPenalty = () => {
-    if (!hasRecordedPayments) {
+    if (!firstDueDateLocked) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(form.firstDueDate)) {
         setModalAlert({ type: 'error', message: 'First Due Date is required.' })
         return null
@@ -769,8 +771,8 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
                 value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''}
                 onChange={(value) => updateForm('firstDueDate', value)}
                 min={firstDueMinimum}
-                helper="Must be on or after the saved Starting Date. Past or future dates are allowed."
-                disabled={hasRecordedPayments}
+                helper={firstDueDateLocked ? 'Locked because a downpayment or installment payment has been recorded.' : 'Must be on or after the saved Starting Date. Past or future dates are allowed. Reservation payments do not lock this date.'}
+                disabled={firstDueDateLocked}
               />
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-black text-slate-700">Daily Penalty Rate</span>
@@ -850,6 +852,7 @@ const PaymentsSOA = ({
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
   const currentUser = currentUserData?.user || {}
+  const actorRole = currentUser.role || ''
   const workflowAuditCaseId = Number(searchParams.get('auditCaseId') || 0)
   const workflowReviewId = Number(searchParams.get('reviewId') || 0)
   const workflowAction = String(searchParams.get('workflowAction') || '').trim()
@@ -2035,6 +2038,7 @@ const PaymentsSOA = ({
       {!readOnly && canEdit && showSoaTermsModal ? (
         <SoaTermsModal
           listing={listing}
+          payments={paymentRecords}
           isSaving={updateSoaTermsMutation.isPending}
           serverAlert={alert?.type === 'error' ? alert : null}
           onClose={() => {
