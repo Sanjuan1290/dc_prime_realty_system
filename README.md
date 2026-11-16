@@ -1,81 +1,42 @@
-# DC_PRIME_REALTY — Reorganized Source Code (Staging / Development)
+# D&C Prime Realty
 
-This package uses the requested `CLIENT/` and `SERVER/` directories. It reorganizes the **real source** from the October 27 export and overlays from Batches 4–16, rather than substituting empty placeholder apps. It has not been deployed or tested with live TiDB instances. **Not production approved.**
+Four live applications share this repository. HR and Finance operate against their own databases and accounts. Production operation is the default; the previous staging/cutover approval flags no longer control startup or editing.
 
-## Applications
-
-| App | Frontend | Backend | TiDB |
+| Application | Frontend | Backend | Database |
 | --- | --- | --- | --- |
-| WEBSITE | `CLIENT/WEBSITE` | `SERVER/WEBSITE` | none |
-| SYSTEM (Realty) | `CLIENT/SYSTEM` | `SERVER/SYSTEM` | `dc_prime_realty_system_db` |
-| HR | `CLIENT/HR` | `SERVER/HR` | `dc_prime_hr_db` (guard may require staging variant) |
-| FINANCE | `CLIENT/FINANCE` | `SERVER/FINANCE` | `dc_prime_finance_db` |
+| Website | CLIENT/WEBSITE | Optional SERVER/WEBSITE static host | None |
+| Realty | CLIENT/SYSTEM | SERVER/SYSTEM | dc_prime_realty_system_db |
+| HR & Payroll | CLIENT/HR | SERVER/HR | dc_prime_hr_db |
+| Finance | CLIENT/FINANCE | SERVER/FINANCE | dc_prime_finance_db |
 
-- WEBSITE is the original marketing site extracted from `client/src/website`, with its own Vite entry and routes. `SERVER/WEBSITE` is an optional Express **static file host** serving the built WEBSITE app; it is not a business API and uses no DB. On Cloudflare Pages, deploy just the client.
-- SYSTEM is the original complete Realty application, with public website pages removed from the live router. The public buyer-form frontend remains in SYSTEM, and buyer-form APIs still live in `SERVER/SYSTEM`.
-- HR and FINANCE use the actual independent app sources from earlier staging batches.
-- SYSTEM server no longer mounts the original `/employees`, `/attendance`, `/employee-payroll` or kiosk routes and does not start the original attendance scheduler. Legacy controllers/services are **retained as source** because Seller Network, historical finance, audits and migration workflows still reference them. Removing these now could cause data loss or runtime errors. HR functionality must be tested on standalone HR service.
-- HR signed receipts, payroll release workflows, correction/reversal handling, Seller Network links and production activation were previously blocked on purpose. Reorganizing folders DOES NOT resolve those.
+## Hosted layout
 
-## Prerequisites
+Cloudflare Pages builds all four frontends from **CLIENT**, using **npm run build:all**, output **dist**. Website is at /, Realty at /system, HR at /hr, and Finance at /finance. Pages Functions proxy APIs using these server-side environment variables:
 
-- Node.js 22+ and npm 10+.
-- Restore the 47 original image/video binaries via your full original Git checkout; `DOCS/MISSING_ORIGINAL_MEDIA.json` lists missing files and original URLs. Two imported images are clearly marked placeholders; replace them with the original assets. Some broken image/video URLs will appear until media is restored.
-- Separate TiDB databases, permissions, JWT/cookie signing secrets and deployment origins. Never put secrets in `VITE_` fields. Install dependencies and generate new lockfiles; old lockfiles with outdated paths are intentionally omitted.
+| Variable | Render origin |
+| --- | --- |
+| SYSTEM_API_ORIGIN | https://dc-prime-realty-system.onrender.com |
+| HR_API_ORIGIN | https://dc-prime-realty-hr.onrender.com |
+| FINANCE_API_ORIGIN | https://dc-prime-realty-finance.onrender.com |
 
-## Local setup (repo root)
+Each Render Web Service uses its SERVER app directory as its root, **npm install** to build, **npm start** to run, and **/api/v1/health** for readiness. Services bind 0.0.0.0:$PORT before checking the database. An unready database produces HTTP 503 and a bounded startup failure instead of a silent port timeout. Node.js 22+ is supported.
 
-```bash
-npm install
-npm run check:layout
-npm run dev:website
-npm run dev:system
-npm run dev:hr
-npm run dev:finance
-```
+Set production secrets in provider settings, never in VITE variables or Git. Retain verified TiDB TLS and separate database credentials. See [HR settings](SERVER/HR/README.md) and [Finance settings](SERVER/FINANCE/README.md). The Website is static on Pages and requires no Render API service.
 
-Run each command in a **separate terminal**. Also run each backend in a separate terminal:
+## Live HR and Finance operations
 
-```bash
-npm run start:website   # only AFTER build:website, otherwise unnecessary for Vite dev
-npm run start:system
-npm run start:hr
-npm run start:finance
-```
+- HR employee/attendance editing, payroll generation, finalization and release use existing role permissions. HR_READ_ONLY=true explicitly pauses writes; VITE_HR_READ_ONLY=true optionally matches that state in the frontend.
+- Payroll exports include released cash payments only, by actual release date. HR and Company Finances produce compatible ZIP/Excel transfer files. Finance previews, category mappings and an atomic commit protect the ledger; repeated source payments are skipped and changed fingerprints require review.
+- Company Finances retains actual balance/source consistency warnings. Exporting to Finance is enabled when those checks pass, without deployment approval flags. The historical salary-source setting remains explicit to preserve financial history.
+- Finance invitations email a random temporary password, expire after 24 hours, and require password replacement before any Finance data is available. Configure Resend on the Finance service.
+- HR audit history is available to HR administrators and payroll managers. Signed receipt uploads still require a separate secured-storage implementation; finalized receipt print/export is available to permissioned users.
 
-Frontends: WEBSITE 5173, SYSTEM 5174, HR 5175, FINANCE 5177 (default development ports). APIs: WEBSITE static 5101, SYSTEM 5001, HR 5102, FINANCE 5103. Confirm actual PORT/env overrides.
+## Local development and checks
 
-## Recommended deployments
+Install each app's dependencies with npm ci in its directory. Run the frontend and backend scripts from [package.json](package.json). Defaults: Vite Website 5173, Realty 5174, HR 5175, Finance 5177; APIs Realty 5001, HR 5102, Finance 5103.
 
-| Service | Provider example | Root path | Build | Start/publish |
-| --- | --- | --- | --- | --- |
-| WEBSITE frontend | Cloudflare Pages | `CLIENT/WEBSITE` | `npm install && npm run build` | `dist` |
-| SYSTEM frontend | Cloudflare Pages | `CLIENT/SYSTEM` | `npm install && npm run build` | `dist` (include `functions/` for API proxy if using it) |
-| HR frontend | Cloudflare Pages | `CLIENT/HR` | `npm install && npm run build` | `dist` |
-| FINANCE frontend | Cloudflare Pages | `CLIENT/FINANCE` | `npm install && npm run build` | `dist` |
-| SYSTEM API | Render Web Service | `SERVER/SYSTEM` | `npm install` | `npm start` |
-| HR API | Render Web Service | `SERVER/HR` | `npm install` | `npm start` |
-| FINANCE API | Render Web Service | `SERVER/FINANCE` | `npm install` | `npm start` |
-| WEBSITE static host (optional) | Render Web Service | repository root | `npm install && npm run build:website` | `npm run start:website` |
+For verification without loading private .env files, use **node tools/qa/check-project.mjs** and **node tools/qa/check-project.mjs --build**. End-to-end tests use only a guarded disposable database on loopback port 13307; see [QA instructions](tools/qa/README.md).
 
-The optional WEBSITE server requires the CLIENT/WEBSITE build in the *same deployed filesystem*. For a static frontend host, you do not need SERVER/WEBSITE at all.
+The fresh-start schemas under DATABASES/FRESH_START are for new empty databases, not upgrades of existing live databases. The invitation columns and new HR permissions have additive startup upgrades and separately reviewable SQL migrations. Existing business data and passwords are preserved.
 
-If configuring root directory to subfolders, check whether your provider supplies workspace dependencies or runs build commands from monorepo root. `npm install` in each app also works, though it generates separate lockfiles. For repeatable releases, commit the generated lockfiles after dependency resolution and run `npm ci` on subsequent builds.
-
-**Environment:** Each app has `.env.example`; SYSTEM also has `.env.deployment.example`. Configure actual deployment secrets in provider settings, not Git. HR server still contains staging/production safety guards; do not simply switch them off without testing. Read `SERVER/HR/README.md` and the Batch 15 blocker register first.
-
-## Fresh-start TiDB
-
-Use `DATABASES/FRESH_START/00_ALL_THREE_EMPTY_SCHEMAS_144_TABLES.sql` in an **isolated empty TiDB staging environment**. It creates the 108-table Realty staging schema, 28-table HR schema and 8-table Finance schema. It contains no business data and **does not create admin credentials**. Alternative: the individual SQL files plus the Batch 8 Realty add-on, not both paths. See `DATABASES/FRESH_START/README.md`. None of these scripts drops an existing DB.
-
-The 108-table Realty test schema still contains old HR tables, as their dependent finance/Seller Network code has not been fully extracted. Do not remove them before reconciliation and integration fixes.
-
-## Verification before any live use
-
-1. Restore all missing media, install dependencies, regenerate lockfiles, and build each frontend (`npm run build:website`, `build:system`, `build:hr`, `build:finance`).
-2. Run `SERVER/SYSTEM` import checks, the HR frontend/server isolation checks and all three backend test suites. Some old source-text tests expect legacy route ownership and need re-scoping after this split.
-3. Execute migrations in private TiDB staging; verify constraints, access and database guards; provision authorized test admins.
-4. Run browser/API sign-in, protected file access, payroll/SOA/commission and Finance CSV/XLSX import/export tests.
-5. Review Batch 15 blockers; do not approve production or data cleanup without evidence.
-
-**Non-goals:** This package does not silently activate payroll releases, finance imports or old cleanup tasks. Original user/financial data is NOT shipped in this ZIP.
+See [implementation and release evidence](QA_REPORTS/2026-11-16-pdf-features-live-operation.md) for the current change's tests and publication status. Historical batch documents describe earlier states and are not active deployment gates.

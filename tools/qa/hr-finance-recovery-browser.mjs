@@ -19,6 +19,7 @@ globalThis.fetch=async(input,options={})=>{
   if(url.hostname!=='qa-render.invalid')throw new Error('External access is disabled in this test');
   scenario.requests.push({path:url.pathname,method:options.method});
   const sleep=()=>new Response('Too Many Requests\n',{status:429,headers:{'x-render-routing':'hibernate-rate-limited','retry-after':'2'}});
+  if(url.pathname==='/api/v1/health')return json({ok:true});
   if(url.pathname==='/api/v1/auth/me')return scenario.kind==='initial-startup'?sleep():scenario.kind==='session-unavailable'?json({code:'SERVER_UNAVAILABLE',message:'The server is temporarily unavailable.',retryAfterSeconds:2},503):json({message:'Not signed in.'},401);
   if(url.pathname==='/api/v1/system-status')return scenario.kind==='initial-startup'?sleep():json({status:'active'});
   if(url.pathname==='/api/v1/auth/login'){
@@ -78,7 +79,7 @@ try{
         scenario.kind='normal';await page.locator('button[type=submit]').click();await page.getByRole('alert').filter({hasText:/Incorrect email or password|Invalid HR credentials/}).waitFor();
         assert.equal(scenario.requests.filter(r=>r.method==='POST').length,postsBefore+1);
       }else{
-        await page.getByRole('alert').filter({hasText:/security check/i}).waitFor();
+        await page.getByRole('alert').filter({hasText:/hosting provider blocked/i}).waitFor();
         assert.equal(scenario.requests.filter(r=>r.method==='POST').length,1);
         assert.equal(await page.locator('button[type=submit]').isEnabled(),true);
       }

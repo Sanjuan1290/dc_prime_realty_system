@@ -132,11 +132,11 @@ test('endpoint preserves legacy route and permission but adds types',()=>{
  const router=fs.readFileSync(new URL('../routers/System/companyFinances.routers.js',import.meta.url),'utf8');
  assert.match(file,/profile==='report' && format==='csv'/);
  assert.match(file,/!snapshot\.manifest\.reconciled/);
- assert.match(file,/50,000/);
+ assert.match(file,/50000/);
  assert.match(router,/requirePermission\(PERMISSIONS.COMPANY_FINANCES_VIEW\)/);
 });
 test('frontend advertises CSV, XLSX, ZIP and has the three filters',()=>{
  const ui=fs.readFileSync(new URL('../../../CLIENT/SYSTEM/src/pages/System/CompanyFinances.jsx',import.meta.url),'utf8');
- for(const label of ['Export transaction type','Export source','Export category','Excel report','Finance transfer CSV ZIP','Finance transfer Excel'])assert.ok(ui.includes(label),label);
+ for(const label of ['Export transaction type','Export source','Export category','Excel report','Export to Finance (ZIP)','Export to Finance (Excel)'])assert.ok(ui.includes(label),label);
  assert.match(ui,/const exportCsv=async/);
 });

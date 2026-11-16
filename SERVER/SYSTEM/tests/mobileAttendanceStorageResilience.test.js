@@ -8,7 +8,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(dirname, '..', '..', '..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
 
-test('Attendance kiosk is hosted by HR and disabled until approved', () => {
+test('Attendance kiosk is hosted by HR and live with a configurable switch', () => {
   const system = read('CLIENT/SYSTEM/src/App.jsx')
   const hr = read('CLIENT/HR/src/App.jsx')
   const flags = read('CLIENT/HR/src/config/featureFlags.js')
@@ -16,7 +16,7 @@ test('Attendance kiosk is hosted by HR and disabled until approved', () => {
   assert.match(hr, /const Kiosk=lazy\(\(\)=>import\('\.\/pages\/Public\/AttendanceKiosk'\)\)/)
   assert.match(hr, /path:'\/kiosk'/)
   assert.match(hr, /HR_FEATURE_FLAGS\.kiosk/)
-  assert.match(flags, /kiosk: import\.meta\.env\.DEV/)
+  assert.match(flags, /kiosk: import\.meta\.env\.VITE_HR_KIOSK_ENABLED !== 'false'/)
 })
 
 test('safe storage never requires direct access to localStorage or sessionStorage to succeed', () => {

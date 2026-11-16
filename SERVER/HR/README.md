@@ -1,13 +1,17 @@
-# HR staging backend
+# HR & Payroll API
 
-Render root: `SERVER/HR`. Build: `npm install`. Start: `npm start`. Health check: `/api/v1/health`.
+Render root: SERVER/HR. Build: npm install. Start: npm start. Readiness: /api/v1/health. Liveness: /api/v1/live.
 
-The service opens `0.0.0.0:$PORT` before checking the database. `/api/v1/live` identifies a running process; `/api/v1/health` stays at `503` until the initial database probe succeeds. A stalled probe exits with `DATABASE_STARTUP_TIMEOUT` and its stage instead of waiting indefinitely. Jobs start only after readiness and their existing enable flags.
+Production is supported. Set NODE_ENV=production, HR_DB_HOST, HR_DB_PORT, HR_DB_USER, HR_DB_PASSWORD, HR_DB_NAME=dc_prime_hr_db, HR_DB_TLS=true, HR_JWT_SECRET (32+ random characters), HR_COOKIE_SECURE=true, and HR_CORS_ORIGIN=https://dc-prime-realty.pages.dev. See [.env.example](.env.example).
 
-Database variables are `HR_DB_HOST`, `HR_DB_PORT`, `HR_DB_USER`, `HR_DB_PASSWORD`, `HR_DB_NAME` and `HR_DB_TLS`. Use the authorized independent HR database and retain verified TLS for hosted TiDB. Optional deadlines default to `HR_DB_CONNECT_TIMEOUT_MS=10000` and `HR_DB_STARTUP_TIMEOUT_MS=30000`.
+The service binds its port before checking the database. The connection, initial query and additive access grants share a bounded startup deadline (HR_DB_STARTUP_TIMEOUT_MS, default 30000). Hosted database connections require verified TLS. Startup idempotently registers the new audit and finalized receipt permissions for existing HR administrator/payroll manager roles. The equivalent SQL is [20261116_live_reports.sql](migrations/20261116_live_reports.sql).
 
-This source remains staging-only: `HR_STAGING_ONLY=true` is required, `NODE_ENV=production` is rejected, and `HR_JWT_SECRET` must have at least 32 characters. A Render environment inconsistent with the approved staging configuration can prevent startup. Check the startup log rather than changing production or payroll permissions to clear an error.
+HR writes are enabled by default. HR_READ_ONLY=true pauses business mutations. Old HR_STAGING_ONLY, HR_ENABLE_WRITES and HR_ALLOW_PAYROLL_RELEASE flags no longer gate live work. All employee, attendance and payroll actions retain authentication, permissions, immutable finalization, audit records and release validation.
 
-The existing write, job, payroll-release and salary-delivery flags remain separate controls. See [.env.example](.env.example) for their disabled defaults. Signed receipts remain unavailable.
+Attendance background jobs run after readiness unless HR_ENABLE_JOBS=false or HR_READ_ONLY=true. Configure ATTENDANCE_PINCODE and ATTENDANCE_KIOSK_SECRET to use the authenticated kiosk. Never expose these in the frontend.
 
-Run `npm test` for unit checks or `npm run check` for runtime isolation checks. See the [HR/Finance recovery report](../../QA_REPORTS/2026-11-16-hr-finance-recovery.md) for deployment and live-check evidence.
+Every positive payroll release atomically creates a salary event. Optional automatic delivery requires REALTY_FINANCE_SALARY_ENDPOINT and HR_TO_REALTY_INTEGRATION_TOKEN (32+ characters), with the matching token on Realty. HR_ENABLE_SALARY_DELIVERY=false explicitly pauses delivery. Manual Finance exports remain available even without automatic delivery. Released payments lacking a matching event require record review before export.
+
+GET /api/v1/employee-payroll/finance-export?from=YYYY-MM-DD&to=YYYY-MM-DD&format=zip (or xlsx) exports at most 500 released payments using the Finance v1 contract. GET /api/v1/audit-logs supports page, from/to, module and action filters. Access is permissioned; audit metadata is redacted at write time. Signed receipt uploads remain a separate secured-storage feature.
+
+Run npm test and npm run check. [Release evidence](../../QA_REPORTS/2026-11-16-pdf-features-live-operation.md).

@@ -3,12 +3,13 @@ import express from 'express';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 import helmet from 'helmet';
+import {ensureInvitationSchema} from './liveSchema.js';
 import {getPool,assertSafeDatabase} from './db.js';
 import {checkStartupDatabase,readStartupTimeout} from './serverStartup.js';
 import {problem,dateInManila} from './domain.js';
-import {login,requireUser,requireRole,COOKIE_NAME,sessionCookie,sessionHash,clearCookie} from './auth.js';
+import {login,requireUser,requireRole,publicUser,changePassword,requirePermanentPassword,COOKIE_NAME,sessionCookie,sessionHash,clearCookie} from './auth.js';
 import {getDashboard,listTransactions,postTransaction,voidTransaction,correctTransaction,listCategories,createCategory,setCategoryActive,listAudit} from './ledger.js';
-import {listUsers,createUser} from './users.js';
+import {listUsers,createUser,resendInvitation} from './users.js';
 import {getFinanceReconciliation} from './reconciliation.js';
 import {previewImport,commitImport,approveCategoryMapping,listCategoryMappings,listImportBatches} from './importService.js';
 const app=express();app.disable('x-powered-by');app.use(helmet());app.use((req,res,next)=>express.json({limit:req.path==='/api/v1/finance/imports/preview'?'3mb':'64kb'})(req,res,next));
@@ -47,10 +48,12 @@ app.post('/api/v1/auth/login',wrap(async(req,res)=>{
   const result=await login(email,password);
   attempts.delete(ip);res.set('Set-Cookie',sessionCookie(result.token,{secure}));res.json({user:result.user});
 }));
-app.get('/api/v1/auth/me',requireUser,wrap(async(req,res)=>{const u=req.financeUser;res.json({user:{id:String(u.id),email:u.email,display_name:u.display_name,role:u.role}});}));
+app.get('/api/v1/auth/me',requireUser,wrap(async(req,res)=>{const u=req.financeUser;res.json({user:publicUser(u)});}));
 app.post('/api/v1/auth/logout',requireUser,wrap(async(req,res)=>{await getPool().execute('UPDATE finance_sessions SET revoked_at=UTC_TIMESTAMP() WHERE token_hash=?',[req.financeSessionHash]);res.set('Set-Cookie',clearCookie(secure));res.json({ok:true});}));
+app.post('/api/v1/auth/change-password',requireUser,wrap(async(req,res)=>res.json(await changePassword(req))));
 const prefix='/api/v1/finance';
-app.use(prefix,requireUser);
+app.use(prefix,requireUser,requirePermanentPassword);
+app.use(prefix,(req,res,next)=>process.env.FINANCE_READ_ONLY==='true'&&['POST','PATCH','PUT','DELETE'].includes(req.method)?next(problem('FINANCE_READ_ONLY','Finance is temporarily read-only. Your administrator can restore editing.',503)):next());
 app.get(`${prefix}/dashboard`,wrap(async(req,res)=>res.json(await getDashboard(req.query))));
 app.get(`${prefix}/transactions`,wrap(async(req,res)=>res.json(await listTransactions(req.query))));
 app.post(`${prefix}/transactions`,requireRole('admin','accountant'),wrap(async(req,res)=>res.status(201).json(await postTransaction(req.body,req.financeUser))));
@@ -62,26 +65,27 @@ app.patch(`${prefix}/categories/:id`,requireRole('admin'),wrap(async(req,res)=>r
 app.get(`${prefix}/audit`,requireRole('admin'),wrap(async(req,res)=>res.json(await listAudit(req.query))));
 // Read-only Finance-side reconciliation, no access to Realty or HR databases.
 app.get(`${prefix}/reconciliation`,requireRole('admin'),wrap(async(req,res)=>res.json(await getFinanceReconciliation(req.query))));
-// Import actions are disabled by default until TiDB and end-to-end acceptance.
-const requireImportEnabled=(req,res,next)=>process.env.FINANCE_IMPORTS_ENABLED==='true'?next():next(problem('IMPORT_DISABLED','Finance import is not enabled for this environment.',503));
-// Import actions are admin-only and require the explicit enable flag.
+// Imports are live; administrators can explicitly pause them independently.
+const requireImportEnabled=(req,res,next)=>process.env.FINANCE_IMPORTS_READ_ONLY!=='true'?next():next(problem('IMPORT_DISABLED','Imports are temporarily paused by your administrator.',503));
+// Imports retain admin access, preview validation and an atomic commit.
 app.get(`${prefix}/imports`,requireRole('admin'),wrap(async(req,res)=>res.json(await listImportBatches(req.query))));
 app.get(`${prefix}/imports/mappings`,requireRole('admin'),wrap(async(req,res)=>res.json({mappings:await listCategoryMappings()})));
 app.post(`${prefix}/imports/mappings`,requireRole('admin'),wrap(async(req,res)=>res.status(201).json(await approveCategoryMapping(req.body,req.financeUser))));
 app.post(`${prefix}/imports/preview`,requireRole('admin'),requireImportEnabled,wrap(async(req,res)=>res.status(201).json(await previewImport(req.body,req.financeUser))));
 app.post(`${prefix}/imports/:id/commit`,requireRole('admin'),requireImportEnabled,wrap(async(req,res)=>res.json(await commitImport(req.params.id,req.financeUser))));
 app.get(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.json({users:await listUsers()})));
+app.post(`${prefix}/users/:id/invitation`,requireRole('admin'),wrap(async(req,res)=>res.json(await resendInvitation(req.params.id,req.financeUser))));
 app.post(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.status(201).json(await createUser(req.body,req.financeUser))));
 app.use((req,res)=>res.status(404).json({error:{code:'NOT_FOUND',message:'Finance endpoint not found.'}}));
-app.use((err,req,res,next)=>{const status=err.status|| (err.code==='ER_DUP_ENTRY'?409:500);if(status>=500)console.error('[Finance API error]',{method:req.method,path:req.path,code:err.code||err.name,errno:err.errno||null,sqlState:err.sqlState||null});res.status(status).json({error:{code:err.code==='ER_DUP_ENTRY'?'DUPLICATE':(status>=500?'SERVER_ERROR':err.code||'BAD_REQUEST'),message:status>=500?'Finance request failed.':err.message}});});
+app.use((err,req,res,next)=>{const status=err.status|| (err.code==='ER_DUP_ENTRY'?409:500);if(status>=500)console.error('[Finance API error]',{method:req.method,path:req.path,code:err.code||err.name,errno:err.errno||null,sqlState:err.sqlState||null});res.status(status).json({error:{code:err.code==='ER_DUP_ENTRY'?'DUPLICATE':(status>=500&&status!==503?'SERVER_ERROR':err.code||'BAD_REQUEST'),message:status>=500&&status!==503?'Finance request failed.':err.message}});});
 if(process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])){
   try {
     assertSafeDatabase();
     const pool=getPool(),port=Number(process.env.PORT||5103),timeoutMs=readStartupTimeout(process.env.DATABASE_STARTUP_TIMEOUT_MS,30000,'DATABASE_STARTUP_TIMEOUT_MS');
     const server=app.listen(port,'0.0.0.0',async()=>{
-      console.log(`Finance staging server listening on ${port}`);
+      console.log(`Finance API listening on ${port}`);
       console.log(`Checking Finance database connection (startup deadline: ${timeoutMs}ms).`);
-      try{await checkStartupDatabase(pool,{timeoutMs});databaseReady=true;console.log('Finance database connected');}
+      try{await checkStartupDatabase(pool,{timeoutMs,initialize:ensureInvitationSchema});databaseReady=true;console.log('Finance database connected');}
       catch(error){console.error('Finance initialization failed:',{code:error.code||error.name,stage:error.stage,timeoutMs});console.error('Check Render TIDB_* variables, TLS and database network access.');server.close();process.exit(1);}
     });
     server.on('error',error=>{console.error('Finance port binding failed:',{code:error.code||error.name,port});process.exit(1)});

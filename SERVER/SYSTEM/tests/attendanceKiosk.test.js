@@ -16,17 +16,17 @@ test('attendance kiosk is not mounted on Realty portal and remains feature-gated
  assert.doesNotMatch(system, /path="\/attendance"/)
  assert.match(hr, /path:'\/kiosk'/)
  assert.match(hr, /HR_FEATURE_FLAGS\.kiosk/)
- assert.match(flags, /kiosk: import\.meta\.env\.DEV/)
+ assert.match(flags, /kiosk: import\.meta\.env\.VITE_HR_KIOSK_ENABLED !== 'false'/)
  assert.match(kiosk, /attendance-kiosk\/unlock/)
  assert.match(kiosk, /attendance-kiosk\/scan/)
 })
 
-test('kiosk API is owned by the independent HR server, gated until staging approval', () => {
+test('kiosk API is owned by the independent HR server, protected by kiosk authentication', () => {
  const hr = read('SERVER/HR/server.js')
  const middleware = read('SERVER/HR/middleware/attendanceKiosk.middleware.js')
  const router = read('SERVER/HR/routers/attendanceKiosk.router.js')
  assert.match(hr, /app\.use\('\/api\/v1\/attendance-kiosk',guard,kiosk\)/)
- assert.match(hr, /HR_ENABLE_WRITES/)
+ assert.match(hr, /HR_READ_ONLY/)
  assert.match(router, /requireAttendanceKiosk/)
  assert.match(middleware, /ATTENDANCE_PINCODE/)
 })

@@ -10,7 +10,7 @@ mkdirSync(runtime,{recursive:true});mkdirSync(evidence,{recursive:true});
 const env={...process.env,NODE_ENV:'test',TIDB_HOST:'127.0.0.1',TIDB_PORT:'9',TIDB_USERNAME:'unit_only',TIDB_PASSWORD:'unit_only',TIDB_DATABASE:'dc_prime_realty_system_db_test',TIDB_SSL:'false',JWT_SECRET:'unit-only-never-used-on-live-services',HR_DB_HOST:'127.0.0.1',HR_DB_PORT:'9',HR_DB_USER:'unit_only',HR_DB_PASSWORD:'unit_only',HR_DB_NAME:'dc_prime_hr_db',HR_DB_TLS:'false'};
 function run(name,args,cwd=runtime,settings=env){return new Promise(resolveResult=>{const fd=openSync(resolve(evidence,name+'.log'),'w');const child=spawn(process.execPath,args,{cwd,env:settings,windowsHide:true,stdio:['ignore',fd,fd]});child.on('error',e=>{closeSync(fd);resolveResult({name,error:e.message,exitCode:-1})});child.on('exit',exitCode=>{closeSync(fd);console.log(name,exitCode===0?'PASS':'FAIL',exitCode);resolveResult({name,exitCode})})})}
 if(process.argv.includes('--build')){
-  const apps=[['WEBSITE','',{}],['SYSTEM','system',{VITE_API_URL:'/api/v1'}],['FINANCE','finance',{VITE_FINANCE_API_URL:'/finance-api'}],['HR','hr',{VITE_HR_API_URL:'/hr-api/api/v1',VITE_HR_STAGING_WRITES:'false',VITE_HR_KIOSK_ENABLED:'false'}]];
+  const apps=[['WEBSITE','',{}],['SYSTEM','system',{VITE_API_URL:'/api/v1'}],['FINANCE','finance',{VITE_FINANCE_API_URL:'/finance-api'}],['HR','hr',{VITE_HR_API_URL:'/hr-api/api/v1',VITE_HR_READ_ONLY:'false',VITE_HR_KIOSK_ENABLED:'true'}]];
   const results=await Promise.all(apps.map(async([app,out,extra])=>{
     const cwd=resolve(root,'CLIENT',app);
     if(app==='HR'){const check=await run('hr-client-check',[resolve(cwd,'scripts/check-hr-client.mjs')],cwd);if(check.exitCode!==0)return check}

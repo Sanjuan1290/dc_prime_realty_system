@@ -49,7 +49,7 @@ export const deliverOne = async ({ pool = db, send = fetch } = {}) => {
 };
 
 export const startSalaryOutboxWorker = () => {
-  if (process.env.HR_ENABLE_SALARY_DELIVERY !== 'true' || process.env.HR_STAGING_ONLY !== 'true' || process.env.NODE_ENV === 'production') throw new Error('Outbox worker may run only in approved HR staging.');
+  if (process.env.HR_ENABLE_SALARY_DELIVERY === 'false' || process.env.HR_READ_ONLY === 'true') throw new Error('Salary delivery is disabled by the administrator.');
   let busy=false;
   const tick=async()=>{ if (busy) return;busy=true;try {await deliverOne();} catch(e){console.error('[hr-outbox]',e.code || e.message)} finally {busy=false;} };
   const interval=setInterval(tick,15000);

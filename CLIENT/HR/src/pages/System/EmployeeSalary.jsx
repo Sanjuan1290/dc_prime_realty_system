@@ -11,6 +11,7 @@ import SignedSalaryReceiptsModal from '../../components/System/employeeSalaryCom
 import FundReleaseReceiptModal from '../../components/System/employeeSalaryComponents/FundReleaseReceiptModal'
 import SalaryHistoryModal from '../../components/System/employeeSalaryComponents/SalaryHistoryModal'
 import PayrollSettingsModal from '../../components/System/employeeSalaryComponents/PayrollSettingsModal'
+import FinanceSalaryExport from '../../components/System/employeeSalaryComponents/FinanceSalaryExport'
 import PayrollSummaryExportModal from '../../components/System/employeeSalaryComponents/PayrollSummaryExportModal'
 import {
   getManilaMonth,
@@ -27,14 +28,14 @@ import { PERMISSIONS, hasPermission } from '../../config/permissions'
 const EmployeeSalary = () => {
   const { data: currentUserData } = useCurrentUser()
   const queryClient = useQueryClient()
-  const canGenerate = HR_FEATURE_FLAGS.stagingWrites && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_GENERATE)
-  const canRecalculate = HR_FEATURE_FLAGS.stagingWrites && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RECALCULATE_DRAFT)
-  const canFinalize = HR_FEATURE_FLAGS.stagingWrites && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_FINALIZE)
-  const canRelease = false // Batch 8: salary event transfer pending
-  const canPrintReceipt = false // Batch 9: protected receipt route pending
-  const canExportReceipt = false // Batch 9: protected receipt route pending
+  const canGenerate = HR_FEATURE_FLAGS.writesEnabled && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_GENERATE)
+  const canRecalculate = HR_FEATURE_FLAGS.writesEnabled && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RECALCULATE_DRAFT)
+  const canFinalize = HR_FEATURE_FLAGS.writesEnabled && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_FINALIZE)
+  const canRelease = HR_FEATURE_FLAGS.payrollRelease && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RELEASE)
+  const canPrintReceipt = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RECEIPT_PRINT)
+  const canExportReceipt = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RECEIPT_EXPORT)
   const canViewPayrollHistory = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_HISTORY_VIEW)
-  const canManagePayrollSettings = HR_FEATURE_FLAGS.stagingWrites && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_SETTINGS_MANAGE)
+  const canManagePayrollSettings = HR_FEATURE_FLAGS.writesEnabled && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_SETTINGS_MANAGE)
   const canExportPayrollSummary = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_SUMMARY_EXPORT)
 
   const [month, setMonth] = useState(getManilaMonth())
@@ -116,6 +117,7 @@ const EmployeeSalary = () => {
 
   return (
     <main className="flex flex-col gap-6">
+      {canExportPayrollSummary && <FinanceSalaryExport/>}
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader title="Employee Salary" description="Review employee pay, deductions, and allowances for each pay period." icon={FiDollarSign} />
         <div className="flex flex-wrap gap-2">
@@ -188,7 +190,7 @@ const EmployeeSalary = () => {
         <ActionPanelButton icon={FiActivity} title="Attendance Details" description="Review hours and deductions" tone="blue" onClick={() => { openPayroll(actionsPayroll.employee_payroll_id, 'attendance'); setActionsPayroll(null) }} />
         {canRecalculate && actionsPayroll.payroll_status === 'draft' ? <ActionPanelButton icon={FiRotateCcw} title="Recalculate Draft" description="Update pay from saved attendance" tone="amber" disabled={recalcMutation.isPending} onClick={() => { recalcMutation.mutate(actionsPayroll.employee_payroll_id); setActionsPayroll(null) }} /> : null}
         {canFinalize && actionsPayroll.payroll_status === 'draft' ? <ActionPanelButton icon={FiCheckCircle} title="Final Review" description="Check pay before finalizing" tone="green" onClick={() => { openPayroll(actionsPayroll.employee_payroll_id, 'salary'); setActionsPayroll(null) }} /> : null}
-        {actionsPayroll.payroll_status === 'released' && canPrintReceipt ? <ActionPanelButton icon={FiUpload} title="Receipts" description="View, upload, print or download receipts" tone="violet" onClick={() => { setSignedPayroll(actionsPayroll); setActionsPayroll(null) }} /> : null}
+        {HR_FEATURE_FLAGS.signedReceipts && actionsPayroll.payroll_status === 'released' && canPrintReceipt ? <ActionPanelButton icon={FiUpload} title="Receipts" description="View, upload, print or download receipts" tone="violet" onClick={() => { setSignedPayroll(actionsPayroll); setActionsPayroll(null) }} /> : null}
         <ActionPanelButton icon={FiFileText} title="Preview Receipt" description="View the pay acknowledgment" tone="blue" onClick={() => { setSelectedReceiptPayrollId(actionsPayroll.employee_payroll_id); setActionsPayroll(null) }} />
         {canViewPayrollHistory ? <ActionPanelButton icon={FiClock} title="Salary History" description="See previous pay periods" tone="slate" onClick={() => { setHistoryEmployee({ employee_id: actionsPayroll.employee_id, employee_code: actionsPayroll.employee_code, full_name: actionsPayroll.employee_name_snapshot }); setActionsPayroll(null) }} /> : null}
       </ActionPanelModal> : null}

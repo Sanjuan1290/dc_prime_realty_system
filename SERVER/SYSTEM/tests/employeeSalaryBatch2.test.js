@@ -136,7 +136,7 @@ test('Batch 2 adds protected payroll API, historical compensation snapshots and 
   const hrRouter = read('SERVER/HR/routers/System/employeePayroll.routers.js');
   assert.doesNotMatch(server, /app\.use\('\/api\/v1\/employee-payroll'/);
   assert.match(hrServer, /app\.use\('\/api\/v1\/employee-payroll',guard,payroll\)/);
-  assert.match(hrRouter, /HR_ALLOW_PAYROLL_RELEASE/);
+  assert.match(hrRouter, /PERMISSIONS\.PAYROLL_RELEASE/);
 
   assert.match(router, /EMPLOYEE_SALARY_VIEW/);
   assert.match(router, /PAYROLL_GENERATE/);

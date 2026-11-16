@@ -5,6 +5,7 @@ import { HR_FEATURE_FLAGS } from './config/featureFlags'
 import HrLayout from './layout/HrLayout'
 import HrLogin from './auth/HrLogin'
 import useCurrentUser from './utils/useCurrentUser'
+const Audit=lazy(()=>import('./pages/System/AuditLogs'))
 const Employees=lazy(()=>import('./pages/System/Employees'))
 const Attendance=lazy(()=>import('./pages/System/Attendance'))
 const Payroll=lazy(()=>import('./pages/System/EmployeeSalary'))
@@ -25,9 +26,10 @@ const Landing = () => {
 }
 const router=createBrowserRouter([
   {path:'/login',element:<HrLogin/>},
-  {path:'/kiosk',element:HR_FEATURE_FLAGS.kiosk?<Kiosk/>:<main className="p-8"><h1 className="text-lg font-bold">HR attendance kiosk unavailable</h1><p>Kiosk mode is disabled until HR staging validation.</p></main>},
+  {path:'/kiosk',element:HR_FEATURE_FLAGS.kiosk?<Kiosk/>:<main className="p-8"><h1 className="text-lg font-bold">HR attendance kiosk unavailable</h1><p>Your administrator has disabled kiosk mode.</p></main>},
   {path:'/',element:<HrLayout/>,children:[
     {index:true,element:<Landing/>},
+    {path:'audit-logs',element:<ProtectedPage permission={PERMISSIONS.AUDIT_VIEW}><Audit/></ProtectedPage>},
     {path:'employees',element:<ProtectedPage permission={PERMISSIONS.EMPLOYEES_VIEW}><Employees/></ProtectedPage>},
     {path:'attendance-records',element:<ProtectedPage permission={PERMISSIONS.ATTENDANCE_VIEW}><Attendance/></ProtectedPage>},
     {path:'payroll',element:<ProtectedPage permission={PERMISSIONS.EMPLOYEE_SALARY_VIEW}><Payroll/></ProtectedPage>},

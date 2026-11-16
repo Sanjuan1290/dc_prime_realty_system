@@ -14,7 +14,7 @@ const objectFromMetadata = entries => {
 export function decodeUpload({filename,base64}){
   if(typeof filename!=='string'||filename.length<5||filename.length>180||/[\\/\u0000-\u001f]/.test(filename))invalid('Choose a valid file name.');
   const format=filename.toLowerCase().endsWith('.zip')?'zip':filename.toLowerCase().endsWith('.xlsx')?'xlsx':null;
-  if(!format)invalid('Upload the Finance transfer .zip or .xlsx from Batch 11.');
+  if(!format)invalid('Upload the Finance transfer .zip or .xlsx from HR & Payroll or Company Finances.');
   if(typeof base64!=='string'||!base64||base64.length>Math.ceil(MAX_FILE_BYTES/3)*4+4||!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64))invalid('Invalid file encoding or file too large.');
   const buffer=Buffer.from(base64,'base64');
   if(!buffer.length||buffer.length>MAX_FILE_BYTES||buffer.toString('base64')!==base64)invalid('Invalid or oversized upload.');
@@ -48,6 +48,7 @@ export async function parseUpload(file,{JSZip,ExcelJS}={}){
     if(entries.length>50||entries.some(e=>/externalLinks|embeddings|vbaProject|connections\.xml/i.test(e.name)))invalid('Workbook contains unsupported external links or embedded content.');
     let total=0;
     for(const entry of entries){
+      if(entry.dir)continue; // ExcelJS writes normal empty ZIP directory entries.
       if(!Number.isSafeInteger(entry._data?.uncompressedSize))invalid('Workbook ZIP contains invalid size metadata.');
       total+=entry._data.uncompressedSize;
       if(entry._data.uncompressedSize>5*1024*1024||total>10*1024*1024)invalid('Workbook ZIP is too large after decompression.');
@@ -64,14 +65,14 @@ export async function parseUpload(file,{JSZip,ExcelJS}={}){
       if(cell.type!==3 || typeof cell.value!=='string')invalid(`${label} must be plain text, not a formula, number, link or date.`,'NON_TEXT_WORKBOOK_CELL');
       return cell.value;
     };
-    for(const [idx,c] of COLUMNS.entries())if(textCell(tx.getRow(1).getCell(idx+1),'Transaction header')!==c)invalid('Workbook transaction headers differ from Batch 11.');
+    for(const [idx,c] of COLUMNS.entries())if(textCell(tx.getRow(1).getCell(idx+1),'Transaction header')!==c)invalid('Workbook transaction headers differ from transfer v1.');
     const rows=[];
     for(let i=2;i<=tx.rowCount;i++){
       const row=tx.getRow(i);
       if(row.cellCount!==COLUMNS.length)invalid(`Workbook row ${i} has an incorrect number of cells.`);
       rows.push(Object.fromEntries(COLUMNS.map((c,j)=>[c,textCell(row.getCell(j+1),`Row ${i} ${c}`)])));
     }
-    if(textCell(meta.getRow(1).getCell(1),'Metadata header')!=='Field'||textCell(meta.getRow(1).getCell(2),'Metadata header')!=='Value')invalid('Workbook Metadata headers differ from Batch 11.');
+    if(textCell(meta.getRow(1).getCell(1),'Metadata header')!=='Field'||textCell(meta.getRow(1).getCell(2),'Metadata header')!=='Value')invalid('Workbook Metadata headers differ from transfer v1.');
     const metaEntries=[];
     for(let i=2;i<=meta.rowCount;i++){
       const r=meta.getRow(i);

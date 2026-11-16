@@ -1,0 +1,19 @@
+import {useState} from 'react'
+import {useQuery} from '@tanstack/react-query'
+import {requestApi} from '../../utils/apiClient'
+
+export default function AuditLogs(){
+  const [page,setPage]=useState(1),[filters,setFilters]=useState({from:'',to:'',module:'',action:''}),[selected,setSelected]=useState(null)
+  const query=new URLSearchParams({page,...Object.fromEntries(Object.entries(filters).filter(([,v])=>v))}).toString()
+  const {data,isPending,error}=useQuery({queryKey:['hr-audit',query],queryFn:()=>requestApi('/audit-logs?'+query)})
+  return <section className="space-y-5"><div><h1 className="text-2xl font-bold">HR &amp; Payroll audit log</h1><p className="text-sm text-slate-600">Review who changed employee, attendance and payroll records. All times are in Asia/Manila.</p></div>
+    <form className="flex flex-wrap gap-3 rounded-xl border bg-white p-4" onSubmit={e=>{e.preventDefault();const values=new FormData(e.currentTarget);setFilters(Object.fromEntries(values));setPage(1)}}>
+      <label className="text-sm">From<input name="from" type="date" required={Boolean(filters.to)} className="block rounded border p-2"/></label><label className="text-sm">To<input name="to" type="date" required={Boolean(filters.from)} className="block rounded border p-2"/></label>
+      <label className="text-sm">Module<input name="module" placeholder="All modules" maxLength={100} className="block rounded border p-2"/></label><label className="text-sm">Action<input name="action" placeholder="All actions" maxLength={100} className="block rounded border p-2"/></label><button className="self-end rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white">Apply filters</button>
+    </form>
+    {error&&<p role="alert" className="rounded border border-red-200 bg-red-50 p-3">{error.message}</p>}
+    {isPending?<p role="status">Loading audit history…</p>:<div className="overflow-x-auto rounded-xl border bg-white"><table className="w-full text-left text-sm"><thead className="bg-slate-100"><tr>{['Recorded','Actor','Module','Action','Record','Details'].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>{(data?.items||[]).map(row=><tr key={row.id} className="border-t"><td className="whitespace-nowrap p-3">{row.recorded_at}</td><td className="p-3">{row.actor_name_snapshot}</td><td className="p-3">{row.module}</td><td className="p-3">{row.action}</td><td className="p-3">{row.entity_type} #{row.entity_id}</td><td className="p-3"><button onClick={()=>setSelected(row)} className="font-semibold text-blue-700">View details</button></td></tr>)}{!data?.items?.length&&<tr><td colSpan={6} className="p-8 text-center text-slate-500">No audit events match these filters.</td></tr>}</tbody></table></div>}
+    <div className="flex items-center justify-between text-sm"><button disabled={page===1} onClick={()=>setPage(p=>p-1)} className="rounded border px-3 py-2 disabled:opacity-40">Previous</button><span>Page {page} · {data?.total||0} events</span><button disabled={page*50>=(data?.total||0)} onClick={()=>setPage(p=>p+1)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button></div>
+    {selected&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><div role="dialog" aria-modal="true" aria-label="Audit event details" className="max-h-[85vh] w-full max-w-3xl overflow-auto rounded-xl bg-white p-6"><div className="flex justify-between"><h2 className="font-bold">{selected.action}</h2><button onClick={()=>setSelected(null)} className="rounded border px-3 py-1">Close</button></div><p className="my-3 text-sm">{selected.actor_name_snapshot} · {selected.recorded_at}</p><pre className="whitespace-pre-wrap break-words rounded bg-slate-50 p-4 text-xs">{JSON.stringify(typeof selected.details_json==='string'?JSON.parse(selected.details_json):selected.details_json,null,2)}</pre></div></div>}
+  </section>
+}

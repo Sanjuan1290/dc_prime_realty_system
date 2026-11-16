@@ -139,7 +139,7 @@ const attendanceTreatmentLabel = {
 
 const Attendance = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = HR_FEATURE_FLAGS.stagingWrites && hasPermission(currentUserData?.user, PERMISSIONS.ATTENDANCE_MANAGE)
+  const canManage = HR_FEATURE_FLAGS.writesEnabled && hasPermission(currentUserData?.user, PERMISSIONS.ATTENDANCE_MANAGE)
   const queryClient = useQueryClient()
   const barcodeInputRef = useRef(null)
   const today = getManilaDate()

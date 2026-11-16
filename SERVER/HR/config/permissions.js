@@ -1,4 +1,5 @@
 export const PERMISSIONS = Object.freeze({
+  "AUDIT_VIEW": "audit.view",
   "EMPLOYEES_VIEW": "employees.view",
   "EMPLOYEES_MANAGE": "employees.manage",
   "EMPLOYEE_COMPENSATION_MANAGE": "employees.compensation.manage",

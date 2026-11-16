@@ -12,7 +12,7 @@ function scan(dir){for(const ent of fs.readdirSync(dir,{withFileTypes:true})){
 scan(src)
 const errors=[]
 // Permit these pure utilities; imports from other applications remain forbidden.
-const approvedSharedFiles=new Set(['upstreamAvailability.js','apiFailure.js'].map(file=>path.resolve(root,'../shared',file)))
+const approvedSharedFiles=new Set(['upstreamAvailability.js','apiFailure.js','apiReadiness.js'].map(file=>path.resolve(root,'../shared',file)))
 files.push(...approvedSharedFiles)
 const imports=/\b(?:import|export)\s+(?:[\s\S]*?\s+from\s*)?['"](\.[^'"]+)['"]|import\(\s*['"](\.[^'"]+)['"]\s*\)/g
 for(const file of files){const rel=path.relative(src,file);const body=fs.readFileSync(file,'utf8')
@@ -24,7 +24,7 @@ for(const file of files){const rel=path.relative(src,file);const body=fs.readFil
   if(!resolved||(!resolved.startsWith(src+path.sep)&&!approvedSharedFiles.has(resolved)))errors.push('Missing or outside HR import: '+rel+' -> '+spec)
  }
 }
-for(const [rel,text] of [['src/config/featureFlags.js','payrollRelease: false'],['src/config/featureFlags.js','signedReceipts: false'],['src/utils/useCurrentUser.js',"'/auth/me'"],['src/utils/apiClient.js','HR_READ_ONLY']]){
+for(const [rel,text] of [['src/config/featureFlags.js','VITE_HR_READ_ONLY'],['src/config/featureFlags.js','signedReceipts: false'],['src/utils/useCurrentUser.js',"'/auth/me'"],['src/utils/apiClient.js','HR_READ_ONLY']]){
  if(!fs.readFileSync(path.join(root,rel),'utf8').includes(text))errors.push('Guard missing: '+rel+' -> '+text)
 }
 const detail=fs.readFileSync(path.join(src,'components/System/employeeSalaryComponents/SalaryDetailModal.jsx'),'utf8')

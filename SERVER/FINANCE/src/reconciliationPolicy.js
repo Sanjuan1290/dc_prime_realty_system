@@ -26,7 +26,7 @@ export function evaluateReconciliation({from,to,ledgerRows=[],receiptRows=[],agg
     const key=`${t.source_system}:${t.source_transaction_id}`;
     if(ledger.has(key))issue('DUPLICATE_SOURCE_ID',key);
     ledger.set(key,t);
-    if(t.source_system!=='realty')issue('UNEXPECTED_LEDGER_SOURCE',key);
+    if(!['realty','hr'].includes(t.source_system))issue('UNEXPECTED_LEDGER_SOURCE',key);
     if(t.status!=='posted')issue('IMPORTED_TRANSACTION_NOT_POSTED',key);
     if(t.status==='posted'){
       imported++;const cents=exactCents(t.amount);
@@ -68,10 +68,10 @@ export function evaluateReconciliation({from,to,ledgerRows=[],receiptRows=[],agg
   for(const key of ledger.keys())if(!linked.has(key))issue('MISSING_COMMITTED_IMPORT_RECEIPT',key);
   if(Number(activeConflicts)>0)issue('OPEN_IMPORT_CONFLICTS',String(activeConflicts));
   if(truncated)issue('RECONCILIATION_RESULT_TRUNCATED','Increase review capacity or narrow date range');
-  if(!batches.size)issue('NO_COMMITTED_TRANSFER_BATCH','No committed Realty transfer overlaps the date range');
+  if(!batches.size)issue('NO_COMMITTED_TRANSFER_BATCH','No committed Finance transfer overlaps the date range');
   const groups={};
   for(const a of aggregateRows){
-    const group=a.source_system==='manual'?'manual':a.source_system==='realty'?'realty':'other';
+    const group=a.source_system==='manual'?'manual':['realty','hr'].includes(a.source_system)?'realty':'other';
     if(group==='other')issue('UNKNOWN_CASH_SOURCE',ref(a.source_system));
     const bucket=groups[group]??={opening:0n,income:0n,expense:0n};
     const opening=exactCents(a.opening_amount),period=exactCents(a.period_amount);
@@ -85,7 +85,7 @@ export function evaluateReconciliation({from,to,ledgerRows=[],receiptRows=[],agg
   const realty=groups.realty||{opening:0n,income:0n,expense:0n};
   if(realty.income!==sourceIncome||realty.expense!==sourceExpense)issue('SOURCE_AGGREGATE_MISMATCH','realty');
   return {
-    period:{from,to},source_system:'realty',currency:'PHP',
+    period:{from,to},source_system:'realty_and_hr',currency:'PHP',
     reconciliation_passed:issues.length===0,
     launch_approved:false,
     issues,
@@ -93,10 +93,10 @@ export function evaluateReconciliation({from,to,ledgerRows=[],receiptRows=[],agg
     source_totals:{money_in:pesos(sourceIncome),money_out:pesos(sourceExpense),net_change:pesos(sourceIncome-sourceExpense)},
     cash_breakdown:{manual:formatBucket(groups.manual),realty:formatBucket(groups.realty),other:formatBucket(groups.other)},
     limitations:[
-      'Finance-side receipts only; authoritative Realty source parity requires a separately signed-off staging comparison.',
+      'Compares Finance ledger entries with saved Company Finances and HR export receipts.',
       'Manual Finance entries are excluded from Realty transfer parity but included in the Finance ledger.',
       'The v1 transfer format cannot resolve source edits, cancellations or reversals.',
-      'Passing reconciliation never authorizes production cutover.'
+      'Compare source reports separately when investigating changed or missing payments.'
     ]
   };
 }

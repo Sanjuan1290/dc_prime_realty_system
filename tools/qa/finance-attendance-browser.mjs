@@ -47,11 +47,11 @@ try{
   });
   await check('Finance: viewer has no entry, user-management or admin tabs',async()=>{
     await page.getByRole('button',{name:'Sign out',exact:true}).click();await login('/finance','viewer@qa.invalid');await page.getByText('Financial summary',{exact:true}).waitFor();
-    for(const name of ['New entry','Users','Audit log','Finance imports'])assert.equal(await page.getByRole('button',{name,exact:true}).count(),0);
+    for(const name of ['New entry','Users','Audit log','Imports'])assert.equal(await page.getByRole('button',{name,exact:true}).count(),0);
     await page.setViewportSize({width:390,height:844});await layout('finance-viewer-mobile');
   });
-  await check('Attendance: real login, read-only mode and page data load',async()=>{
-    await page.setViewportSize({width:1440,height:1000});await login('/hr/login','hr@qa.invalid');await page.waitForURL('**/hr/employees');await page.goto(base+'/hr/attendance-records');await page.getByRole('heading',{name:'Attendance',exact:true}).waitFor();await page.getByText('HR staging: read-only.',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Manual Attendance',exact:true}).count(),0);await layout('attendance-desktop');
+  await check('Attendance: real login, live editing controls and page data load',async()=>{
+    await page.setViewportSize({width:1440,height:1000});await login('/hr/login','hr@qa.invalid');await page.waitForURL('**/hr/employees');await page.goto(base+'/hr/attendance-records');await page.getByRole('heading',{name:'Attendance',exact:true}).waitFor();assert.equal(await page.getByText('HR is temporarily read-only.',{exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:'Manual Attendance',exact:true}).count(),1);await layout('attendance-desktop');
   });
   await check('Attendance: calendar date, employee search and corrected times agree',async()=>{
     const now=new Date();const month=Number(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Manila',month:'numeric'}).format(now));const year=Number(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Manila',year:'numeric'}).format(now));
@@ -68,7 +68,7 @@ try{
   });
   await check('Attendance: 390px page stays inside the mobile viewport',async()=>{await page.setViewportSize({width:390,height:844});await layout('attendance-mobile')});
   await check('Attendance: kiosk link reaches the dedicated kiosk route',async()=>{
-    const link=page.getByRole('link',{name:'Open Attendance Kiosk',exact:true});assert.equal(await link.getAttribute('href'),'/hr/kiosk');await link.click();await page.getByRole('heading',{name:'HR attendance kiosk unavailable',exact:true}).waitFor();
+    const link=page.getByRole('link',{name:'Open Attendance Kiosk',exact:true});assert.equal(await link.getAttribute('href'),'/hr/kiosk');await link.click();await page.getByRole('heading',{name:'Employee Attendance',exact:true}).waitFor();
   });
   await check('Payroll: released payroll appears in its original period',async()=>{
     await page.setViewportSize({width:1440,height:1000});await page.goto(base+'/hr/payroll');await page.getByRole('heading',{name:'Employee Salary',exact:true}).waitFor();await page.getByLabel('Month',{exact:true}).fill('2026-10');await page.getByRole('row').filter({hasText:'Synthetic Employee'}).waitFor();assert.match(await page.getByRole('row').filter({hasText:'Synthetic Employee'}).innerText(),/Released/i);await layout('payroll-desktop');

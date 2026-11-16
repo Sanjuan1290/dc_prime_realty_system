@@ -24,9 +24,9 @@ const statusTone = { active: 'bg-emerald-50 text-emerald-700 ring-emerald-200', 
 
 const Employees = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = HR_FEATURE_FLAGS.stagingWrites && hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYEES_MANAGE)
-  const canManageCompensation = HR_FEATURE_FLAGS.stagingWrites && hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYEE_COMPENSATION_MANAGE)
-  const canCreateEmploymentChange = HR_FEATURE_FLAGS.stagingWrites && hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYMENT_CHANGE_CREATE)
+  const canManage = HR_FEATURE_FLAGS.writesEnabled && hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYEES_MANAGE)
+  const canManageCompensation = HR_FEATURE_FLAGS.writesEnabled && hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYEE_COMPENSATION_MANAGE)
+  const canCreateEmploymentChange = HR_FEATURE_FLAGS.writesEnabled && hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYMENT_CHANGE_CREATE)
   const canViewEmploymentHistory = hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYMENT_HISTORY_VIEW)
   const canViewPayrollHistory = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_HISTORY_VIEW)
   const canRelease = false // Batch 8: salary event transfer pending

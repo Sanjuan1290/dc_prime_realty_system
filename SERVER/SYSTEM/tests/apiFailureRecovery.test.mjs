@@ -28,7 +28,7 @@ test('authentication and validation failures do not create an availability coold
 test('Cloudflare checks are identified separately from a sleeping server without exposing HTML',async()=>{
   for(const response of [new Response('private diagnostics',{status:429,headers:{'cf-mitigated':'challenge'}}),new Response('<html><title>Just a moment...</title><script src="/cdn-cgi/challenge-platform/test">private details</script></html>',{status:429,headers:{'content-type':'text/html'}})]){
     const failure=await readApiFailure(response)
-    assert.equal(failure.code,'API_ACCESS_BLOCKED');assert.equal(failure.retryAfterSeconds,0);assert.match(failure.message,/security check/i);assert.doesNotMatch(failure.message,/waking|private|<html/i)
+    assert.equal(failure.code,'API_ACCESS_BLOCKED');assert.equal(failure.retryAfterSeconds,0);assert.match(failure.message,/hosting provider blocked/i);assert.doesNotMatch(failure.message,/waking|private|<html/i)
   }
 })
 test('a challenged upstream receives an explicit JSON failure rather than a startup promise',async()=>{

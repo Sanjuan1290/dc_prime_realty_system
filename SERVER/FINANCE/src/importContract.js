@@ -24,7 +24,7 @@ export function parseCsv(data,maxRows=500) {
   if(!Buffer.isBuffer(data))fail('INVALID_CSV','CSV must be UTF-8 bytes.');
   let text;
   try{text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(data);}catch{fail('INVALID_CSV','CSV must be valid UTF-8.');}
-  if(!text.startsWith('\uFEFF'))fail('INVALID_CSV','Batch 11 CSV requires UTF-8 BOM.');
+  if(!text.startsWith('\uFEFF'))fail('INVALID_CSV','Transfer CSV requires UTF-8 BOM.');
   text=text.slice(1);
   let rows=[],line=[],field='',quoted=false,closed=false,start=true;
   for(let i=0;i<text.length;i++){
@@ -38,14 +38,14 @@ export function parseCsv(data,maxRows=500) {
       line.push(field);field='';closed=false;start=true;
       if(c==='\r'){
         rows.push(line);line=[];i++;
-        if(rows.length>maxRows+1)fail('TOO_MANY_ROWS','Transfer exceeds the 500-row staging limit.');
+        if(rows.length>maxRows+1)fail('TOO_MANY_ROWS','Transfer exceeds the 500-row file limit.');
       }
     } else if(c==='\n')fail('INVALID_CSV','Unexpected unquoted newline.');
-    else if(closed||start)fail('INVALID_CSV','Batch 11 fields must be quoted.');
+    else if(closed||start)fail('INVALID_CSV','Transfer fields must be quoted.');
     else field+=c;
   }
   if(quoted||field||line.length||!text.endsWith('\r\n'))fail('INVALID_CSV','Incomplete CSV record.');
-  if(rows.length===0||rows[0].join('\0')!==COLUMNS.join('\0'))fail('INVALID_COLUMNS','Transfer column names/order do not match Batch 11.');
+  if(rows.length===0||rows[0].join('\0')!==COLUMNS.join('\0'))fail('INVALID_COLUMNS','Transfer column names/order do not match transfer v1.');
   const result=rows.slice(1).map((values,i)=>{
     if(values.length!==COLUMNS.length)fail('INVALID_COLUMNS',`Row ${i+2} has incorrect field count.`);
     return Object.fromEntries(COLUMNS.map((c,k)=>[c,decodeCell(values[k])]));
@@ -67,7 +67,7 @@ export function validateSnapshot({rows,manifest,rawCsv=null},today=dateInManila(
   if(!Array.isArray(rows)||rows.length>500)fail('TOO_MANY_ROWS','Too many transaction rows.');
   exactFields(manifest,['schema_version','source_system','generated_at','currency','period','filters','status_scope','salary_source','warnings','reconciled','snapshot','transactions_sha256','checksum_algorithm','data_file']);
   if(typeof manifest.export_id!=='string'||!manifest.export_id||manifest.export_id.length>180)fail('INVALID_METADATA','Missing export ID.');
-  if(manifest.schema_version!=='1.0'||manifest.source_system!=='realty'||manifest.currency!=='PHP'||manifest.status_scope!=='posted_only'||manifest.checksum_algorithm!=='sha256'||manifest.data_file!=='transactions.csv')fail('UNSUPPORTED_CONTRACT','Only reconciled Realty transfer v1.0 is supported.');
+  if(manifest.schema_version!=='1.0'||!['realty','hr'].includes(manifest.source_system)||manifest.currency!=='PHP'||manifest.status_scope!=='posted_only'||manifest.checksum_algorithm!=='sha256'||manifest.data_file!=='transactions.csv')fail('UNSUPPORTED_CONTRACT','Choose a reconciled Company Finances or HR salary transfer file.');
   if(manifest.reconciled!==true||!Array.isArray(manifest.warnings)||manifest.warnings.length)fail('RECONCILIATION_REQUIRED','Realty export must be reconciled with no warnings.');
   if(!['legacy','external'].includes(manifest.salary_source))fail('INVALID_METADATA','Invalid salary source.');
   if(!/^[0-9a-f]{64}$/.test(manifest.transactions_sha256))fail('INVALID_METADATA','Invalid transfer checksum.');
@@ -84,10 +84,11 @@ export function validateSnapshot({rows,manifest,rawCsv=null},today=dateInManila(
   for(const [i,row] of rows.entries()){
     const pos=i+2;
     if(!row||COLUMNS.some(k=>typeof row[k]!=='string'))fail('INVALID_ROW',`Row ${pos} contains a non-text or missing field.`);
-    if(row.schema_version!=='1.0'||row.source_system!=='realty'||row.source_version!=='1'||row.currency!=='PHP'||row.status!=='posted')fail('INVALID_ROW',`Row ${pos} has an unsupported source, version, currency or status.`);
+    if(row.schema_version!=='1.0'||!['realty','hr'].includes(row.source_system)||row.source_version!=='1'||row.currency!=='PHP'||row.status!=='posted')fail('INVALID_ROW',`Row ${pos} has an unsupported source, version, currency or status.`);
+    if((manifest.source_system==='hr'&&row.source_system!=='hr')||(row.source_system==='hr'&&(manifest.salary_source!=='external'||row.source_type!=='salary'||row.transaction_type!=='expense'||row.category!=='Salary')))fail('INVALID_ROW',`Row ${pos} has an unsupported HR payment.`);
     if(!SOURCES.includes(row.source_type)||!['income','expense'].includes(row.transaction_type))fail('INVALID_ROW',`Row ${pos} has an unsupported transaction type.`);
-    if(!/^(property|salary|manual|commission|network|refund):[1-9]\d*$/.test(row.source_transaction_id)||ids.has(row.source_transaction_id))fail('DUPLICATE_SOURCE_ID',`Row ${pos} has a missing or repeated source identity.`);
-    ids.add(row.source_transaction_id);
+    if(!/^(property|salary|manual|commission|network|refund):[1-9]\d*$/.test(row.source_transaction_id)||ids.has(row.source_system+row.source_transaction_id))fail('DUPLICATE_SOURCE_ID',`Row ${pos} has a missing or repeated source identity.`);
+    ids.add(row.source_system+row.source_transaction_id);
     const typePrefix={manual:'manual',property:'property',salary:'salary',commission:'commission',commission_archive:'commission',network_payout:'network',refund:'refund'}[row.source_type];
     if(row.source_transaction_id.split(':')[0]!==typePrefix)fail('INVALID_ROW',`Row ${pos} has mismatched source identity.`);
     validDate(row.transaction_date);

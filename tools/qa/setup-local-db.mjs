@@ -26,6 +26,8 @@ try {
     await conn.query(`CREATE USER '${name}'@'127.0.0.1' IDENTIFIED BY 'qa-isolated-only-password'`);
     await conn.query(`GRANT ALL ON ${db}.* TO '${name}'@'127.0.0.1'`);
   }
+  const {ensureInvitationSchema}=await import('../../SERVER/FINANCE/src/liveSchema.js');
+  await conn.query('USE dc_prime_finance_db');await ensureInvitationSchema(conn);
   const {hashPassword}=await import('../../SERVER/FINANCE/src/passwords.js');
   const bcrypt=createRequire(new URL('../../SERVER/HR/package.json',import.meta.url))('bcrypt');
   const password='Synthetic-QA-only-2026!';
@@ -35,6 +37,7 @@ try {
   await conn.execute("INSERT INTO dc_prime_hr_db.hr_users(id,display_name_snapshot,email_snapshot,account_status) VALUES(1,'QA HR Admin','hr@qa.invalid','active'),(2,'QA HR Viewer','hrviewer@qa.invalid','active')");
   for(const id of [1,2]) await conn.execute("INSERT INTO dc_prime_hr_db.hr_login_identities(hr_user_id,login_email,password_hash,login_state,must_change_password) VALUES(?,?,?,'active',0)",[id,id===1?'hr@qa.invalid':'hrviewer@qa.invalid',await bcrypt.hash(password,10)]);
   await conn.query(readFileSync(resolve(root,'SERVER/HR/migrations/20261027_batch6/01_staging_hr_access_seed.sql'),'utf8'));
+  await conn.query(readFileSync(resolve(root,'SERVER/HR/migrations/20261116_live_reports.sql'),'utf8'));
   await conn.query("INSERT INTO dc_prime_hr_db.hr_user_roles(hr_user_id,role_code) VALUES(1,'hr_admin'),(2,'hr_viewer')");
   await conn.execute("INSERT INTO dc_prime_realty_system_db.users(id,account_category,first_name,last_name,email,password_hash,role,status,must_change_password,admin_all_projects,all_projects_access) VALUES(1,'system','QA','Owner','system@qa.invalid',?,'super_admin','active',0,1,1)",[await bcrypt.hash(password,10)]);
   mkdirSync(resolve(root,'QA_REPORTS/evidence'),{recursive:true});

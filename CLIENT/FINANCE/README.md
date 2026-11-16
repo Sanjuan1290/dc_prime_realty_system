@@ -1,7 +1,9 @@
-# finance-client
+# Finance frontend
 
-Batch 4 scaffold only. **No application source, routes, database connector, authentication, or scheduler is provided here.**
+Live React/Vite application at /finance in the combined Cloudflare Pages build. Set VITE_FINANCE_API_URL=/finance-api. Finance has its own accounts and session cookie.
 
-The active legacy code remains in the repository's top-level `client/` and `server/`.
+Pages: dashboard, transactions, categories, audit history, user invitations, imports and reconciliation. New invited users must choose their own password before entering the app. Administrators map source categories, preview salary/Company Finances exports, then confirm imports. Role and password-setup restrictions are also enforced by the API.
 
-Code moves into this folder in later separation batches, after a verified full checkout, tests, and source-to-destination dependency review. Do not deploy this placeholder as a service.
+The health endpoint is checked before authentication; only health GET requests retry automatically. User-facing states distinguish connection delays, rate limits, provider security blocks and validation errors.
+
+Run npm run build. [Backend and email configuration](../../SERVER/FINANCE/README.md).

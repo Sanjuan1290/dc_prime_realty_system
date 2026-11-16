@@ -5,6 +5,7 @@ import { HR_FEATURE_FLAGS } from '../config/featureFlags'
 import { requestApi } from '../utils/apiClient'
 import useCurrentUser from '../utils/useCurrentUser'
 const links = [
+  {path:'/audit-logs',name:'Audit log',permission:PERMISSIONS.AUDIT_VIEW},
   {path:'/employees',name:'Employees',permission:PERMISSIONS.EMPLOYEES_VIEW},
   {path:'/attendance-records',name:'Attendance',permission:PERMISSIONS.ATTENDANCE_VIEW},
   {path:'/payroll',name:'Payroll',permission:PERMISSIONS.EMPLOYEE_SALARY_VIEW},
@@ -27,7 +28,7 @@ const HrLayout = () => {
       </nav>
     </header>
     <main className="mx-auto max-w-7xl p-4 sm:p-8">
-      {!HR_FEATURE_FLAGS.stagingWrites && <div role="status" className="mb-5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><strong>HR staging: read-only.</strong> Editing is disabled until database verification and an approved staging write test.</div>}
+      {!HR_FEATURE_FLAGS.writesEnabled && <div role="status" className="mb-5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><strong>HR is temporarily read-only.</strong> Your administrator has paused editing.</div>}
       <Outlet/>
     </main>
   </div>

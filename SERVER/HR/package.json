@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Batch 6 isolated HR staging backend. No source DB writes; not production-ready.",
+  "description": "Independent live HR and payroll API.",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
@@ -18,9 +18,11 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
     "express": "^4.22.2",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.1",
     "mysql2": "^3.22.5"
   }
 }

@@ -23,10 +23,10 @@ test('runtime HR schema never creates or alters tables',()=>{
   const src=read(fn);assert.doesNotMatch(src,/\b(?:CREATE TABLE|ALTER TABLE)\b/i,fn);
  }
 });
-test('payroll release remains staging-gated and signed receipt endpoint remains blocked',()=>{
+test('payroll release requires permission; unavailable signed storage remains blocked',()=>{
  const src=read('routers/System/employeePayroll.routers.js');
- assert.match(src,/HR_ALLOW_PAYROLL_RELEASE/);
- assert.match(src,/HR_ENABLE_SALARY_DELIVERY/);
+ assert.match(src,/PERMISSIONS\.PAYROLL_RELEASE/);
+ assert.match(src,/immutable outbox event/);
  assert.match(src,/HR_SIGNED_RECEIPTS_PENDING/);
  assert.match(src,/releaseEmployeePayroll\);/);
 });

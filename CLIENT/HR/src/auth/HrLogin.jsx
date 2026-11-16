@@ -25,8 +25,8 @@ const HrLogin = () => {
       {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       <label className="mt-6 block text-sm font-semibold">HR email<input type="email" autoComplete="username" required maxLength={150} value={email} onChange={e=>setEmail(e.target.value)} className="mt-2 w-full rounded-lg border p-3"/></label>
       <label className="mt-4 block text-sm font-semibold">Password<input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)} className="mt-2 w-full rounded-lg border p-3"/></label>
-      <button type="submit" disabled={busy||retrySeconds>0} className="mt-6 w-full rounded-lg bg-blue-700 p-3 font-semibold text-white disabled:opacity-50">{busy?'Signing in…':retrySeconds>0?`Try again in ${retrySeconds}s`:'Sign in to HR'}</button>
-      <p className="mt-4 text-xs text-slate-500">Password reset and invitations will be added before HR production cutover.</p>
+      <button type="submit" disabled={busy||current.isPending||retrySeconds>0} className="mt-6 w-full rounded-lg bg-blue-700 p-3 font-semibold text-white disabled:opacity-50">{current.isPending?'Connecting to HR…':busy?'Signing in…':retrySeconds>0?`Try again in ${retrySeconds}s`:'Sign in to HR'}</button>
+      <p className="mt-4 text-xs text-slate-500">For HR account access or a password reset, contact your administrator.</p>
     </form>
   </main>
 }

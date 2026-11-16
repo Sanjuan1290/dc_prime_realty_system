@@ -1,5 +1,7 @@
 import { HR_FEATURE_FLAGS } from '../config/featureFlags'
 import { readApiFailure } from '../../../shared/apiFailure.js'
+import { createApiReadiness } from '../../../shared/apiReadiness.js'
+const ensureReady=createApiReadiness()
 
 const AUTH_PATHS = new Set(['/auth/login','/auth/logout'])
 const KIOSK_MUTATION_PATHS = new Set(['/attendance-kiosk/unlock','/attendance-kiosk/lock','/attendance-kiosk/scan'])
@@ -32,7 +34,7 @@ const normalizePath = (path) => {
     throw new ApiError('Invalid HR API path.', { code: 'INVALID_HR_PATH' })
   }
   const pathname = value.split('?')[0]
-  if (!/^\/(?:auth|employees|attendance|employee-payroll|attendance-kiosk|health)(?:\/|$)/.test(pathname)) {
+  if (!/^\/(?:auth|employees|attendance|employee-payroll|attendance-kiosk|audit-logs|health)(?:\/|$)/.test(pathname)) {
     throw new ApiError(`Unsupported HR API route: ${pathname}`, { code: 'HR_ROUTE_NOT_ALLOWED' })
   }
   return value
@@ -53,12 +55,12 @@ const fetchHr = async (path, options = {}, asBlob = false) => {
   const isMutation = !['GET','HEAD'].includes(method)
   if (isMutation && !AUTH_PATHS.has(pathname)) {
     if (KIOSK_MUTATION_PATHS.has(pathname)) {
-      if (!HR_FEATURE_FLAGS.kiosk) throw new ApiError('HR kiosk is disabled during staging.', {code:'HR_KIOSK_DISABLED'})
-    } else if (!HR_FEATURE_FLAGS.stagingWrites) {
-      throw new ApiError('HR staging is read-only.', { code:'HR_READ_ONLY' })
+      if (!HR_FEATURE_FLAGS.kiosk) throw new ApiError('HR kiosk is disabled by your administrator.', {code:'HR_KIOSK_DISABLED'})
+    } else if (!HR_FEATURE_FLAGS.writesEnabled) {
+      throw new ApiError('HR is temporarily read-only.', { code:'HR_READ_ONLY' })
     }
     if (/^\/employee-payroll\/payrolls\/[^/]+\/release(?:\/|$)/.test(pathname)) {
-      throw new ApiError('Payroll release requires Batch 8.', {code:'HR_PAYROLL_RELEASE_DISABLED'})
+      if(!HR_FEATURE_FLAGS.payrollRelease)throw new ApiError('Payroll release is temporarily disabled.', {code:'HR_PAYROLL_RELEASE_DISABLED'})
     }
     if (/signed-receipts(?:\/|$)/.test(pathname)) {
       throw new ApiError('Signed receipts require Batch 9.', {code:'HR_SIGNED_RECEIPTS_DISABLED'})
@@ -71,6 +73,10 @@ const fetchHr = async (path, options = {}, asBlob = false) => {
         throw new ApiError('Changes cancelled.', {status:499,code:'REVIEW_CANCELLED'})
       }
     }
+  }
+  if(pathname==='/auth/me'||pathname==='/auth/login'){
+    try{await ensureReady(`${apiBase()}/health`,'HR')}
+    catch(error){throw new ApiError(error.message,error)}
   }
   // Do not pass UI-only mutation policy data into fetch.
   const { confirmationHandled, doubleCheck, confirmationToken, redirectOnUnavailable, timeoutMs = TIMEOUT_MS, ...fetchOptions } = options

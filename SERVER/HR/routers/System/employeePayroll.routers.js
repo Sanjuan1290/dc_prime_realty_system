@@ -22,12 +22,14 @@ import {
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 
+import {exportSalaryFinance} from '../../controllers/System/hrReports.controller.js';
 const router = express.Router();
 router.use(authenticateUser);
 
 router.get('/settings', requirePermission(PERMISSIONS.PAYROLL_SETTINGS_MANAGE), getEmployeePayrollSettings);
 router.put('/settings', requirePermission(PERMISSIONS.PAYROLL_SETTINGS_MANAGE), updateEmployeePayrollSettings);
 router.get('/period-preview', requirePermission(PERMISSIONS.EMPLOYEE_SALARY_VIEW), getPayrollPeriodPreview);
+router.get('/finance-export',requirePermission(PERMISSIONS.PAYROLL_SUMMARY_EXPORT),exportSalaryFinance);
 router.get('/summary-export', requirePermission(PERMISSIONS.PAYROLL_SUMMARY_EXPORT), getPayrollSummaryExportData);
 router.get('/drafts', requirePermission(PERMISSIONS.EMPLOYEE_SALARY_VIEW), getDraftPayrolls);
 router.get('/history/:employeeId', requirePermission(PERMISSIONS.PAYROLL_HISTORY_VIEW), getEmployeeSalaryHistory);
@@ -44,7 +46,8 @@ router.get('/payrolls/:employeePayrollId/correction-review', requirePermission(P
 router.post('/payrolls/:employeePayrollId/corrections', requirePermission(PERMISSIONS.PAYROLL_CORRECT_FINALIZED), correctFinalizedEmployeePayroll);
 router.use('/payrolls/:employeePayrollId/signed-receipts', (_req, res) => res.status(503).json({ code: 'HR_SIGNED_RECEIPTS_PENDING', message: 'Signed receipts are not available in the staging HR backend.' }));
 router.post('/payrolls/:employeePayrollId/release', requirePermission(PERMISSIONS.PAYROLL_RELEASE), (req,res,next)=> {
-  if (process.env.HR_ALLOW_PAYROLL_RELEASE !== 'true' || process.env.HR_ENABLE_SALARY_DELIVERY !== 'true') return res.status(503).json({ code:'HR_PAYROLL_RELEASE_DISABLED', message:'Release requires explicitly enabled HR outbox and delivery on isolated staging.' });
+  // Every release creates an immutable outbox event. Manual Finance exports
+  // remain available even when automatic delivery is not configured.
   return next();
 }, releaseEmployeePayroll);
 

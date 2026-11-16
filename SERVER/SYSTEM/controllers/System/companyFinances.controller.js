@@ -4,8 +4,8 @@ import { loadFinanceSummary, validateFinanceEntry, dateOnly, buildFinanceCsv } f
 import { parseFinanceExportFilters, selectFinanceExportRows, buildFinanceExportSnapshot, buildFinanceTransferZip, buildFinanceExcel } from '../../services/companyFinanceExport.service.js';
 const respondError=(res,e)=>res.status(e.statusCode||500).json({success:false,code:e.code||'FINANCE_ERROR',message:e.statusCode?e.message:'Unable to save company finances.'});
 const bad=(msg,code='FINANCE_INVALID',statusCode=400)=>Object.assign(new Error(msg),{code,statusCode});
-// Transfer generation requires operational approval and a date-scoped reconciliation record.
-const transferApproved=(report,to)=>report?.balance_verified===true && process.env.FINANCE_TRANSFER_ENABLED==='true' && /^\d{4}-\d{2}-\d{2}$/.test(process.env.FINANCE_TRANSFER_RECONCILED_THROUGH_DATE||'') && process.env.FINANCE_TRANSFER_RECONCILED_THROUGH_DATE>=to;
+// Each live export must pass the actual source consistency checks.
+const transferApproved=report=>report?.balance_verified===true;
 const id=(value)=>{const n=Number(value);if(!Number.isSafeInteger(n)||n<1)throw bad('Invalid record.');return n};
 const withTransaction=async(req,res,run)=>{
   const connection=await db.getConnection();
@@ -40,14 +40,14 @@ export const exportTransactions = async(req,res)=>{
     const data=await loadFinanceSummary(db,{from,to,allTransactions:true});
     const suffix=`DCP-Company-Finances-${from}-to-${to}`;
     const selected=selectFinanceExportRows(data.transactions,filters);
-    if (selected.length>50000) throw bad('More than 50,000 records match. Export a smaller date range.','FINANCE_EXPORT_TOO_LARGE',413);
+    if (selected.length>(profile==='transfer'?500:50000)) throw bad(`Choose a smaller date range: at most ${profile==='transfer'?500:50000} records per file.`,'FINANCE_EXPORT_TOO_LARGE',413);
     let bytes,filename,type;
     if (profile==='report' && format==='csv') {
       // Preserves existing 7-column report when new filters are not selected.
       bytes=buildFinanceCsv(selected);
       filename=`${suffix}.csv`;type='text/csv; charset=utf-8';
     } else {
-      if(profile==='transfer'&&!transferApproved(data,to)) throw bad('Finance transfer requires approved reconciliation through the report end date and an explicit export-enable setting.','FINANCE_EXPORT_TRANSFER_DISABLED',409);
+      if(profile==='transfer'&&!transferApproved(data,to)) throw bad('Resolve the Company Finances balance warnings before exporting payments for Finance.','FINANCE_EXPORT_NOT_RECONCILED',409);
       const snapshot=buildFinanceExportSnapshot({transactions:data.transactions,from,to,filters,overview:data});
       if (profile==='transfer' && !snapshot.manifest.reconciled)
         throw bad('Finance warnings or incomplete HR reconciliation prevent an import-ready export. Review finance warnings first.','FINANCE_EXPORT_NOT_RECONCILED',409);

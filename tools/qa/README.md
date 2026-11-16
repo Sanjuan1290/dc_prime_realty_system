@@ -45,6 +45,17 @@ From `SERVER/SYSTEM`, `npm run check:db` is a separate read-only diagnostic usin
 
 ## HR and Finance recovery
 
-- `node tools/qa/hr-finance-startup.mjs` checks the two real backend entrypoints with local stalled sockets, synthetic healthy/stalled queries, and their existing production-mode guards. It does not need a real database or enable business writes/jobs.
+- `node tools/qa/hr-finance-startup.mjs` checks both real entrypoints with stalled sockets, healthy/stalled queries, production startup, additive schema initialization, and required production TLS. It uses synthetic connections and does not start business jobs.
 - After building, `node tools/qa/hr-finance-recovery-browser.mjs` checks both real login bundles against the local Pages proxy and simulated provider failures. It verifies cooldowns, retained fields, separate security-check messages and absence of automatic credential resubmission.
 - `node tools/qa/live-api-diagnostics.mjs --apps=hr,finance` performs unauthenticated GET checks on their deployed health/session endpoints. Add `--wait-for-health` for a longer single health-request timeout, or `--include-direct --direct-only` to check only the documented Render health origins. It never signs in or changes records. `cf-mitigated` is captured when provided by Cloudflare.
+
+## PDF features and live-operation verification
+
+After creating the guarded disposable database, building and starting the adapter:
+
+1. Run `node --test tools/qa/api.e2e.test.mjs` and `node --test tools/qa/attendance.e2e.test.mjs` to create synthetic employee, attendance, finalized/released payroll and cash fixtures.
+2. Run `node --test tools/qa/pdf-features.e2e.test.mjs` for invitations, temporary-password restrictions/expiry, redacted audits, HR and Company Finances ZIP/Excel imports, and old external salary deduplication. Email is captured in memory; nothing is sent to a real inbox.
+3. Run `node tools/qa/pdf-features-browser.mjs` for real invitation setup, audit access, salary downloads and Finance layouts. The preceding test creates its single-use synthetic invitation.
+4. Run `node tools/qa/finance-attendance-browser.mjs` for financial mutations/reconciliation, viewer permissions, live attendance controls, the kiosk and Excel downloads.
+
+The local adapter intentionally omits the obsolete staging/write-approval flags, proving that the actual business workflows operate with the new live defaults. Private `.env` files remain excluded. Test evidence and the synthetic invitation file are ignored by Git.

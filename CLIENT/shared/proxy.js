@@ -31,8 +31,14 @@ export async function proxy({ request, env }, { originVar, prefix, system }) {
   const path = incoming.pathname.slice(prefix.length)
   if (!/^\/api\/v1(?:\/|$)/.test(path)) return fail('INVALID_API_PATH', 'Unsupported API route.', 404)
   const target = new URL(path + incoming.search, origin)
-  const headers = new Headers(request.headers)
-  headers.delete('host'); headers.delete('content-length'); headers.delete('cookie')
+  // This is a server-to-server API call. Browser fetch metadata, forwarding
+  // chains and Cloudflare challenge cookies describe the Pages request, not
+  // this new connection to Render. Forward only application headers.
+  const headers = new Headers()
+  for(const name of ['accept','content-type','authorization','origin','x-requested-with','if-match','range']){
+    const value=request.headers.get(name);if(value)headers.set(name,value)
+  }
+  headers.set('user-agent','dc-prime-pages-api/1.0')
   const cookies = filteredCookie(request.headers.get('cookie'), system)
   if (cookies) headers.set('cookie', cookies)
   headers.set('x-forwarded-host', incoming.host)
@@ -46,6 +52,7 @@ export async function proxy({ request, env }, { originVar, prefix, system }) {
       redirect: 'manual', signal: controller.signal,
     }))
     const responseHeaders = new Headers(upstream.headers)
+    responseHeaders.set('x-dc-prime-proxy',system)
     responseHeaders.delete('content-length')
     responseHeaders.set('cache-control', 'private, no-store')
     if (system === 'hr') {

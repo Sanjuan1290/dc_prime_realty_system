@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { HR_FEATURE_FLAGS } from '../../../config/featureFlags'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiActivity, FiAlertTriangle, FiCheckCircle, FiClock, FiFileText, FiLock, FiRefreshCw, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
@@ -177,7 +178,7 @@ const SalaryDetailModal = ({ payrollId, canManagePayrollSettings = false, initia
           <p className="text-xs font-semibold text-slate-500">Salary details for this pay period</p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700">Close</button>
-            {payroll?.payroll_status === 'released' && canPrintReceipt ? <button type="button" onClick={() => setShowSignedReceipts(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-5 text-sm font-semibold text-blue-800">Receipts</button> : null}
+            {HR_FEATURE_FLAGS.signedReceipts && payroll?.payroll_status === 'released' && canPrintReceipt ? <button type="button" onClick={() => setShowSignedReceipts(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-5 text-sm font-semibold text-blue-800">Receipts</button> : null}
             {payroll ? <button type="button" onClick={() => setShowReceipt(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-800 hover:bg-slate-50"><FiFileText />{officialStatus ? 'Acknowledgement Receipt' : 'Preview Receipt'}</button> : null}
             {canRecalculate && payroll?.payroll_status === 'draft' ? <button type="button" onClick={() => recalcMutation.mutate()} disabled={recalcMutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50"><FiRefreshCw className={recalcMutation.isPending ? 'animate-spin' : ''} />{recalcMutation.isPending ? 'Recalculating...' : 'Recalculate Draft'}</button> : null}
             {canFinalize && payroll?.payroll_status === 'draft' ? <button type="button" onClick={() => setShowFinalReview(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white hover:bg-emerald-700"><FiLock />Proceed to Final Review</button> : null}

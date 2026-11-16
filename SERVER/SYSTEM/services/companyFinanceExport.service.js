@@ -46,7 +46,7 @@ export const sourceRevisionHash = row => SHA(JSON.stringify([
   row.source_transaction_id,row.transaction_date,row.recorded_at,row.transaction_type,
   row.category,row.description,row.amount,row.currency,row.status,row.reference_id,row.source_type,
 ]));
-export const asFinanceTransferRows = transactions => {
+export const asFinanceTransferRows = (transactions, {externalSalary=false}={}) => {
   const seen=new Set();
   return transactions.map(tx=>{
     const reference=String(tx.reference ?? '');
@@ -65,7 +65,7 @@ export const asFinanceTransferRows = transactions => {
     if(timestamp && !/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(timestamp))
       throw BAD('Invalid source recording timestamp.', 'FINANCE_EXPORT_DATA_INVALID',409);
     const row = {
-      schema_version:FINANCE_TRANSFER_VERSION,source_system:'realty',source_transaction_id:reference,
+      schema_version:FINANCE_TRANSFER_VERSION,source_system:externalSalary && tx.source==='salary'?'hr':'realty',source_transaction_id:reference,
       source_version:'1',transaction_date:d,recorded_at:timestamp,transaction_type:tx.kind,
       category,description,amount:money(amountCents(tx.amount)),currency:'PHP',status:'posted',
       // The consolidated view currently exposes a stable source identifier, NOT its receipt reference.
@@ -98,7 +98,7 @@ export const buildFinanceExportSnapshot = ({transactions,from,to,filters={},over
   if(start>end)throw BAD('From date cannot be after To date.');
   const applied=parseFinanceExportFilters(filters);
   const selected=selectFinanceExportRows(transactions,applied);
-  const rows=asFinanceTransferRows(selected);
+  const rows=asFinanceTransferRows(selected,{externalSalary:Boolean(overview?.hr_salary_sync)});
   if(rows.some(r=>r.transaction_date<start||r.transaction_date>end))throw BAD('Export contains out-of-range activity.','FINANCE_EXPORT_DATA_INVALID',409);
   const csv=makeFinanceTransferCsv(rows);
   const totals=summarizeExportRows(rows);

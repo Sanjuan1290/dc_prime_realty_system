@@ -27,8 +27,9 @@ export const getCloudflareChallengeError = (response, text = '') => {
   if (response.headers.get('cf-mitigated') !== 'challenge'
     && !(/<title>\s*Just a moment/i.test(text) && /challenge-platform|challenges\.cloudflare\.com/i.test(text))) return null
   const code = 'API_ACCESS_BLOCKED'
-  const message = 'A security check is blocking the API. Please contact your administrator.'
-  return { code, message, retryAfterSeconds: 0, error: { code, message } }
+  const incidentId=response.headers.get('cf-ray')||''
+  const message = `The hosting provider blocked this API request.${incidentId?` Reference: ${incidentId}.`:''} Please contact your administrator.`
+  return { code, message, incidentId, retryAfterSeconds: 0, error: { code, message } }
 }
 
 export const normalizeUpstreamAvailability = async (response) => {
