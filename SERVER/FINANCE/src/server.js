@@ -4,6 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 import helmet from 'helmet';
 import {getPool,assertSafeDatabase} from './db.js';
+import {checkStartupDatabase,readStartupTimeout} from './serverStartup.js';
 import {problem,dateInManila} from './domain.js';
 import {login,requireUser,requireRole,COOKIE_NAME,sessionCookie,sessionHash,clearCookie} from './auth.js';
 import {getDashboard,listTransactions,postTransaction,voidTransaction,correctTransaction,listCategories,createCategory,setCategoryActive,listAudit} from './ledger.js';
@@ -11,6 +12,7 @@ import {listUsers,createUser} from './users.js';
 import {getFinanceReconciliation} from './reconciliation.js';
 import {previewImport,commitImport,approveCategoryMapping,listCategoryMappings,listImportBatches} from './importService.js';
 const app=express();app.disable('x-powered-by');app.use(helmet());app.use((req,res,next)=>express.json({limit:req.path==='/api/v1/finance/imports/preview'?'3mb':'64kb'})(req,res,next));
+let databaseReady=false;
 const allowed=(process.env.FINANCE_ALLOWED_ORIGINS||'http://localhost:5177').split(',').map(s=>s.trim()).filter(Boolean);
 const secure=process.env.FINANCE_COOKIE_SECURE==='true'||process.env.NODE_ENV==='production';
 app.use((req,res,next)=>{
@@ -27,13 +29,18 @@ app.use((req,res,next)=>{
 });
 app.use((req,res,next)=>{res.set('Cache-Control','no-store');next();});
 const wrap=fn=>(req,res,next)=>Promise.resolve().then(()=>fn(req,res)).catch(next);
-app.get('/api/v1/health',wrap(async(req,res)=>{await getPool().query('SELECT 1');res.json({ok:true,service:'finance'});}));
+app.get('/api/v1/live',(_req,res)=>res.json({status:'alive',service:'finance'}));
+app.get('/api/v1/health',(_req,res)=>{
+  if(!databaseReady)return res.status(503).set('Retry-After','5').json({status:'starting',code:'SERVER_UNAVAILABLE',message:'Finance is connecting to its database. Please try again shortly.',retryAfterSeconds:5});
+  return res.json({ok:true,service:'finance'});
+});
+app.use('/api/v1',(_req,res,next)=>databaseReady?next():res.status(503).set('Retry-After','5').json({error:{code:'SERVER_UNAVAILABLE',message:'Finance is connecting to its database. Please try again shortly.',retryAfterSeconds:5}}));
 // In-memory attempt throttle adds a staging-only limit; use distributed protection before production.
 const attempts=new Map();
 app.post('/api/v1/auth/login',wrap(async(req,res)=>{
   const ip=req.ip||'unknown', now=Date.now(),prev=attempts.get(ip)||{count:0,until:now+600000};
   const a=prev.until<now?{count:0,until:now+600000}:prev;
-  if(a.count>=8)throw problem('RATE_LIMIT','Too many login attempts. Try again later.',429);
+  if(a.count>=8){res.set('Retry-After',String(Math.max(1,Math.ceil((a.until-now)/1000))));throw problem('RATE_LIMIT','Too many login attempts. Try again later.',429);}
   a.count++;attempts.set(ip,a);
   const email=String(req.body?.email||'').trim().toLowerCase();const password=req.body?.password;
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||typeof password!=='string')throw problem('INVALID_CREDENTIALS','Incorrect email or password.',401);
@@ -68,7 +75,17 @@ app.post(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.status(
 app.use((req,res)=>res.status(404).json({error:{code:'NOT_FOUND',message:'Finance endpoint not found.'}}));
 app.use((err,req,res,next)=>{const status=err.status|| (err.code==='ER_DUP_ENTRY'?409:500);if(status>=500)console.error('[Finance API error]',{method:req.method,path:req.path,code:err.code||err.name,errno:err.errno||null,sqlState:err.sqlState||null});res.status(status).json({error:{code:err.code==='ER_DUP_ENTRY'?'DUPLICATE':(status>=500?'SERVER_ERROR':err.code||'BAD_REQUEST'),message:status>=500?'Finance request failed.':err.message}});});
 if(process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])){
-  try {assertSafeDatabase();const port=Number(process.env.PORT||5103);app.listen(port,()=>console.log(`Finance staging server listening on ${port}`));}
+  try {
+    assertSafeDatabase();
+    const pool=getPool(),port=Number(process.env.PORT||5103),timeoutMs=readStartupTimeout(process.env.DATABASE_STARTUP_TIMEOUT_MS,30000,'DATABASE_STARTUP_TIMEOUT_MS');
+    const server=app.listen(port,'0.0.0.0',async()=>{
+      console.log(`Finance staging server listening on ${port}`);
+      console.log(`Checking Finance database connection (startup deadline: ${timeoutMs}ms).`);
+      try{await checkStartupDatabase(pool,{timeoutMs});databaseReady=true;console.log('Finance database connected');}
+      catch(error){console.error('Finance initialization failed:',{code:error.code||error.name,stage:error.stage,timeoutMs});console.error('Check Render TIDB_* variables, TLS and database network access.');server.close();process.exit(1);}
+    });
+    server.on('error',error=>{console.error('Finance port binding failed:',{code:error.code||error.name,port});process.exit(1)});
+  }
   catch(e){console.error(e.code||e.message);process.exitCode=1;}
 }
 export default app;

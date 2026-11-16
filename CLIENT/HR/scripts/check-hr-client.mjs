@@ -11,6 +11,9 @@ function scan(dir){for(const ent of fs.readdirSync(dir,{withFileTypes:true})){
 }}
 scan(src)
 const errors=[]
+// Permit these pure utilities; imports from other applications remain forbidden.
+const approvedSharedFiles=new Set(['upstreamAvailability.js','apiFailure.js'].map(file=>path.resolve(root,'../shared',file)))
+files.push(...approvedSharedFiles)
 const imports=/\b(?:import|export)\s+(?:[\s\S]*?\s+from\s*)?['"](\.[^'"]+)['"]|import\(\s*['"](\.[^'"]+)['"]\s*\)/g
 for(const file of files){const rel=path.relative(src,file);const body=fs.readFileSync(file,'utf8')
  if(/(?:dc_prime_realty_system_db|company_finance_transactions|lot_project_payments|\/user\/me|\/user\/login)/.test(body))errors.push('Realty reference: '+rel)
@@ -18,7 +21,7 @@ for(const file of files){const rel=path.relative(src,file);const body=fs.readFil
   const spec=match[1]||match[2];let p=path.resolve(path.dirname(file),spec)
   const tries=[p,p+'.js',p+'.jsx',p+'.mjs',p+'.css',path.join(p,'index.jsx'),path.join(p,'index.js')]
   const resolved=tries.find(fs.existsSync)
-  if(!resolved||!resolved.startsWith(src+path.sep))errors.push('Missing or outside HR import: '+rel+' -> '+spec)
+  if(!resolved||(!resolved.startsWith(src+path.sep)&&!approvedSharedFiles.has(resolved)))errors.push('Missing or outside HR import: '+rel+' -> '+spec)
  }
 }
 for(const [rel,text] of [['src/config/featureFlags.js','payrollRelease: false'],['src/config/featureFlags.js','signedReceipts: false'],['src/utils/useCurrentUser.js',"'/auth/me'"],['src/utils/apiClient.js','HR_READ_ONLY']]){

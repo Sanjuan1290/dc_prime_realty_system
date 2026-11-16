@@ -2,6 +2,7 @@ import FinanceReconciliation from './FinanceReconciliation.jsx';
 import React,{useCallback,useEffect,useState} from 'react';
 import {FiTrendingUp,FiTrendingDown,FiDollarSign,FiBookOpen,FiGrid,FiPlus,FiLogOut,FiShield,FiList,FiAlertCircle,FiRefreshCcw,FiUserPlus} from 'react-icons/fi';
 import {api} from './api.js';
+import useRetryCooldown from './useRetryCooldown.js';
 import FinanceImport from './FinanceImport.jsx';
 const today=()=>{const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=k=>parts.find(p=>p.type===k).value;return `${get('year')}-${get('month')}-${get('day')}`;};
 const defaultRange=()=>{const to=today();return {from:`${to.slice(0,7)}-01`,to};};
@@ -9,9 +10,11 @@ const peso=value=>`₱${String(value??'0.00').replace(/^-?/,'') .replace(/\B(?=(
 const signedPeso=value=>`${String(value||'0').startsWith('-')?'-':''}${peso(value)}`;
 const inputDefault={kind:'expense',amount:'',description:'',notes:'',category_id:'',transaction_date:today()};
 function ErrorNotice({message,onDismiss}){return message?<div className="notice" role="alert"><FiAlertCircle/><span>{message}</span><button type="button" onClick={onDismiss} aria-label="Dismiss message">×</button></div>:null;}
-function Login({onLogin}){const[email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[saving,setSaving]=useState(false);
-  const submit=async e=>{e.preventDefault();setSaving(true);setError('');try{const r=await api('/auth/login',{method:'POST',data:{email,password}});onLogin(r.user);}catch(err){setError(err.message);}finally{setSaving(false);}};
-  return <main className="login-shell"><form className="login-box" onSubmit={submit}><div className="eyebrow">D&C Prime Realty</div><h1>Finance Management</h1><p>Independent finance account. Your Realty and HR sessions do not grant access here.</p><label>Email<input type="email" autoComplete="username" value={email} required onChange={e=>setEmail(e.target.value)}/></label><label>Password<input type="password" autoComplete="current-password" value={password} required onChange={e=>setPassword(e.target.value)}/></label><ErrorNotice message={error} onDismiss={()=>setError('')}/><button disabled={saving} className="btn primary" type="submit">{saving?'Signing in…':'Sign in'}</button></form></main>;
+function Login({onLogin,initialError}){const[email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[saving,setSaving]=useState(false);
+  const {retrySeconds,delayRetry}=useRetryCooldown(initialError);
+  useEffect(()=>{if(initialError)setError(initialError.message)},[initialError]);
+  const submit=async e=>{e.preventDefault();if(saving||retrySeconds>0)return;setSaving(true);setError('');try{const r=await api('/auth/login',{method:'POST',data:{email,password}});onLogin(r.user);}catch(err){delayRetry(err);setError(err.message);}finally{setSaving(false);}};
+  return <main className="login-shell"><form className="login-box" onSubmit={submit}><div className="eyebrow">D&C Prime Realty</div><h1>Finance Management</h1><p>Independent finance account. Your Realty and HR sessions do not grant access here.</p><label>Email<input type="email" autoComplete="username" value={email} required onChange={e=>setEmail(e.target.value)}/></label><label>Password<input type="password" autoComplete="current-password" value={password} required onChange={e=>setPassword(e.target.value)}/></label><ErrorNotice message={error} onDismiss={()=>setError('')}/><button disabled={saving||retrySeconds>0} className="btn primary" type="submit">{saving?'Signing in…':retrySeconds>0?`Try again in ${retrySeconds}s`:'Sign in'}</button></form></main>;
 }
 function CashTile({icon:Icon,label,value,hint}){return <div className="tile"><div className="tile-head"><span>{label}</span><Icon/></div><strong>{value == null ? "—" : signedPeso(value)}</strong><small>{hint}</small></div>;}
 function EntryForm({categories,initial,onSubmit,onCancel,busy,correcting=false}){
@@ -27,15 +30,16 @@ function EntryForm({categories,initial,onSubmit,onCancel,busy,correcting=false})
   </form>;
 }
 export default function App(){const[user,setUser]=useState(undefined),[tab,setTab]=useState('overview'),[range,setRange]=useState(defaultRange),[dashboard,setDashboard]=useState(null),[transactions,setTransactions]=useState([]),[count,setCount]=useState(0),[categories,setCategories]=useState([]),[logs,setLogs]=useState([]),[users,setUsers]=useState([]),[userForm,setUserForm]=useState({email:'',display_name:'',role:'viewer',password:''}),[page,setPage]=useState(1),[status,setStatus]=useState('posted'),[kind,setKind]=useState('all'),[error,setError]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[entry,setEntry]=useState(null),[prompt,setPrompt]=useState(null),[categoryInput,setCategoryInput]=useState({kind:'expense',name:''});
+  const [sessionError,setSessionError]=useState(null);
   const canWrite=user?.role==='admin'||user?.role==='accountant';const canAdmin=user?.role==='admin';
   const refresh=useCallback(async()=>{if(!user)return;setLoading(true);setError('');try{const q=new URLSearchParams({...range,page:String(page),status,kind});const requests=[api(`/finance/dashboard?from=${range.from}&to=${range.to}`),api(`/finance/transactions?${q}`),api('/finance/categories')];if(canAdmin&&(tab==='audit'||tab==='users'))requests.push(api(tab==='users'?'/finance/users':'/finance/audit')); 
     const [d,t,c,a]=await Promise.all(requests);setDashboard(d);setTransactions(t.transactions||[]);setCount(t.total||0);setCategories(c.categories||[]);if(a){if(tab==='users')setUsers(a.users||[]);else setLogs(a.items||[]);}
   }catch(e){setDashboard(null);setTransactions([]);setCount(0);setCategories([]);setError(e.message);}finally{setLoading(false);}},[user,range,page,status,kind,canAdmin,tab]);
-  useEffect(()=>{api('/auth/me').then(r=>setUser(r.user)).catch(()=>setUser(null));},[]);
+  useEffect(()=>{api('/auth/me').then(r=>setUser(r.user)).catch(error=>{setSessionError(error.status===401?null:error);setUser(null);});},[]);
   useEffect(()=>{if(user)refresh();},[user,refresh]);
   const mutate=async(path,data,method='POST')=>{setBusy(true);setError('');try{await api(path,{method,data});setEntry(null);setPrompt(null);await refresh();return true;}catch(e){setError(e.message);return false;}finally{setBusy(false);}};
   if(user===undefined)return <main className="login-shell"><p>Loading Finance…</p></main>;
-  if(!user)return <Login onLogin={setUser}/>;
+  if(!user)return <Login initialError={sessionError} onLogin={value=>{setSessionError(null);setUser(value);}}/>;
   const tabs=[{id:'overview',label:'Dashboard',icon:FiGrid},{id:'transactions',label:'Transactions',icon:FiList},{id:'categories',label:'Categories',icon:FiBookOpen},...(canAdmin?[{id:'audit',label:'Audit log',icon:FiShield},{id:'users',label:'Users',icon:FiUserPlus},{id:'imports',label:'Finance imports',icon:FiBookOpen},{id:'reconciliation',label:'Reconciliation',icon:FiShield}]:[])];
   return <div className="app-shell"><aside className="sidebar"><div className="sidebar-brand"><span className="brand-mark">D&C</span><div><strong>Prime Finance</strong><small>Independent Management</small></div></div><nav aria-label="Finance navigation">{tabs.map(t=><button key={t.id} type="button" className={tab===t.id?'nav-item active':'nav-item'} onClick={()=>{setTab(t.id);setEntry(null);setPrompt(null);}}><t.icon/>{t.label}</button>)}</nav><div className="sidebar-bottom"><div>{user.display_name}<small>{user.role}</small></div><button type="button" className="nav-item" onClick={async()=>{try{await api('/auth/logout',{method:'POST'});}finally{setUser(null);}}}><FiLogOut/>Sign out</button></div></aside>
   <main className="main"><header className="topbar"><div><div className="eyebrow">D&C Prime Realty / Finance</div><h1>{tabs.find(t=>t.id===tab)?.label}</h1><p>Your ledger is separate from the Realty and HR databases.</p></div><div className="top-actions"><button className="btn" type="button" onClick={refresh} disabled={loading}><FiRefreshCcw/>Refresh</button>{canWrite&&<button className="btn primary" type="button" onClick={()=>setEntry({...inputDefault,transaction_date:today()})}><FiPlus/>New entry</button>}</div></header>

@@ -1,17 +1,19 @@
 import { HR_FEATURE_FLAGS } from '../config/featureFlags'
+import { readApiFailure } from '../../../shared/apiFailure.js'
 
 const AUTH_PATHS = new Set(['/auth/login','/auth/logout'])
 const KIOSK_MUTATION_PATHS = new Set(['/attendance-kiosk/unlock','/attendance-kiosk/lock','/attendance-kiosk/scan'])
 const TIMEOUT_MS = 60000
 
 export class ApiError extends Error {
-  constructor(message, { status = 0, code = '', data = null } = {}) {
+  constructor(message, { status = 0, code = '', data = null, retryAfterSeconds = 0 } = {}) {
     super(message)
     this.name = 'ApiError'; this.status = status; this.code = code; this.data = data
+    this.retryAfterSeconds = retryAfterSeconds
   }
 }
 export const isAuthenticationError = (error) => Number(error?.status) === 401
-export const isServerUnavailableError = (error) => ['SERVER_UNAVAILABLE', 'REQUEST_TIMEOUT'].includes(error?.code)
+export const isServerUnavailableError = (error) => ['SERVER_UNAVAILABLE', 'SERVER_WAKING_UP', 'REQUEST_TIMEOUT'].includes(error?.code)
 export const isMaintenanceError = (error) => error?.code === 'MAINTENANCE_MODE'
 
 export const resolveHrApiBase = (raw) => {
@@ -86,8 +88,8 @@ const fetchHr = async (path, options = {}, asBlob = false) => {
       signal: controller.signal,
     })
     if (!response.ok) {
-      const data = await parseResponse(response)
-      throw new ApiError(data?.message || `HR API error (${response.status}).`,{status:response.status,code:data?.code || '',data})
+      const failure = await readApiFailure(response, 'HR')
+      throw new ApiError(failure.message,{status:response.status,code:failure.code,data:failure.data,retryAfterSeconds:failure.retryAfterSeconds})
     }
     if (asBlob) return {
       blob: await response.blob(),
@@ -99,6 +101,7 @@ const fetchHr = async (path, options = {}, asBlob = false) => {
     if (error instanceof ApiError) throw error
     throw new ApiError(error?.name==='AbortError' ? 'HR API request timed out.' : 'HR API unavailable.',{
       code:error?.name==='AbortError'?'REQUEST_TIMEOUT':'SERVER_UNAVAILABLE',
+      retryAfterSeconds:30,
     })
   } finally {clearTimeout(timeout)}
 }

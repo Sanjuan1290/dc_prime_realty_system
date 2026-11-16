@@ -42,3 +42,9 @@ After building the local bundles, run `node tools/qa/startup-recovery-browser.mj
 Run `node tools/qa/server-startup.mjs` to verify the real SYSTEM entrypoint with a stalled local MySQL handshake, a stalled query and a healthy synthetic connection. It checks early port binding, liveness/readiness status, rejection of login while initialization is pending, bounded startup failure and normal authentication after readiness. It uses only synthetic credentials and does not need an existing database. All temporary processes are stopped when it finishes.
 
 From `SERVER/SYSTEM`, `npm run check:db` is a separate read-only diagnostic using that environment's configured credentials. It runs only `SELECT 1` with the same startup deadline, reports a code/stage on failure and does not start jobs or HTTP routes.
+
+## HR and Finance recovery
+
+- `node tools/qa/hr-finance-startup.mjs` checks the two real backend entrypoints with local stalled sockets, synthetic healthy/stalled queries, and their existing production-mode guards. It does not need a real database or enable business writes/jobs.
+- After building, `node tools/qa/hr-finance-recovery-browser.mjs` checks both real login bundles against the local Pages proxy and simulated provider failures. It verifies cooldowns, retained fields, separate security-check messages and absence of automatic credential resubmission.
+- `node tools/qa/live-api-diagnostics.mjs --apps=hr,finance` performs unauthenticated GET checks on their deployed health/session endpoints. Add `--wait-for-health` for a longer single health-request timeout, or `--include-direct --direct-only` to check only the documented Render health origins. It never signs in or changes records. `cf-mitigated` is captured when provided by Cloudflare.

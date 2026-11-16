@@ -4,6 +4,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { db } from './db/connect.js';
+import { checkStartupDatabase, readStartupTimeout } from './services/serverStartup.service.js';
 import hrAuth from './routers/hrAuth.router.js';
 import employees from './routers/System/employees.routers.js';
 import attendance from './routers/System/attendance.routers.js';
@@ -12,9 +13,17 @@ import kiosk from './routers/attendanceKiosk.router.js';
 import { startAttendanceAutoTimeoutScheduler } from './jobs/attendanceAutoTimeout.job.js';
 import { startSalaryOutboxWorker } from './jobs/salaryOutbox.job.js';
 const app=express();app.disable('x-powered-by');app.use(helmet());app.use(express.json({limit:'1mb'}));app.use(cookieParser());
+let databaseReady=false;
+const startupTimeoutMs=readStartupTimeout(process.env.HR_DB_STARTUP_TIMEOUT_MS,30000,'HR_DB_STARTUP_TIMEOUT_MS');
 const allowedOrigins=new Set(String(process.env.HR_CORS_ORIGIN || '').split(',').map(x=>x.trim()).filter(Boolean));
 app.use(cors({origin(origin,cb){cb(origin && !allowedOrigins.has(origin) ? Object.assign(new Error('HR origin forbidden'),{statusCode:403}) : null,true)},credentials:true}));
-app.get('/api/v1/health',(_req,res)=>res.json({success:true,service:'hr',status:'ok'}));
+app.get('/api/v1/live',(_req,res)=>res.set('Cache-Control','no-store').json({status:'alive',service:'hr'}));
+app.get('/api/v1/health',(_req,res)=>{
+  res.set('Cache-Control','no-store');
+  if(!databaseReady)return res.status(503).set('Retry-After','5').json({success:false,status:'starting',code:'SERVER_UNAVAILABLE',message:'HR is connecting to its database. Please try again shortly.',retryAfterSeconds:5});
+  return res.json({success:true,service:'hr',status:'ok'});
+});
+app.use('/api/v1',(_req,res,next)=>databaseReady?next():res.status(503).set('Retry-After','5').json({code:'SERVER_UNAVAILABLE',message:'HR is connecting to its database. Please try again shortly.',retryAfterSeconds:5}));
 app.use('/api/v1/auth',hrAuth);
 const writesAllowed=process.env.HR_STAGING_ONLY==='true' && process.env.HR_ENABLE_WRITES==='true' && process.env.NODE_ENV!=='production';
 const guard=(req,res,next)=> (['POST','PUT','PATCH','DELETE'].includes(req.method) && !writesAllowed) ? res.status(503).json({code:'HR_WRITES_DISABLED',message:'HR writes are disabled before data migration and cutover.'}) : next();
@@ -27,14 +36,25 @@ app.use((err,_req,res,_next)=>{console.error('[HR]',err.code || err.message);con
 if (process.env.NODE_ENV === 'production') throw new Error('Batch 6 HR backend must never start in production.');
 if (process.env.HR_STAGING_ONLY !== 'true') throw new Error('Batch 6 HR server is staging-only until migration, finance and storage contracts pass. Set HR_STAGING_ONLY=true in an isolated staging environment.');
 if (!process.env.HR_JWT_SECRET || process.env.HR_JWT_SECRET.length < 32) throw new Error('HR_JWT_SECRET must be at least 32 characters.');
-await db.query('SELECT 1');
 
 const port = Number(
   process.env.PORT || process.env.HR_PORT || 5102
 )
-app.listen(port, '0.0.0.0', () => {
+const server=app.listen(port, '0.0.0.0', async () => {
   console.log(`HR staging API running on 0.0.0.0:${port} (writes: ${writesAllowed ? 'enabled on staging' : 'disabled'})`);
-  if (process.env.HR_ENABLE_JOBS==='true' && writesAllowed) startAttendanceAutoTimeoutScheduler();
-  if (process.env.HR_ENABLE_SALARY_DELIVERY==='true' && writesAllowed) startSalaryOutboxWorker();
+  console.log(`Checking HR database connection (startup deadline: ${startupTimeoutMs}ms).`);
+  try {
+    await checkStartupDatabase(db,{timeoutMs:startupTimeoutMs});
+    databaseReady=true;
+    console.log('HR database connected');
+    if (process.env.HR_ENABLE_JOBS==='true' && writesAllowed) startAttendanceAutoTimeoutScheduler();
+    if (process.env.HR_ENABLE_SALARY_DELIVERY==='true' && writesAllowed) startSalaryOutboxWorker();
+  }catch(error){
+    databaseReady=false;
+    console.error('HR initialization failed:',{code:error.code||error.name,stage:error.stage||'background_jobs',timeoutMs:startupTimeoutMs});
+    console.error('Check Render HR_DB_* variables, TLS and database network access.');
+    server.close();process.exit(1);
+  }
 });
+server.on('error',error=>{console.error('HR port binding failed:',{code:error.code||error.name,port});process.exit(1)});
 export { app };

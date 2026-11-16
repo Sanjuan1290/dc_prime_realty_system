@@ -9,7 +9,10 @@ const attempts = new Map();
 router.post('/login',async (req,res,next)=> {
   try {
     const key = String(req.ip || 'unknown'); const state = attempts.get(key) || { n:0, until:0 };
-    if (state.until > Date.now()) return res.status(429).json({ code:'HR_LOGIN_RATE_LIMITED' });
+    if (state.until > Date.now()) {
+      const retryAfterSeconds=Math.max(1,Math.ceil((state.until-Date.now())/1000));
+      return res.status(429).set('Retry-After',String(retryAfterSeconds)).json({code:'HR_LOGIN_RATE_LIMITED',message:'Too many HR sign-in attempts. Please wait before trying again.',retryAfterSeconds});
+    }
     const email = String(req.body?.email || '').trim().toLowerCase();const password = String(req.body?.password || '');
     if (!email || !password || email.length > 150 || password.length > 256) return res.status(400).json({ code:'INVALID_LOGIN_INPUT' });
     const [rows] = await db.query(`SELECT u.id,u.display_name_snapshot,u.account_status,i.login_state,i.auth_version,i.password_hash

@@ -23,8 +23,16 @@ export const getRenderStartupError = (response) => {
   }
 }
 
+export const getCloudflareChallengeError = (response, text = '') => {
+  if (response.headers.get('cf-mitigated') !== 'challenge'
+    && !(/<title>\s*Just a moment/i.test(text) && /challenge-platform|challenges\.cloudflare\.com/i.test(text))) return null
+  const code = 'API_ACCESS_BLOCKED'
+  const message = 'A security check is blocking the API. Please contact your administrator.'
+  return { code, message, retryAfterSeconds: 0, error: { code, message } }
+}
+
 export const normalizeUpstreamAvailability = async (response) => {
-  const error = getRenderStartupError(response)
+  const error = getCloudflareChallengeError(response) || getRenderStartupError(response)
   if (!error) return response
   await response.body?.cancel()
   return new Response(JSON.stringify(error), {
@@ -32,7 +40,7 @@ export const normalizeUpstreamAvailability = async (response) => {
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'private, no-store',
-      'Retry-After': String(error.retryAfterSeconds),
+      ...(error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : {}),
     },
   })
 }
