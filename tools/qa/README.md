@@ -36,3 +36,9 @@ Evidence goes to `QA_REPORTS/evidence`; database runtime files go to `QA_REPORTS
 After building the local bundles, run `node tools/qa/startup-recovery-browser.mjs`. It starts its own loopback server, runs the real Pages proxy with simulated provider failures, and verifies the production SYSTEM sign-in bundle. It needs no database or running application services. The cases cover startup status failures, failed login during startup, application login limits, HTML rate-limit responses, session outages and gateway errors. It checks retry countdowns, preserved form fields and absence of automatic password resubmission.
 
 `node tools/qa/live-api-diagnostics.mjs` makes three unauthenticated GET requests to the deployed health, public status and current-user endpoints. It never signs in. `--wait-for-health` makes one health request with a longer timeout; `--include-direct` additionally checks the documented Render origin. Its output includes HTTP status and selected routing headers, without credentials. A `401` from `/user/me` is expected without a session.
+
+## SYSTEM startup ordering
+
+Run `node tools/qa/server-startup.mjs` to verify the real SYSTEM entrypoint with a stalled local MySQL handshake, a stalled query and a healthy synthetic connection. It checks early port binding, liveness/readiness status, rejection of login while initialization is pending, bounded startup failure and normal authentication after readiness. It uses only synthetic credentials and does not need an existing database. All temporary processes are stopped when it finishes.
+
+From `SERVER/SYSTEM`, `npm run check:db` is a separate read-only diagnostic using that environment's configured credentials. It runs only `SELECT 1` with the same startup deadline, reports a code/stage on failure and does not start jobs or HTTP routes.

@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
+import { readStartupTimeout } from '../services/serverStartup.service.js';
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ export const db = mysql.createPool({
   user: process.env.TIDB_USERNAME,
   password: process.env.TIDB_PASSWORD,
   database: process.env.TIDB_DATABASE,
+  connectTimeout: readStartupTimeout(process.env.TIDB_CONNECT_TIMEOUT_MS, 10_000, 'TIDB_CONNECT_TIMEOUT_MS'),
   ssl: useTls
     ? {
         minVersion: 'TLSv1.2',

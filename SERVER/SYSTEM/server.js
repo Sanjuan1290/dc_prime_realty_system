@@ -6,6 +6,7 @@ import helmet from 'helmet'
 import 'express-async-errors'
 
 import { db } from './db/connect.js'
+import { checkStartupDatabase, readStartupTimeout } from './services/serverStartup.service.js'
 import { startDailyPenaltyScheduler } from './jobs/dailyPenalty.job.js'
 import { parseTrustProxySetting } from './utils/requestIp.js'
 import { maintenanceGuard } from './middleware/maintenance.middleware.js'
@@ -30,6 +31,8 @@ import hrSalaryEventsRouter from './routers/System/hrSalaryEvents.router.js'
 
 const app = express()
 app.disable('x-powered-by')
+let databaseReady = false
+const startupTimeoutMs = readStartupTimeout(process.env.DATABASE_STARTUP_TIMEOUT_MS, 30_000, 'DATABASE_STARTUP_TIMEOUT_MS')
 
 const trustProxySetting = parseTrustProxySetting(process.env.TRUST_PROXY)
 if (trustProxySetting !== false) {
@@ -84,7 +87,28 @@ app.get('/', (_req, res) => {
 })
 
 app.get('/api/v1/health', (_req, res) => {
+  res.set('Cache-Control', 'no-store')
+  if (!databaseReady) return res.status(503).set('Retry-After', '5').json({
+    status: 'starting',
+    code: 'SERVER_UNAVAILABLE',
+    message: 'The server is connecting to its database. Please try again shortly.',
+  })
   res.json({ status: 'success', message: 'API is healthy' })
+})
+
+// Liveness is independent of database readiness; keep Render's deployment
+// health check on /api/v1/health so a failed database check cannot pass a deploy.
+app.get('/api/v1/live', (_req, res) => {
+  res.set('Cache-Control', 'no-store').json({ status: 'alive', service: 'system' })
+})
+
+app.use('/api/v1', (_req, res, next) => {
+  if (databaseReady) return next()
+  return res.status(503).set('Retry-After', '5').json({
+    code: 'SERVER_UNAVAILABLE',
+    message: 'The server is connecting to its database. Please try again shortly.',
+    retryAfterSeconds: 5,
+  })
 })
 
 // Public status must remain available during planned maintenance.
@@ -138,21 +162,37 @@ app.use((err, _req, res, _next) => {
 const PORT = Number(process.env.PORT || 5001)
 const HOST = '0.0.0.0'
 
-const startServer = async () => {
-  try {
-    await db.query('SELECT 1')
-    console.log('TiDB connected')
-
-    app.listen(PORT, HOST, () => {
-      console.log(`Server running on ${HOST}:${PORT}`)
+const startServer = () => {
+  // Open the HTTP port before performing network I/O. Render can now detect
+  // the process while readiness remains 503 until the database check succeeds.
+  const server = app.listen(PORT, HOST, async () => {
+    console.log(`Server running on ${HOST}:${PORT}`)
+    console.log(`Checking TiDB connection (startup deadline: ${startupTimeoutMs}ms).`)
+    try {
+      await checkStartupDatabase(db, { timeoutMs: startupTimeoutMs })
+      databaseReady = true
+      console.log('TiDB connected')
       startDailyPenaltyScheduler()
       // Exactly one attendance scheduler may run. Freeze disables the old job.
       // Standalone HR owns attendance scheduler; legacy job intentionally not started.
-    })
-  } catch (error) {
-    console.error('Failed to start server:', error.message)
+    } catch (error) {
+      databaseReady = false
+      console.error('Server initialization failed:', {
+        code: error.code || error.name,
+        stage: error.stage || 'background_jobs',
+        timeoutMs: startupTimeoutMs,
+      })
+      console.error('Check Render TIDB_* variables, TLS and database network access.')
+      // Pool acquisition can still be waiting on a remote handshake. Exit
+      // decisively instead of waiting for pool.end() to drain that operation.
+      server.close()
+      process.exit(1)
+    }
+  })
+  server.on('error', (error) => {
+    console.error('HTTP port binding failed:', { code: error.code || error.name, port: PORT })
     process.exit(1)
-  }
+  })
 }
 
 startServer()
