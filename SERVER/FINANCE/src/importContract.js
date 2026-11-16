@@ -106,9 +106,3 @@ export function validateSnapshot({rows,manifest,rawCsv=null},today=dateInManila(
   if(Object.keys(s).some(k=>String(s[k])!==String(manifest.snapshot[k])))fail('TOTAL_MISMATCH','Manifest counts or totals do not match transactions.');
   return {rows,manifest,totals:s};
 }
-
-export function classifyImportRow(row,existing,mapping){
-  if(existing)return existing.source_revision_sha256===row.source_revision_sha256?'duplicate':'conflict';
-  if(!mapping||mapping.kind!==row.transaction_type||Number(mapping.is_active)!==1)return 'unmapped';
-  return 'new';
-}

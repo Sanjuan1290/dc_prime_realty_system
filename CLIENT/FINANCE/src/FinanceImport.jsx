@@ -1,52 +1,107 @@
-import React,{useEffect,useState} from 'react';
+import {useCallback,useEffect,useId,useRef,useState} from 'react';
+import {FiArrowRight,FiCheck,FiCheckCircle,FiClock,FiFile,FiInbox,FiRefreshCw,FiRotateCcw,FiShield,FiTrash2,FiUploadCloud} from 'react-icons/fi';
+import {financeMoney as peso,sumPayments} from './financeFormat.js';
 import {api} from './api.js';
+import {Dialog,Notice,Spinner} from './FinanceFeedback.jsx';
+
 const MAX_BYTES=2*1024*1024;
-const toBase64=async file=>{
-  const bytes=new Uint8Array(await file.arrayBuffer());
-  let s='';for(let i=0;i<bytes.length;i+=16384)s+=String.fromCharCode(...bytes.subarray(i,i+16384));
-  return btoa(s);
-};
-export default function FinanceImport({categories,onLedgerChanged}){
-  const [file,setFile]=useState(null),[preview,setPreview]=useState(null),[history,setHistory]=useState([]),[mappings,setMappings]=useState([]),[mapping,setMapping]=useState({source_system:'realty',kind:'expense',source_category:'',category_id:''}),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
-  const reload=async()=>{const [m,h]=await Promise.all([api('/finance/imports/mappings'),api('/finance/imports')]);setMappings(m.mappings||[]);setHistory(h.items||[]);};
-  useEffect(()=>{reload().catch(e=>setError(e.message));},[]);
-  const run=async work=>{setBusy(true);setError('');setNotice('');try{await work();}catch(e){setError(e.message);}finally{setBusy(false);}};
-  const previewFile=()=>run(async()=>{
-    if(!file||file.size>MAX_BYTES||!/\.(xlsx|zip)$/i.test(file.name))throw new Error('Choose a Finance transfer .zip or .xlsx file up to 2 MB.');
-    const p=await api('/finance/imports/preview',{method:'POST',data:{filename:file.name,base64:await toBase64(file)}});
-    setPreview(p);setNotice('Review every row and selected category before confirming the import.');await reload();
+const json=value=>{try{return typeof value==='string'?JSON.parse(value):value||{}}catch{return {}}};
+const date=value=>String(value||'').slice(0,10);
+const source=value=>value==='hr'?'HR & Payroll':'Company Finances';
+const decision={new:['Ready to import','new'],restore:['Ready to restore','restore'],duplicate:['Already imported','duplicate'],conflict:['Payment changed','conflict']};
+const toBase64=async file=>{const bytes=new Uint8Array(await file.arrayBuffer());let s='';for(let i=0;i<bytes.length;i+=16384)s+=String.fromCharCode(...bytes.subarray(i,i+16384));return btoa(s)};
+
+function Summary({income,expense,label='Payments in this file'}){return <div className="import-summary" aria-label={label}><div><span>Money in</span><strong className="amount-income">{peso(income)}</strong></div><div><span>Money out</span><strong>{peso(expense)}</strong></div></div>}
+
+export default function FinanceImport({onLedgerChanged,refreshKey=0}){
+  const inputId=useId(),input=useRef(null),working=useRef(false),undoVersion=useRef(0);
+  const [file,setFile]=useState(null),[preview,setPreview]=useState(null),[history,setHistory]=useState({items:[],total:0,page_size:20}),[page,setPage]=useState(1);
+  const [busy,setBusy]=useState(''),[loadingHistory,setLoadingHistory]=useState(true),[historyError,setHistoryError]=useState(''),[message,setMessage]=useState(null),[dragging,setDragging]=useState(false);
+  const [confirmImport,setConfirmImport]=useState(false),[undo,setUndo]=useState(null),[reason,setReason]=useState('');
+  const historyVersion=useRef(0);
+  const reload=useCallback(async()=>{
+    const version=++historyVersion.current;setLoadingHistory(true);setHistoryError('');
+    try{const result=await api(`/finance/imports?page=${page}`);if(version===historyVersion.current)setHistory(result)}
+    catch(error){if(version===historyVersion.current)setHistoryError(error.message);throw error}
+    finally{if(version===historyVersion.current)setLoadingHistory(false)}
+  },[page]);
+  useEffect(()=>{reload().catch(()=>{});return ()=>{historyVersion.current++}},[reload,refreshKey]);
+  const run=async(name,action)=>{
+    if(working.current)return;working.current=true;setBusy(name);setMessage(null);
+    try{await action()}catch(error){setMessage({type:'error',title:'Action could not be completed',text:error.message})}
+    finally{working.current=false;setBusy('')}
+  };
+  const selectFile=selected=>{
+    if(working.current||undo)return;setDragging(false);setPreview(null);setMessage(null);
+    if(!selected){setFile(null);return}
+    if(!/\.(zip|xlsx)$/i.test(selected.name)||selected.size>MAX_BYTES||selected.size===0){
+      setFile(null);if(input.current)input.current.value='';setMessage({type:'error',title:'Choose a supported file',text:'Use a Finance transfer ZIP or Excel file, up to 2 MB, exported from HR & Payroll or Company Finances.'});return;
+    }
+    setFile(selected);
+  };
+  const clearFile=()=>{selectFile(null);if(input.current)input.current.value=''};
+  const prepare=()=>run('preview',async()=>{
+    if(!file)return;
+    const result=await api('/finance/imports/preview',{method:'POST',data:{filename:file.name,base64:await toBase64(file)},timeoutMs:120000});
+    setPreview(result);
+    if(!result.ready)setMessage({type:'warning',title:'Some payments need review',text:'A payment in this file differs from a previously imported payment. Review the source file before importing.'});
   });
-  const approve=()=>run(async()=>{
-    if(!mapping.source_category.trim()||!mapping.category_id)throw new Error('Choose the source category name and matching Finance category.');
-    await api('/finance/imports/mappings',{method:'POST',data:{source_system:mapping.source_system,kind:mapping.kind,source_category:mapping.source_category.trim(),category_id:mapping.category_id}});
-    setMapping({source_system:'realty',kind:'expense',source_category:'',category_id:''});setPreview(null);await reload();setNotice('Category approved. Select Validate & preview again to apply the rule.');
+  const refreshAfterChange=async()=>{
+    const results=await Promise.allSettled([reload(),onLedgerChanged?.()]);
+    if(results.some(result=>result.status==='rejected'))setMessage(current=>({...current,type:'warning',text:`${current?.text||'Changes saved.'} The latest history could not be loaded. Refresh to try again.`}));
+  };
+  const commit=()=>run('import',async()=>{
+    const result=await api(`/finance/imports/${preview.batch_id}/commit`,{method:'POST',data:{},timeoutMs:120000});
+    const added=result.result?.imported||0,restored=result.result?.restored||0,skipped=result.result?.duplicate||0;
+    setConfirmImport(false);setPreview(null);setFile(null);if(input.current)input.current.value='';
+    setMessage({type:'success',title:added?'Import complete':'Payments already up to date',text:`${added} payment${added===1?'':'s'} added${restored?` (${restored} restored)`:''}. ${skipped} already imported and skipped. You can undo this import from the history below.`});
+    await refreshAfterChange();
   });
-  const commit=()=>run(async()=>{
-    if(!preview?.ready)throw new Error('Resolve conflicts and category mappings before importing.');
-    const result=await api(`/finance/imports/${preview.batch_id}/commit`,{method:'POST',data:{}});
-    setNotice(`Import confirmed: ${result.result?.imported??0} added, ${result.result?.duplicate??0} already present.`);
-    setPreview(null);await reload();await onLedgerChanged?.();
+  const reviewUndo=async batch=>{
+    if(working.current)return;const version=++undoVersion.current;setMessage(null);setReason('');setUndo({batch,loading:true});
+    try{const review=await api(`/finance/imports/${batch.id}/undo-preview`);if(version===undoVersion.current)setUndo({batch,review})}
+    catch(error){if(version===undoVersion.current)setUndo({batch,error:error.message})}
+  };
+  const closeUndo=()=>{if(working.current)return;undoVersion.current++;setUndo(null)};
+  const confirmUndo=()=>run('undo',async()=>{
+    if(reason.trim()&&reason.trim().length<5)throw new Error('Please use at least 5 characters for the reason, or leave it blank.');
+    const result=await api(`/finance/imports/${undo.batch.id}/undo`,{method:'POST',data:{reason:reason.trim()||`Undo import: ${undo.batch.file_name}`,review_token:undo.review.review_token},timeoutMs:120000});
+    setUndo(null);undoVersion.current++;
+    const removed=result.result?.removed||0,kept=result.result?.kept||0;
+    setMessage({type:'success',title:'Import undone',text:`${removed} payment${removed===1?'':'s'} removed from your balance.${kept?` ${kept} kept because another active import includes them.`:''} Your audit history is preserved. Upload the file again whenever you need to restore it.`});
+    setPreview(null);await refreshAfterChange();
   });
-  return <div className="panel finance-import">
-    <h2>Import salary & company payments</h2>
-    <p className="muted">Download a Finance transfer ZIP or Excel file from HR & Payroll or Company Finances. Only released salary and posted cash payments are included.</p>
-    <ol className="import-steps"><li><b>1</b> Export payments</li><li><b>2</b> Match categories</li><li><b>3</b> Preview rows</li><li><b>4</b> Confirm import</li></ol><div className="callout">Your balance changes only when you confirm an import. Identical payments already in Finance are skipped, including HR payments also exported by Company Finances.</div>
-    {error&&<div className="notice" role="alert">{error}</div>}
-    {notice&&<p className="notice success" role="status">{notice}</p>}
-    <div className="inline-form"><input aria-label="Finance export file" type="file" accept=".zip,.xlsx" onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null);}}/><button className="btn primary" disabled={busy||!file} onClick={previewFile}>Validate & preview</button></div>
-    {preview&&<>
-      <h3>Preview — {preview.manifest?.export_id}</h3>
-      <p>Period: {preview.manifest?.period?.from} to {preview.manifest?.period?.to}</p><details><summary>File verification (SHA-256)</summary><code>{preview.file_sha256}</code></details>
-      <p><strong>{preview.counts?.new||0} new</strong> · {preview.counts?.duplicate||0} duplicates · {preview.counts?.conflict||0} conflicting revisions · {preview.counts?.unmapped||0} without approved categories</p>
-      <p>Selected income: ₱{preview.selected_totals.money_in}; selected expenses: ₱{preview.selected_totals.money_out}.</p>
-      <div className="table-wrap"><table><thead><tr><th>Row</th><th>Source ID</th><th>Source category</th><th>Type</th><th>Amount</th><th>Decision</th></tr></thead><tbody>{(preview.items||[]).map(item=><tr key={item.row_number}><td>{item.row_number}</td><td>{item.source_system==='hr'?'HR':'Company'} · {item.source_transaction_id}</td><td>{item.source_category}</td><td>{item.kind}</td><td>₱{item.amount}</td><td><span className={'pill decision-'+item.decision}>{item.decision==='duplicate'?'Already imported':item.decision==='unmapped'?'Needs category':item.decision==='conflict'?'Changed payment':'Ready'}</span></td></tr>)}</tbody></table></div>
-      {!preview.ready&&<p className="notice">Import is blocked. Approve missing categories or review changed source transactions outside this v1 importer, then preview again.</p>}
-      <button className="btn primary" onClick={commit} disabled={busy||!preview.ready} type="button">Confirm import ({preview.counts?.new||0} new records)</button>
-    </>}
-    <h3>Match source categories</h3>
-    <p className="muted">A mapping tells Finance where to file a payment. For example, map HR’s “Salary” expense to your Finance “Payroll” expense category. An administrator approves each rule; it applies to future imports and does not change existing transactions.</p>
-    <form className="inline-form" onSubmit={e=>{e.preventDefault();approve();}}><select aria-label="Source application" value={mapping.source_system} onChange={e=>setMapping(x=>({...x,source_system:e.target.value}))}><option value="realty">Company Finances</option><option value="hr">HR & Payroll</option></select><select aria-label="Source payment type" value={mapping.kind} onChange={e=>setMapping(x=>({...x,kind:e.target.value,category_id:''}))}><option value="expense">Expense</option><option value="income">Income</option></select><input aria-label="Source category" placeholder="Exact source category, e.g. Salary" maxLength="200" value={mapping.source_category} onChange={e=>setMapping(x=>({...x,source_category:e.target.value}))} required/><select aria-label="Finance category" required value={mapping.category_id} onChange={e=>setMapping(x=>({...x,category_id:e.target.value}))}><option value="">Choose target category</option>{categories.filter(c=>c.kind===mapping.kind&&Number(c.is_active)===1).map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select><button className="btn" disabled={busy}>Approve mapping</button></form>
-    <div className="mapping-list">{mappings.map(m=><span className="mapping-rule" key={m.id}>{m.source_system==='hr'?'HR':'Company Finances'} · {m.source_category} → {m.target_name} ({m.source_kind})</span>)}</div><p className="muted">Current mappings: {mappings.length}. Historical posted imports cannot be edited or voided through the manual transaction controls.</p>
-    <h3>Import history</h3><div className="table-wrap"><table><thead><tr><th>File</th><th>Period</th><th>Status</th><th>Created</th></tr></thead><tbody>{history.map(h=><tr key={h.id}><td>{h.file_name}</td><td>{String(h.source_from)}–{String(h.source_to)}</td><td>{h.status}</td><td>{String(h.created_at)}</td></tr>)}</tbody></table></div>
+  const pending=(preview?.counts?.new||0)+(preview?.counts?.restore||0),allDuplicates=preview?.ready&&!pending;
+  const newCategories=new Set((preview?.items||[]).filter(item=>item.category_action==='create').map(item=>`${item.kind}:${item.category_name.toLowerCase()}`)).size;
+  const reactivatedCategories=new Set((preview?.items||[]).filter(item=>item.category_action==='reactivate').map(item=>`${item.kind}:${item.category_name}`)).size;
+
+  return <div className="finance-import page-stack">
+    {message&&!(message.type==='error'&&(confirmImport||undo))&&<Notice type={message.type} title={message.title} onDismiss={()=>setMessage(null)}>{message.text}</Notice>}
+    <section className="panel import-panel">
+      <header className="section-heading"><div className="section-icon"><FiUploadCloud aria-hidden="true"/></div><div><h2>Import payments</h2><p>Bring salary and Company Finances payments into your ledger.</p></div><span className="subtle-badge"><FiShield aria-hidden="true"/>Duplicate protection</span></header>
+      <ol className="import-steps" aria-label="Import progress">{['Choose file','Review payments','Import'].map((label,index)=><li key={label} className={index===0&&file||index===1&&preview?'complete':''}><b>{index===0&&file||index===1&&preview?<FiCheck aria-hidden="true"/>:index+1}</b>{label}{index<2&&<FiArrowRight className="step-arrow" aria-hidden="true"/>}</li>)}</ol>
+      <input ref={input} id={inputId} className="visually-hidden" aria-label="Finance export file" type="file" accept=".zip,.xlsx" disabled={Boolean(busy)||Boolean(undo)} onChange={event=>selectFile(event.target.files?.[0])}/>
+      <div className={`upload-zone ${dragging?'dragging':''} ${file?'has-file':''}`} onDragOver={event=>{event.preventDefault();if(!busy&&!undo)setDragging(true)}} onDragLeave={event=>{if(!event.currentTarget.contains(event.relatedTarget))setDragging(false)}} onDrop={event=>{event.preventDefault();if(!busy&&!undo)selectFile(event.dataTransfer.files?.[0]);setDragging(false)}}>
+        {file?<><div className="file-symbol"><FiFile aria-hidden="true"/></div><div className="upload-copy"><strong>{file.name}</strong><span>{(file.size/1024).toFixed(1)} KB · Ready to review</span></div><button className="icon-button" type="button" disabled={Boolean(busy)||Boolean(undo)} onClick={clearFile} aria-label="Remove selected file"><FiTrash2 aria-hidden="true"/></button></>:<><FiUploadCloud className="upload-illustration" aria-hidden="true"/><strong>Drop your export file here</strong><span>Finance transfer ZIP or Excel · Up to 2 MB</span><label htmlFor={inputId} className={`btn ${busy||undo?'disabled':''}`}>Choose file</label></>}
+      </div>
+      <div className="import-upload-footer"><p>Categories come directly from your file. Your balance changes only after you confirm.</p><button className="btn primary" type="button" disabled={!file||Boolean(busy)||Boolean(undo)} onClick={prepare}>{busy==='preview'?<Spinner label="Checking file…"/>:<><FiFile aria-hidden="true"/>Review file</>}</button></div>
+      {preview&&<section className="preview-section" aria-label="Import preview"><div className="panel-heading"><h3>Review payments</h3><span className="subtle-badge">{source(preview.manifest?.source_system)} · {date(preview.manifest?.period?.from)} – {date(preview.manifest?.period?.to)}</span></div>
+        <div className="preview-counts"><span><i className="status-dot green"/>{preview.counts?.new||0} new</span><span><i className="status-dot blue"/>{preview.counts?.restore||0} to restore</span><span><i className="status-dot"/>{preview.counts?.duplicate||0} already imported</span>{Boolean(preview.counts?.conflict)&&<span className="text-danger">{preview.counts.conflict} changed</span>}</div>
+        <Summary income={preview.selected_totals?.money_in} expense={preview.selected_totals?.money_out}/>
+        {Boolean(newCategories||reactivatedCategories)&&<Notice type="info">{newCategories?`${newCategories} categor${newCategories===1?'y':'ies'} will be created from this file. `:''}{reactivatedCategories?`${reactivatedCategories} inactive categor${reactivatedCategories===1?'y will':'ies will'} be reactivated when you import.`:''}</Notice>}
+        {allDuplicates&&<Notice type="info" title="This file is already in your ledger">Its payments will be skipped. Confirming will save another import receipt without changing your balance.</Notice>}
+        <div className="table-wrap preview-table"><table><thead><tr><th scope="col">Payment</th><th scope="col">Category</th><th scope="col">Type</th><th scope="col" className="align-right">Amount</th><th scope="col">Status</th></tr></thead><tbody>{preview.items?.map(item=><tr key={item.row_number}><td><span className="payment-reference">{source(item.source_system)}</span><span className="cell-secondary">{item.source_transaction_id}</span></td><td>{item.category_name}</td><td><span className={`pill ${item.kind}`}>{item.kind}</span></td><td className="align-right">{peso(item.amount)}</td><td><span className={`pill decision-${decision[item.decision]?.[1]||'conflict'}`}>{decision[item.decision]?.[0]||'Needs review'}</span></td></tr>)}</tbody></table></div>
+        <div className="action-row"><button className="btn" type="button" disabled={Boolean(busy)} onClick={()=>setPreview(null)}>Back</button><button className="btn primary" type="button" disabled={Boolean(busy)||!preview.ready} onClick={()=>setConfirmImport(true)}>Import {pending?`${pending} payment${pending===1?'':'s'}`:'file'}<FiArrowRight aria-hidden="true"/></button></div>
+      </section>}
+    </section>
+
+    <section className="panel import-history"><div className="section-heading"><div className="section-icon"><FiClock aria-hidden="true"/></div><div><h2>Import history</h2><p>Review completed imports or undo one when you need to.</p></div><button className="btn" type="button" disabled={loadingHistory||Boolean(busy)} onClick={()=>reload().catch(()=>{})}><FiRefreshCw className={loadingHistory?'spinner':''} aria-hidden="true"/>Refresh history</button></div>
+      {historyError&&<Notice type="error" title="History could not be loaded">{historyError}</Notice>}
+      {loadingHistory&&!history.items?.length?<div className="history-skeleton" role="status" aria-label="Loading import history">{[1,2,3].map(key=><div key={key}/>)}</div>:!history.items?.length?<div className="empty-state"><FiInbox aria-hidden="true"/><h3>No imports yet</h3><p>Your completed imports will appear here, with an option to undo.</p></div>:<div className="table-wrap"><table className="history-table"><thead><tr><th scope="col">File</th><th scope="col">Period</th><th scope="col">Payments</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead><tbody>{history.items.map(batch=>{const result=json(batch.result_json);return <tr key={batch.id}><td><div className="history-file"><FiFile aria-hidden="true"/><div><strong>{batch.file_name}</strong><span className="cell-secondary">{source(batch.source_system)} · {batch.imported_by||'Administrator'}</span></div></div></td><td data-label="Period">{date(batch.source_from)}<span className="cell-secondary">to {date(batch.source_to)}</span></td><td data-label="Payments"><strong>{result.imported||0} added</strong><span className="cell-secondary">{result.duplicate||0} skipped</span></td><td data-label="Status"><span className={`pill import-state ${batch.status==='undone'?'undone':'committed'}`}>{batch.status==='undone'?<FiRotateCcw aria-hidden="true"/>:<FiCheckCircle aria-hidden="true"/>}{batch.status==='undone'?'Undone':'Imported'}</span><span className="cell-secondary">{date(batch.undone_at||batch.committed_at)}</span></td><td>{batch.status==='committed'?<button className="btn undo-button" type="button" disabled={Boolean(busy)||Boolean(undo)} onClick={()=>reviewUndo(batch)} aria-label={`Undo import ${batch.file_name}`}><FiRotateCcw aria-hidden="true"/>Undo import</button>:<span className="muted undo-complete">History preserved</span>}</td></tr>})}</tbody></table></div>}
+      {history.total>history.page_size&&<div className="pagination"><button className="btn" type="button" disabled={page===1||loadingHistory} onClick={()=>setPage(current=>current-1)}>Previous</button><span>Page {page} of {Math.ceil(history.total/history.page_size)}</span><button className="btn" type="button" disabled={page*history.page_size>=history.total||loadingHistory} onClick={()=>setPage(current=>current+1)}>Next</button></div>}
+    </section>
+
+    {confirmImport&&<Dialog title="Confirm import" description={file?.name} busy={busy==='import'} onClose={()=>setConfirmImport(false)}><Notice type="info">{pending} payment{pending===1?'':'s'} will be added to your balance. {preview.counts?.duplicate||0} already imported and skipped.</Notice><Summary income={sumPayments(preview.items||[],'income')} expense={sumPayments(preview.items||[],'expense')} label="Payments to add"/><p className="dialog-help">You can undo this import later. Categories are handled automatically.</p>{message?.type==='error'&&<Notice type="error">{message.text}</Notice>}<div className="action-row"><button className="btn" type="button" disabled={Boolean(busy)} onClick={()=>setConfirmImport(false)}>Cancel</button><button className="btn primary" type="button" disabled={Boolean(busy)} onClick={commit}>{busy==='import'?<Spinner label="Importing…"/>:<><FiCheck aria-hidden="true"/>Confirm import</>}</button></div></Dialog>}
+    {undo&&<Dialog title="Undo this import?" description={undo.batch.file_name} busy={busy==='undo'} onClose={closeUndo} danger>{undo.loading?<div className="dialog-loading"><Spinner label="Checking balance changes…"/></div>:undo.error?<Notice type="error">{undo.error}</Notice>:<><Notice type="warning" title="Review the balance changes">{undo.review.impact.removed} payment{undo.review.impact.removed===1?'':'s'} will be removed from your balance. {undo.review.impact.kept?`${undo.review.impact.kept} will stay because another active import includes them.`:'Your source files and audit history will be preserved.'}</Notice><Summary income={undo.review.impact.money_in_removed} expense={undo.review.impact.money_out_removed} label="Payments to remove"/><div className="balance-impact"><span>Balance change</span><strong>{Number(undo.review.impact.balance_change)>0?'+':''}{peso(undo.review.impact.balance_change)}</strong></div><label className="undo-reason">Reason <span className="optional-label">(optional)</span><textarea rows={2} maxLength={500} value={reason} onChange={event=>setReason(event.target.value)} placeholder="For example, the wrong payment period was imported." disabled={Boolean(busy)}/></label><p className="dialog-help">You can upload the same file again to restore these payments.</p></>}{message?.type==='error'&&<Notice type="error">{message.text}</Notice>}<div className="action-row"><button className="btn" type="button" disabled={Boolean(busy)} onClick={closeUndo}>Keep import</button><button className="btn danger" type="button" disabled={Boolean(busy)||!undo.review} onClick={confirmUndo}>{busy==='undo'?<Spinner label="Undoing…"/>:<><FiRotateCcw aria-hidden="true"/>Undo import</>}</button></div></Dialog>}
   </div>;
 }

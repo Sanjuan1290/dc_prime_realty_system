@@ -26,8 +26,8 @@ try {
     await conn.query(`CREATE USER '${name}'@'127.0.0.1' IDENTIFIED BY 'qa-isolated-only-password'`);
     await conn.query(`GRANT ALL ON ${db}.* TO '${name}'@'127.0.0.1'`);
   }
-  const {ensureInvitationSchema}=await import('../../SERVER/FINANCE/src/liveSchema.js');
-  await conn.query('USE dc_prime_finance_db');await ensureInvitationSchema(conn);
+  const {ensureFinanceSchema}=await import('../../SERVER/FINANCE/src/liveSchema.js');
+  await conn.query('USE dc_prime_finance_db');await ensureFinanceSchema(conn);
   const {hashPassword}=await import('../../SERVER/FINANCE/src/passwords.js');
   const bcrypt=createRequire(new URL('../../SERVER/HR/package.json',import.meta.url))('bcrypt');
   const password='Synthetic-QA-only-2026!';

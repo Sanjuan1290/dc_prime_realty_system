@@ -54,8 +54,10 @@ From `SERVER/SYSTEM`, `npm run check:db` is a separate read-only diagnostic usin
 After creating the guarded disposable database, building and starting the adapter:
 
 1. Run `node --test tools/qa/api.e2e.test.mjs` and `node --test tools/qa/attendance.e2e.test.mjs` to create synthetic employee, attendance, finalized/released payroll and cash fixtures.
-2. Run `node --test tools/qa/pdf-features.e2e.test.mjs` for invitations, temporary-password restrictions/expiry, redacted audits, HR and Company Finances ZIP/Excel imports, and old external salary deduplication. Email is captured in memory; nothing is sent to a real inbox.
+2. Run `node --test tools/qa/pdf-features.e2e.test.mjs` for invitations, temporary-password restrictions/expiry, redacted audits, HR and Company Finances ZIP/Excel imports, and old external salary deduplication and automatic categories. Email is captured in memory; nothing is sent to a real inbox.
 3. Run `node tools/qa/pdf-features-browser.mjs` for real invitation setup, audit access, salary downloads and Finance layouts. The preceding test creates its single-use synthetic invitation.
 4. Run `node tools/qa/finance-attendance-browser.mjs` for financial mutations/reconciliation, viewer permissions, live attendance controls, the kiosk and Excel downloads.
+
+Run **node --test tools/qa/import-undo.e2e.test.mjs** for no-mapping imports, category creation/reactivation, undo/restoration, overlapping files, concurrent commits/undos, stale reviews and reconciliation. Run **node tools/qa/import-undo-browser.mjs** for the actual import/undo UI, cancellation, exact balance changes, failure alerts, keyboard focus, mobile layouts and reduced motion. Both use the same guarded local fixtures; no real accounts or emails are used.
 
 The local adapter intentionally omits the obsolete staging/write-approval flags, proving that the actual business workflows operate with the new live defaults. Private `.env` files remain excluded. Test evidence and the synthetic invitation file are ignored by Git.

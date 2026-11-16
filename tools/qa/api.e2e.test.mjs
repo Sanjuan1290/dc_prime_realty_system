@@ -91,8 +91,7 @@ test('FINANCE: audit/import-history/reconciliation execute real SQL',async()=>{
   for(const p of ['/finance/audit?page=2','/finance/imports?page=2','/finance/reconciliation?from=2026-10-01&to=2026-10-30'])ok(await finance(p));
   for(const p of ['/finance/audit?page=1.5','/finance/imports?page=NaN'])ok(await finance(p),400);
 });
-test('FINANCE: real ZIP preview, category mapping, commit, concurrent retry and duplicate detection',async()=>{
-  ok(await finance('/finance/imports/mappings',{method:'POST',body:{kind:'income',source_category:'QA Property Collections',category_id:incomeId}}),201);
+test('FINANCE: real ZIP preview, automatic categories, commit, concurrent retry and duplicate detection',async()=>{
   const row={schema_version:'1.0',source_system:'realty',source_transaction_id:'property:105',source_version:'1',transaction_date:'2026-10-20',recorded_at:'2026-10-20 09:35:12',transaction_type:'income',category:'QA Property Collections',description:'QA source transfer',amount:'50000.00',currency:'PHP',status:'posted',reference_id:'',source_type:'property'};
   row.source_revision_sha256=revision(row);const rows=[row],csv=Buffer.from(canonicalCsv(rows));
   const manifest={schema_version:'1.0',source_system:'realty',export_id:randomUUID(),generated_at:'2026-10-27T10:00:00.000Z',currency:'PHP',period:{from:'2026-10-01',to:'2026-10-27'},filters:{kind:'all',source:'all',category:'all'},status_scope:'posted_only',salary_source:'legacy',warnings:[],reconciled:true,snapshot:summarize(rows),context:{},transactions_sha256:sha256(csv),checksum_algorithm:'sha256',data_file:'transactions.csv'};

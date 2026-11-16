@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {canonicalCsv,parseCsv,validateSnapshot,sha256,revision,summarize,classifyImportRow,COLUMNS,decodeCell,encodeCell} from '../src/importContract.js';
+import {canonicalCsv,parseCsv,validateSnapshot,sha256,revision,summarize,COLUMNS,decodeCell,encodeCell} from '../src/importContract.js';
 import {decodeUpload,parseUpload,MAX_FILE_BYTES} from '../src/importFile.js';
 const base=resolve(import.meta.dirname,'../../..');
 const row=()=>{const r={schema_version:'1.0',source_system:'realty',source_transaction_id:'property:105',source_version:'1',transaction_date:'2026-10-20',recorded_at:'2026-10-20 09:35:12',transaction_type:'income',category:'Property Collections',description:'Deposit, with "quote"',amount:'50000.00',currency:'PHP',status:'posted',reference_id:'',source_type:'property'};return {...r,source_revision_sha256:revision(r)};};
@@ -23,7 +23,6 @@ test('changed CSV hash rejects even if manifest totals unchanged',()=>{const f=f
 test('manifest warning or unreconciled transfer blocks import',()=>{let f=fixture();f.manifest.warnings=['unverified salary'];reject(()=>check(f),'RECONCILIATION_REQUIRED');f=fixture();f.manifest.reconciled=false;reject(()=>check(f),'RECONCILIATION_REQUIRED');});
 test('manifest totals cannot be faked',()=>{const f=fixture();f.manifest.snapshot.money_in='50001.00';reject(()=>check(f),'TOTAL_MISMATCH');});
 test('duplicate source IDs in same file are rejected',()=>{const a=row(),b={...row()};const f=fixture([a,b]);reject(()=>check(f),'DUPLICATE_SOURCE_ID');});
-test('unmapped, duplicate and conflict decisions are distinct',()=>{const r=row(),map={kind:'income',is_active:1,category_id:10};assert.equal(classifyImportRow(r,null,map),'new');assert.equal(classifyImportRow(r,null,null),'unmapped');assert.equal(classifyImportRow(r,{source_revision_sha256:r.source_revision_sha256},map),'duplicate');assert.equal(classifyImportRow(r,{source_revision_sha256:'0'.repeat(64)},map),'conflict');});
 test('cannot claim commission_archive property identity',()=>{const r=row();r.source_type='commission_archive';r.source_revision_sha256=revision(r);const f=fixture([r]);reject(()=>check(f),'INVALID_ROW');});
 test('future-dated source transaction is rejected',()=>{const r=row();r.transaction_date='2099-01-01';r.source_revision_sha256=revision(r);const f=fixture([r]);reject(()=>check(f),'INVALID_ROW');});
 test('wrong type filter rejects otherwise valid source records',()=>{const f=fixture();f.manifest.filters.kind='expense';reject(()=>check(f),'FILTER_MISMATCH');});
@@ -34,7 +33,7 @@ test('ZIP manifest and transactions imported by strict parser',async()=>{const f
 test('ZIP with extra file is rejected',async()=>{const f=fixture(),zip={files:{'manifest.json':{name:'manifest.json'},'transactions.csv':{name:'transactions.csv'},'x.txt':{name:'x.txt'}}};await assert.rejects(()=>parseUpload({format:'zip',buffer:Buffer.from('a')},{JSZip:{loadAsync:async()=>zip}}),{code:'INVALID_IMPORT_FILE'});});
 test('ZIP with missing central-directory sizes is rejected',async()=>{const zip={files:{'manifest.json':{name:'manifest.json'},'transactions.csv':{name:'transactions.csv'}}};await assert.rejects(()=>parseUpload({format:'zip',buffer:Buffer.from('a')},{JSZip:{loadAsync:async()=>zip}}),{code:'INVALID_IMPORT_FILE'});});
 test('Batch 13 SQL includes category approvals, preview history, source traceability and immutable-source restriction',()=>{const sql=readFileSync(resolve(base,'SERVER/FINANCE/migrations/04_finance_import.sql'),'utf8');for(const table of ['finance_import_batches','finance_import_items','finance_import_category_mappings'])assert.match(sql,new RegExp(table));assert.match(sql,/VARCHAR\(1500\)/);});
-test('backend endpoints are protected by admin permissions',()=>{const server=readFileSync(resolve(base,'SERVER/FINANCE/src/server.js'),'utf8');for(const route of ['/imports/preview','/imports/:id/commit','/imports/mappings'])assert.ok(server.includes(route));assert.match(server,/imports\/preview`,requireRole\('admin'\),requireImportEnabled/);});
+test('backend endpoints are protected by admin permissions',()=>{const server=readFileSync(resolve(base,'SERVER/FINANCE/src/server.js'),'utf8');for(const route of ['/imports/preview','/imports/:id/commit','/imports/:id/undo'])assert.ok(server.includes(route));assert.match(server,/imports\/preview`,requireRole\('admin'\),requireImportEnabled/);});
 function excelFixture({formula=false,wrongSummary=false}={}){
   const f=fixture();
   const text=v=>({type:3,value:String(v)});

@@ -10,7 +10,7 @@ export async function getFinanceReconciliation(query={},pool=getPool()){
     await conn.beginTransaction();
     const [ledgerRows]=await conn.execute(`SELECT id,source_system,source_transaction_id,source_revision_sha256,
       DATE_FORMAT(transaction_date,'%Y-%m-%d') AS transaction_date,kind,amount,status,category_id
-      FROM finance_transactions WHERE source_system<>'manual' AND transaction_date BETWEEN ? AND ?
+      FROM finance_transactions WHERE source_system<>'manual' AND status='posted' AND transaction_date BETWEEN ? AND ?
       ORDER BY id LIMIT ${MAX_RECON_ROWS+1}`,[from,to]);
     const [receiptRows]=await conn.execute(`SELECT i.batch_id,i.decision,i.transaction_id,i.source_system,i.source_transaction_id,
       i.source_revision_sha256,i.category_id,i.source_row_json,b.total_rows,b.selected_money_in,b.selected_money_out
@@ -26,7 +26,8 @@ export async function getFinanceReconciliation(query={},pool=getPool()){
       AND b.source_from<=? AND b.source_to>=?
       AND b.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 60 MINUTE)
       AND i.decision IN ('conflict','unmapped')`,[to,from]);
+    const [[history]]=await conn.execute("SELECT COUNT(*) AS count FROM finance_import_batches WHERE status='undone' AND source_from<=? AND source_to>=?",[to,from]);
     const truncated=ledgerRows.length>MAX_RECON_ROWS||receiptRows.length>MAX_RECON_ROWS;
-    return evaluateReconciliation({from,to,ledgerRows:ledgerRows.slice(0,MAX_RECON_ROWS),receiptRows:receiptRows.slice(0,MAX_RECON_ROWS),aggregateRows,activeConflicts:Number(conflicts[0]?.count||0),truncated});
+    return evaluateReconciliation({from,to,undoneBatches:Number(history.count),ledgerRows:ledgerRows.slice(0,MAX_RECON_ROWS),receiptRows:receiptRows.slice(0,MAX_RECON_ROWS),aggregateRows,activeConflicts:Number(conflicts[0]?.count||0),truncated});
   }finally{try{await conn.rollback();}finally{conn.release();}}
 }

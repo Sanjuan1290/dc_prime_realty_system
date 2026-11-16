@@ -56,8 +56,6 @@ test('HR audit is permissioned and released salary export downloads through Page
   assert.equal(result.status,200,await result.clone().text());
   const buffer=Buffer.from(await result.arrayBuffer()),parsed=await parseUpload({format:'zip',buffer});assert.ok(parsed.rows.length);assert.ok(parsed.rows.every(r=>r.source_system==='hr'&&r.transaction_type==='expense'));
   const financeLogin=await request('/auth/login',{body:{email:'admin@qa.invalid',password:'Synthetic-QA-only-2026!'},session:null});cookie=financeLogin.cookie;
-  const category=await request('/finance/categories',{body:{kind:'expense',name:'Payroll export '+Date.now()}});assert.equal(category.status,201);
-  assert.equal((await request('/finance/imports/mappings',{body:{source_system:'hr',kind:'expense',source_category:'Salary',category_id:category.data.id}})).status,201);
   const upload={filename:'hr-salaries.zip',base64:buffer.toString('base64')};
   const preview=await request('/finance/imports/preview',{body:upload});assert.equal(preview.status,201,JSON.stringify(preview.data));assert.equal(preview.data.ready,true);
   const commit=await request(`/finance/imports/${preview.data.batch_id}/commit`,{body:{}});assert.equal(commit.status,200);assert.equal(commit.data.result.imported,preview.data.counts.new);
@@ -75,7 +73,7 @@ test('Previously imported external HR salaries labelled Realty are recognized wi
   const payrollId=String(Date.now()),sourceId='salary:'+payrollId,batch=randomUUID();
   const row={schema_version:'1.0',source_system:'realty',source_transaction_id:sourceId,source_version:'1',transaction_date:'2026-10-30',recorded_at:'2026-10-30 10:00:00',transaction_type:'expense',category:'Salary',description:'Salary payment #'+payrollId,amount:'12.34',currency:'PHP',status:'posted',reference_id:'',source_type:'salary'};row.source_revision_sha256=revision(row);
   const manifest={schema_version:'1.0',source_system:'realty',export_id:randomUUID(),generated_at:'2026-10-31T00:00:00Z',currency:'PHP',period:{from:'2026-10-01',to:'2026-10-31'},filters:{kind:'expense',source:'salary',category:'all'},status_scope:'posted_only',salary_source:'external',warnings:[],reconciled:true,snapshot:summarize([row]),context:{},checksum_algorithm:'sha256',data_file:'transactions.csv',transactions_sha256:sha256(canonicalCsv([row]))};
-  const [[mapping]]=await pool.execute("SELECT category_id FROM finance_import_category_mappings WHERE source_system='hr' AND source_category='Salary' AND source_kind='expense'");
+  const [[mapping]]=await pool.execute("SELECT id AS category_id FROM finance_categories WHERE kind='expense' AND name='Salary' LIMIT 1");
   // Reproduce the database state saved by the previous importer version.
   const [insert]=await pool.execute("INSERT INTO finance_transactions(transaction_date,kind,amount,category_id,description,status,source_system,source_transaction_id,source_revision_sha256,created_by) VALUES(?,'expense',?,?,?,'posted','realty',?,?,1)",[row.transaction_date,row.amount,mapping.category_id,row.description,sourceId,row.source_revision_sha256]);
   await pool.execute("INSERT INTO finance_import_batches(id,source_system,export_id,file_name,file_sha256,file_format,source_from,source_to,source_generated_at,manifest_json,total_rows,selected_money_in,selected_money_out,created_by,status,committed_by,committed_at,result_json) VALUES(?,'realty',?,'old-external.zip',?,'zip','2026-10-01','2026-10-31',?,?,1,'0.00','12.34',1,'committed',1,UTC_TIMESTAMP(),?)",[batch,manifest.export_id,'a'.repeat(64),manifest.generated_at,JSON.stringify(manifest),JSON.stringify({imported:1})]);
@@ -91,8 +89,6 @@ test('Actual Company Finances ZIP and Excel exports import through Finance witho
   const system=async(path,body)=>fetch(base+'/api/v1/company-finances'+path,{method:body?'POST':'GET',headers:{cookie:systemCookie,origin:base,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
   const categoryResponse=await system('/categories',{kind:'expense',name:'QA Company Export '+Date.now()}),category=(await categoryResponse.json()).data;assert.equal(categoryResponse.status,200);
   const entry=await system('/transactions',{kind:'expense',amount:'44.55',transaction_date:'2026-10-25',category_id:category.id,description:'Synthetic company export payment'});assert.equal(entry.status,200);
-  const financeCategory=await request('/finance/categories',{body:{kind:'expense',name:'Company import '+Date.now()}});assert.equal(financeCategory.status,201);
-  assert.equal((await request('/finance/imports/mappings',{body:{source_system:'realty',source_category:category.name,kind:'expense',category_id:financeCategory.data.id}})).status,201);
   for(const [format,extension] of [['csv','zip'],['xlsx','xlsx']]){
     const response=await system('/transactions/export?'+new URLSearchParams({from:'2026-10-01',to:'2026-10-31',profile:'transfer',format,category:category.name}));assert.equal(response.status,200,await response.clone().text());
     const buffer=Buffer.from(await response.arrayBuffer()),parsed=await parseUpload({format:extension,buffer});assert.equal(parsed.totals.money_out,'44.55');

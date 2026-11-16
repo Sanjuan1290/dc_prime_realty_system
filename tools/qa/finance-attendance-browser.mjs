@@ -42,7 +42,7 @@ try{
     await page.getByLabel('From',{exact:true}).fill('2026-10-01');await page.getByLabel('To',{exact:true}).fill('2026-10-31');await page.getByRole('combobox',{name:/^Status/}).selectOption('void');await page.getByRole('row').filter({hasText:originalDescription}).waitFor();await page.getByRole('row').filter({hasText:correctedDescription}).waitFor();
   });
   await check('Finance: audit history and reconciliation display real results',async()=>{
-    await page.getByRole('button',{name:'Audit log',exact:true}).click();await page.getByRole('cell',{name:'transaction.corrected',exact:true}).first().waitFor();
+    await page.getByRole('button',{name:'Audit log',exact:true}).click();await page.getByRole('cell',{name:'Transaction corrected',exact:true}).first().waitFor();
     await page.getByRole('button',{name:'Reconciliation',exact:true}).click();await page.getByRole('button',{name:'Run reconciliation',exact:true}).click();await page.getByRole('heading',{name:'Cash sources',exact:true}).waitFor();await layout('finance-reconciliation');
   });
   await check('Finance: viewer has no entry, user-management or admin tabs',async()=>{

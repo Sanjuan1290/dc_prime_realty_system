@@ -46,7 +46,7 @@ async function selectAndLock(conn,id) {
   const [rows]=await conn.execute('SELECT id,status,kind,amount,transaction_date,category_id,source_system FROM finance_transactions WHERE id=? FOR UPDATE',[positiveId(id)]);
   if(!rows[0])throw problem('NOT_FOUND','Transaction not found.',404);
   if(rows[0].status!=='posted')throw problem('ALREADY_VOID','This transaction is already void.',409);
-  if(rows[0].source_system!=='manual')throw problem('IMPORTED_IMMUTABLE','Source imports require an approved adjustment workflow.',409);
+  if(rows[0].source_system!=='manual')throw problem('IMPORTED_IMMUTABLE','Manage imported payments from Imports. Use Undo import to remove their file.',409);
   return rows[0];
 }
 async function markVoid(conn,row,reason,user) {

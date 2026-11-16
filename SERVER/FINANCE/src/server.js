@@ -3,7 +3,7 @@ import express from 'express';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 import helmet from 'helmet';
-import {ensureInvitationSchema} from './liveSchema.js';
+import {ensureFinanceSchema} from './liveSchema.js';
 import {getPool,assertSafeDatabase} from './db.js';
 import {checkStartupDatabase,readStartupTimeout} from './serverStartup.js';
 import {problem,dateInManila} from './domain.js';
@@ -11,7 +11,8 @@ import {login,requireUser,requireRole,publicUser,changePassword,requirePermanent
 import {getDashboard,listTransactions,postTransaction,voidTransaction,correctTransaction,listCategories,createCategory,setCategoryActive,listAudit} from './ledger.js';
 import {listUsers,createUser,resendInvitation} from './users.js';
 import {getFinanceReconciliation} from './reconciliation.js';
-import {previewImport,commitImport,approveCategoryMapping,listCategoryMappings,listImportBatches} from './importService.js';
+import {previewImport,commitImport,listImportBatches} from './importService.js';
+import {previewUndoImport,undoImport} from './importUndo.js';
 const app=express();app.disable('x-powered-by');app.use(helmet());app.use((req,res,next)=>express.json({limit:req.path==='/api/v1/finance/imports/preview'?'3mb':'64kb'})(req,res,next));
 let databaseReady=false;
 const allowed=(process.env.FINANCE_ALLOWED_ORIGINS||'http://localhost:5177').split(',').map(s=>s.trim()).filter(Boolean);
@@ -69,10 +70,10 @@ app.get(`${prefix}/reconciliation`,requireRole('admin'),wrap(async(req,res)=>res
 const requireImportEnabled=(req,res,next)=>process.env.FINANCE_IMPORTS_READ_ONLY!=='true'?next():next(problem('IMPORT_DISABLED','Imports are temporarily paused by your administrator.',503));
 // Imports retain admin access, preview validation and an atomic commit.
 app.get(`${prefix}/imports`,requireRole('admin'),wrap(async(req,res)=>res.json(await listImportBatches(req.query))));
-app.get(`${prefix}/imports/mappings`,requireRole('admin'),wrap(async(req,res)=>res.json({mappings:await listCategoryMappings()})));
-app.post(`${prefix}/imports/mappings`,requireRole('admin'),wrap(async(req,res)=>res.status(201).json(await approveCategoryMapping(req.body,req.financeUser))));
 app.post(`${prefix}/imports/preview`,requireRole('admin'),requireImportEnabled,wrap(async(req,res)=>res.status(201).json(await previewImport(req.body,req.financeUser))));
 app.post(`${prefix}/imports/:id/commit`,requireRole('admin'),requireImportEnabled,wrap(async(req,res)=>res.json(await commitImport(req.params.id,req.financeUser))));
+app.get(`${prefix}/imports/:id/undo-preview`,requireRole('admin'),wrap(async(req,res)=>res.json(await previewUndoImport(req.params.id))));
+app.post(`${prefix}/imports/:id/undo`,requireRole('admin'),wrap(async(req,res)=>res.json(await undoImport(req.params.id,req.body,req.financeUser))));
 app.get(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.json({users:await listUsers()})));
 app.post(`${prefix}/users/:id/invitation`,requireRole('admin'),wrap(async(req,res)=>res.json(await resendInvitation(req.params.id,req.financeUser))));
 app.post(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.status(201).json(await createUser(req.body,req.financeUser))));
@@ -85,7 +86,7 @@ if(process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1]
     const server=app.listen(port,'0.0.0.0',async()=>{
       console.log(`Finance API listening on ${port}`);
       console.log(`Checking Finance database connection (startup deadline: ${timeoutMs}ms).`);
-      try{await checkStartupDatabase(pool,{timeoutMs,initialize:ensureInvitationSchema});databaseReady=true;console.log('Finance database connected');}
+      try{await checkStartupDatabase(pool,{timeoutMs,initialize:ensureFinanceSchema});databaseReady=true;console.log('Finance database connected');}
       catch(error){console.error('Finance initialization failed:',{code:error.code||error.name,stage:error.stage,timeoutMs});console.error('Check Render TIDB_* variables, TLS and database network access.');server.close();process.exit(1);}
     });
     server.on('error',error=>{console.error('Finance port binding failed:',{code:error.code||error.name,port});process.exit(1)});

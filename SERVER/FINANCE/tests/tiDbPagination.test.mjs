@@ -8,9 +8,9 @@ import {MAX_RECON_ROWS} from '../src/reconciliationPolicy.js';
 for(const [name,fn] of [['audit',listAudit],['imports',listImportBatches]]) {
   test(`${name}: TiDB pagination uses checked integer literals`,async()=>{
     let calls=0;
-    const pool={execute:async(sql,params)=>{calls++;assert.match(sql,/LIMIT 50 OFFSET 50$/);assert.equal(params,undefined);return [[{id:'synthetic'}]];}};
+    const pool={execute:async(sql,params)=>{calls++;assert.equal(params,undefined);if(name==='imports'&&sql.startsWith('SELECT COUNT'))return [[{total:30}]];assert.match(sql,name==='imports'?/LIMIT 20 OFFSET 20$/:/LIMIT 50 OFFSET 50$/);return [[{id:'synthetic'}]];}};
     const result=await fn({page:'2'},pool);
-    assert.equal(result.page,2);assert.equal(result.items[0].id,'synthetic');assert.equal(calls,1);
+    assert.equal(result.page,2);assert.equal(result.items[0].id,'synthetic');assert.equal(calls,name==='imports'?2:1);
   });
   test(`${name}: malformed pages fail before SQL`,async()=>{
     const pool={execute:()=>assert.fail('Invalid pages must not run SQL')};
@@ -24,7 +24,7 @@ test('reconciliation: TiDB limits are literals and date values stay bound',async
     return [sql.includes('AS count')?[{count:0}]:[]];
   }};
   await getFinanceReconciliation({from:'2026-10-01',to:'2026-10-30'},{getConnection:async()=>conn});
-  assert.equal(queries.length,4);assert.match(queries[0].sql,new RegExp(`LIMIT ${MAX_RECON_ROWS+1}$`));
+  assert.equal(queries.length,5);assert.match(queries[0].sql,new RegExp(`LIMIT ${MAX_RECON_ROWS+1}$`));
   assert.deepEqual(queries[0].params,['2026-10-01','2026-10-30']);
   assert.match(queries[1].sql,/i\.`row_number`/);assert.ok(rolledBack&&released);
 });

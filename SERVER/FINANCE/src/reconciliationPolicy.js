@@ -18,7 +18,7 @@ export function validateReconciliationRange(query={},today='2099-12-31'){
 }
 const rec=(r)=>typeof r.source_row_json==='string'?JSON.parse(r.source_row_json):r.source_row_json;
 const ref=(x)=>String(x??'');
-export function evaluateReconciliation({from,to,ledgerRows=[],receiptRows=[],aggregateRows=[],activeConflicts=0,truncated=false}){
+export function evaluateReconciliation({from,to,ledgerRows=[],receiptRows=[],aggregateRows=[],activeConflicts=0,truncated=false,undoneBatches=0}){
   const issues=[];
   const issue=(code,reference)=>{if(issues.length<100)issues.push({code,reference:String(reference||'').slice(0,180)});};
   const ledger=new Map();let imported=0,receiptCount=0,sourceIncome=0n,sourceExpense=0n;
@@ -68,7 +68,7 @@ export function evaluateReconciliation({from,to,ledgerRows=[],receiptRows=[],agg
   for(const key of ledger.keys())if(!linked.has(key))issue('MISSING_COMMITTED_IMPORT_RECEIPT',key);
   if(Number(activeConflicts)>0)issue('OPEN_IMPORT_CONFLICTS',String(activeConflicts));
   if(truncated)issue('RECONCILIATION_RESULT_TRUNCATED','Increase review capacity or narrow date range');
-  if(!batches.size)issue('NO_COMMITTED_TRANSFER_BATCH','No committed Finance transfer overlaps the date range');
+  if(!batches.size&&!undoneBatches)issue('NO_COMMITTED_TRANSFER_BATCH','No committed Finance transfer overlaps the date range');
   const groups={};
   for(const a of aggregateRows){
     const group=a.source_system==='manual'?'manual':['realty','hr'].includes(a.source_system)?'realty':'other';
@@ -89,7 +89,7 @@ export function evaluateReconciliation({from,to,ledgerRows=[],receiptRows=[],agg
     reconciliation_passed:issues.length===0,
     launch_approved:false,
     issues,
-    counts:{posted_realties:imported,committed_receipts:receiptCount,committed_batches:batches.size,open_conflicts:Number(activeConflicts)},
+    counts:{undone_batches:undoneBatches,posted_realties:imported,committed_receipts:receiptCount,committed_batches:batches.size,open_conflicts:Number(activeConflicts)},
     source_totals:{money_in:pesos(sourceIncome),money_out:pesos(sourceExpense),net_change:pesos(sourceIncome-sourceExpense)},
     cash_breakdown:{manual:formatBucket(groups.manual),realty:formatBucket(groups.realty),other:formatBucket(groups.other)},
     limitations:[
