@@ -567,7 +567,8 @@ const SoaTermsModal = ({ listing = {}, payments = [], isSaving = false, serverAl
 
   const today = todayManila()
   const listingStartingDate = String(getListingValue(listing, ['soaStartingDate', 'starting_date'], '') || '')
-  const listingInterestRate = Number(getListingValue(listing, ['annualInterestRate'], 0))
+  const soaInterestRate = Number(getListingValue(listing, ['soaAnnualInterestRate', 'annualInterestRate'], 0))
+  const interestRateSource = listing.soaInterestRateOverridden ? 'custom' : 'listing'
   const hasRecordedPayments = Number(getListingValue(listing, ['payment_count'], 0)) > 0
   const firstDueDateLocked = payments.some(locksSoaFirstDueDate)
   const firstDueMinimum = listingStartingDate || undefined
@@ -658,7 +659,7 @@ const SoaTermsModal = ({ listing = {}, payments = [], isSaving = false, serverAl
       ...paymentTerms,
       reservationFeeAppliedToDownpayment: form.reservationFeeTreatment === 'apply_to_downpayment',
       reservationFeeTreatment: form.reservationFeeTreatment,
-      interestRateSource: 'listing',
+      interestRateSource,
       firstDueDate: form.firstDueDate || null,
       isHistoricalEntry: Boolean(form.isHistoricalEntry),
       dailyPenaltyRate: scheduleTerms.dailyPenaltyRate,
@@ -734,9 +735,11 @@ const SoaTermsModal = ({ listing = {}, payments = [], isSaving = false, serverAl
               </label>
               <Field label="Monthly Terms" value={form.monthlyTerms} onChange={(value) => updateForm('monthlyTerms', value)} placeholder="Example: 36" disabled={hasRecordedPayments} />
               <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
-                <p className="text-xs font-black uppercase tracking-wide text-blue-700">Listing Annual Interest Rate</p>
-                <p className="mt-1 text-xl font-black">{listingInterestRate.toFixed(2)}%</p>
-                <p className="mt-1 text-xs font-semibold text-blue-700">SOA interest follows the rate set in Edit Listing. Update it there if it needs to change.</p>
+                <p className="text-xs font-black uppercase tracking-wide text-blue-700">SOA Annual Interest Rate</p>
+                <p className="mt-1 text-xl font-black">{soaInterestRate.toFixed(2)}%</p>
+                <p className="mt-1 text-xs font-semibold text-blue-700">{interestRateSource === 'custom'
+                  ? 'This rate was saved with the reservation and is used for the SOA interest breakdown.'
+                  : 'SOA interest follows the rate set in Edit Listing. Update it there if it needs to change.'}</p>
               </div>
             </div>
           ) : (
@@ -747,7 +750,7 @@ const SoaTermsModal = ({ listing = {}, payments = [], isSaving = false, serverAl
                   <span>DP: {Number(form.downpaymentPercentage || 0).toFixed(2)}%</span>
                   <span>DP Terms: {form.downpaymentTerms || 0}</span>
                   <span>Monthly Terms: {form.monthlyTerms || 0}</span>
-                  <span>Interest: {listingInterestRate.toFixed(2)}%</span>
+                  <span>Interest: {soaInterestRate.toFixed(2)}%</span>
                 </div>
               </div>
               <label className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2">

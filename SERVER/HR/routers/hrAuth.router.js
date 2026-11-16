@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcrypt';
 import { db } from '../db/connect.js';
 import { authenticateUser,createHrToken,HR_COOKIE } from '../middleware/auth.middleware.js';
+import {requestPasswordReset,resetPassword} from '../services/passwordRecovery.service.js';
 const router = express.Router();
 const cookieOptions = () => ({ httpOnly:true,secure:process.env.HR_COOKIE_SECURE === 'true' || process.env.NODE_ENV === 'production',sameSite:'lax',path:'/api/v1',maxAge:8*3600000 });
 // Staging only. Provision identities through a separate approved administrative process.
@@ -28,6 +29,8 @@ router.post('/login',async (req,res,next)=> {
   } catch(err){return next(err)}
 });
 router.post('/logout',(_req,res)=>{res.clearCookie(HR_COOKIE,{...cookieOptions(),maxAge:undefined});res.json({success:true});});
+router.post('/forgot-password',async(req,res,next)=>{try{res.set('Cache-Control','no-store').json(await requestPasswordReset(req.body,req.ip));}catch(error){next(error);}});
+router.post('/reset-password',async(req,res,next)=>{try{const result=await resetPassword(req.body);res.clearCookie(HR_COOKIE,{...cookieOptions(),maxAge:undefined});res.set('Cache-Control','no-store').json(result);}catch(error){next(error);}});
 router.get('/me',authenticateUser,(req,res)=>res.json({success:true,user:{id:req.authUser.id,displayName:req.authUser.displayName,permissions:[...req.authUser.permissions]}}));
 export default router;
 

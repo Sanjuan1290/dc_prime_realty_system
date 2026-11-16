@@ -13,6 +13,7 @@ import {listUsers,createUser,resendInvitation} from './users.js';
 import {getFinanceReconciliation} from './reconciliation.js';
 import {previewImport,commitImport,listImportBatches} from './importService.js';
 import {previewUndoImport,undoImport} from './importUndo.js';
+import {requestPasswordReset,resetPassword} from './passwordRecovery.js';
 const app=express();app.disable('x-powered-by');app.use(helmet());app.use((req,res,next)=>express.json({limit:req.path==='/api/v1/finance/imports/preview'?'3mb':'64kb'})(req,res,next));
 let databaseReady=false;
 const allowed=(process.env.FINANCE_ALLOWED_ORIGINS||'http://localhost:5177').split(',').map(s=>s.trim()).filter(Boolean);
@@ -52,6 +53,8 @@ app.post('/api/v1/auth/login',wrap(async(req,res)=>{
 app.get('/api/v1/auth/me',requireUser,wrap(async(req,res)=>{const u=req.financeUser;res.json({user:publicUser(u)});}));
 app.post('/api/v1/auth/logout',requireUser,wrap(async(req,res)=>{await getPool().execute('UPDATE finance_sessions SET revoked_at=UTC_TIMESTAMP() WHERE token_hash=?',[req.financeSessionHash]);res.set('Set-Cookie',clearCookie(secure));res.json({ok:true});}));
 app.post('/api/v1/auth/change-password',requireUser,wrap(async(req,res)=>res.json(await changePassword(req))));
+app.post('/api/v1/auth/forgot-password',wrap(async(req,res)=>res.json(await requestPasswordReset(req.body,req.ip))));
+app.post('/api/v1/auth/reset-password',wrap(async(req,res)=>{const result=await resetPassword(req.body);res.set('Set-Cookie',clearCookie(secure));res.json(result);}));
 const prefix='/api/v1/finance';
 app.use(prefix,requireUser,requirePermanentPassword);
 app.use(prefix,(req,res,next)=>process.env.FINANCE_READ_ONLY==='true'&&['POST','PATCH','PUT','DELETE'].includes(req.method)?next(problem('FINANCE_READ_ONLY','Finance is temporarily read-only. Your administrator can restore editing.',503)):next());

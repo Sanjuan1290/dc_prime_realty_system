@@ -1,0 +1,63 @@
+// Uses only the QA-owned MySQL instance and synthetic accounts.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {resolve} from 'node:path';
+import {randomUUID} from 'node:crypto';
+const require=createRequire(new URL('../../SERVER/SYSTEM/package.json',import.meta.url));
+const mysql=require('mysql2/promise');
+const db=mysql.createPool({host:'127.0.0.1',port:13307,user:'qa_system',password:'qa-isolated-only-password',database:'dc_prime_realty_system_db',dateStrings:true});
+const base='http://127.0.0.1:5201/api/v1';
+let cookie;
+async function api(path,body,method=body?'POST':'GET') {
+ const response=await fetch(base+path,{method,headers:{origin:'http://127.0.0.1:4179',...(cookie?{cookie}:{}),...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(20000)});
+ const data=await response.json();return {status:response.status,data,headers:response.headers};
+}
+const ok=(r,status=200)=>assert.equal(r.status,status,JSON.stringify(r.data));
+test.before(async()=>{
+ const [[server]]=await db.query('SELECT @@port AS port,@@datadir AS datadir');
+ assert.equal(server.port,13307);assert.equal(server.datadir.toLowerCase().replaceAll('\\','/').replace(/\/$/,''),resolve('QA_REPORTS/.runtime/mysql').toLowerCase().replaceAll('\\','/'));
+ const login=await api('/user/login',{email:'system@qa.invalid',password:'Synthetic-QA-only-2026!'});ok(login);cookie=login.headers.get('set-cookie').split(';')[0];
+});
+test.after(()=>db.end());
+for(const applyToDp of [false,true])test(`Reservation ${applyToDp?'credited toward DP':'separate'}: date changes preserve payment amounts, allocations and schedule IDs`,async()=>{
+ const name='QA SOA '+randomUUID(),code='Q'+randomUUID().slice(0,5).toUpperCase();ok(await api('/projects/lot-projects',{name,location:'Synthetic Cavite',locationCode:code,cadastralLots:['QA-1']}),201);
+ const [[project]]=await db.execute('SELECT * FROM lot_projects WHERE lot_project_name=?',[name]);const slug=project.lot_project_slug;
+ ok(await api(`/projects/lot-projects/${slug}/listings`,{unitNumber:'1',unitCode:code+'-1',installmentPricePerSqm:10000,cashPricePerSqm:9500,lotAreaSqm:100,legalMiscRate:5,reservationFee:50000,status:'available'}),201);
+ const [[listing]]=await db.execute('SELECT * FROM lot_project_listings WHERE lot_project_id=?',[project.lot_project_id]);const id=listing.lot_project_listing_id,projectId=project.lot_project_id;
+ const [profile]=await db.execute(`INSERT INTO lot_project_client_profiles(lot_project_id,lot_project_listing_id,buyer_full_name,soa_reservation_fee,soa_reservation_fee_applied_to_downpayment,soa_starting_date,soa_first_due_date,soa_downpayment_percentage,soa_downpayment_terms,soa_monthly_terms,soa_penalty_calculation_method,soa_annual_interest_rate,soa_interest_rate_overridden) VALUES(?,?,'Synthetic QA Buyer',50000,?,'2026-11-16','2026-11-16',20,3,24,'daily',11.5,1)`,[projectId,id,Number(applyToDp)]);
+ const profileId=profile.insertId;
+ const [account]=await db.execute(`INSERT INTO lot_project_accounts(account_reference,lot_project_id,lot_project_listing_id,lot_project_client_profile_id,unit_id_snapshot) VALUES(?,?,?,?,'QA-1')`,['QA-'+randomUUID(),projectId,id,profileId]);const accountId=account.insertId;
+ await db.execute("UPDATE lot_project_listings SET current_account_id=?,lot_project_listing_status='sold' WHERE lot_project_listing_id=?",[accountId,id]);
+ const endpoint=`/projects/lot-projects/${slug}/listings/${id}/soa-terms`;
+ ok(await api(endpoint,{firstDueDate:'2026-12-01'},'PUT'));
+ const [schedules]=await db.execute('SELECT * FROM lot_project_payment_schedules WHERE lot_project_account_id=? AND schedule_status<>\'Cancelled\' ORDER BY lot_project_payment_schedule_id',[accountId]);
+ assert.ok(schedules.some(s=>Number(s.interest_amount)>0),'The SOA must include interest from the saved 11.5% rate');
+ const monthly=schedules.filter(s=>String(s.description).includes('Monthly'));
+ assert.equal(Number(monthly[0].interest_amount),applyToDp?8050:7570.83);
+ assert.ok(Number(monthly[1].interest_amount)<Number(monthly[0].interest_amount),'Amortized interest falls as scheduled principal is repaid');
+ const target=schedules.find(s=>String(s.description).includes('Reservation'));
+ assert.ok(target);
+ const [payment]=await db.execute(`INSERT INTO lot_project_payments(lot_project_id,lot_project_listing_id,lot_project_client_profile_id,lot_project_account_id,lot_project_payment_schedule_id,lot_project_payment_type,lot_project_payment_amount,lot_project_payment_date,lot_project_payment_status) VALUES(?,?,?,?,?,'reservation',50000,'2026-11-16','Verified')`,[projectId,id,profileId,accountId,target.lot_project_payment_schedule_id]);
+ await db.execute('INSERT INTO lot_project_payment_allocations(lot_project_payment_id,lot_project_payment_schedule_id,applied_amount) VALUES(?,?,50000)',[payment.insertId,target.lot_project_payment_schedule_id]);
+ await db.execute("UPDATE lot_project_payment_schedules SET amount_paid=50000,schedule_status='Paid',date_paid='2026-11-16' WHERE lot_project_payment_schedule_id=?",[target.lot_project_payment_schedule_id]);
+ const [allocBefore]=await db.execute('SELECT * FROM lot_project_payment_allocations WHERE lot_project_payment_id=?',[payment.insertId]);
+ ok(await api(endpoint,{firstDueDate:'2026-12-15'},'PUT'));
+ const [after]=await db.execute('SELECT * FROM lot_project_payment_schedules WHERE lot_project_account_id=? ORDER BY lot_project_payment_schedule_id',[accountId]);
+ assert.deepEqual(after.map(s=>s.lot_project_payment_schedule_id),schedules.map(s=>s.lot_project_payment_schedule_id));
+ assert.deepEqual(after.map(s=>s.due_amount),schedules.map(s=>s.due_amount));
+ assert.deepEqual(after.map(s=>s.interest_amount),schedules.map(s=>s.interest_amount));
+ assert.equal(after.find(s=>s.description==='1st Downpayment').due_date,'2026-12-15');
+ const paidReservation=after.find(s=>s.description==='Reservation Fee');assert.equal(paidReservation.due_date,'2026-11-16');assert.equal(Number(paidReservation.amount_paid),50000);
+ const [allocAfter]=await db.execute('SELECT * FROM lot_project_payment_allocations WHERE lot_project_payment_id=?',[payment.insertId]);assert.deepEqual(allocAfter,allocBefore);
+ const [[paymentAfter]]=await db.execute('SELECT lot_project_payment_amount,lot_project_payment_status FROM lot_project_payments WHERE lot_project_payment_id=?',[payment.insertId]);assert.equal(Number(paymentAfter.lot_project_payment_amount),50000);assert.equal(paymentAfter.lot_project_payment_status,'Verified');
+ const [[terms]]=await db.execute('SELECT soa_first_due_date,soa_annual_interest_rate,soa_interest_rate_overridden FROM lot_project_client_profiles WHERE lot_project_client_profile_id=?',[profileId]);assert.equal(terms.soa_first_due_date,'2026-12-15');assert.equal(Number(terms.soa_annual_interest_rate),11.5);assert.equal(terms.soa_interest_rate_overridden,1);
+ ok(await api(endpoint,{firstDueDate:'2026-11-01'},'PUT'),400);
+ ok(await api(endpoint,{downpaymentPercentage:30},'PUT'),400);
+ const [dp]=await db.execute(`INSERT INTO lot_project_payments(lot_project_id,lot_project_listing_id,lot_project_client_profile_id,lot_project_account_id,lot_project_payment_type,lot_project_payment_amount,lot_project_payment_date,lot_project_payment_status) VALUES(?,?,?,?,'downpayment',1000,'2026-11-16','Verified')`,[projectId,id,profileId,accountId]);
+ ok(await api(endpoint,{firstDueDate:'2027-01-01'},'PUT'),409);
+ ok(await api(endpoint,{dailyPenaltyRate:0.04},'PUT'));
+ await db.execute("UPDATE lot_project_payments SET lot_project_payment_status='Cancelled' WHERE lot_project_payment_id=?",[dp.insertId]);
+ ok(await api(endpoint,{firstDueDate:'2027-01-01'},'PUT'));
+ const [[final]]=await db.execute('SELECT soa_first_due_date FROM lot_project_client_profiles WHERE lot_project_client_profile_id=?',[profileId]);assert.equal(final.soa_first_due_date,'2027-01-01');
+});

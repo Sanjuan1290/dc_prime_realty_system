@@ -510,7 +510,7 @@ const UnitStatus = ({
             <DetailBox label="Net Selling Price" value={money(unitData.installmentNetSellingPrice ?? unitData.netSellingPrice)} />
             <DetailBox label="LMF Amount" value={money(unitData.installmentLmfAmount ?? unitData.lmfAmount)} />
             <DetailBox label="TCP" value={money(unitData.installmentTcp ?? unitData.tcpAmount)} highlight />
-            <DetailBox label="Annual Interest Rate" value={unitData.interestRate || `${unitData.annualInterestRate || 0}%`} long />
+            <DetailBox label="Annual Interest Rate" value={`${Number(unitData.soaAnnualInterestRate ?? unitData.annualInterestRate ?? 0).toFixed(2)}%`} long />
           </PricingColumn>
 
           <PricingColumn

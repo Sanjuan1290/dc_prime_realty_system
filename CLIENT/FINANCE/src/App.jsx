@@ -2,6 +2,8 @@ import {financeActionLabel} from './financeFormat.js';
 import {Dialog,Notice,Spinner} from './FinanceFeedback.jsx';
 import FinanceUsers from './FinanceUsers.jsx';
 import PasswordSetup from './PasswordSetup.jsx';
+import PasswordField from './PasswordField.jsx';
+import PasswordRecovery from './PasswordRecovery.jsx';
 import FinanceReconciliation from './FinanceReconciliation.jsx';
 import React,{useCallback,useEffect,useState,useRef} from 'react';
 import {FiTrendingUp,FiTrendingDown,FiDollarSign,FiBookOpen,FiGrid,FiPlus,FiLogOut,FiShield,FiList,FiRefreshCcw,FiUserPlus} from 'react-icons/fi';
@@ -15,10 +17,12 @@ const signedPeso=value=>`${String(value||'0').startsWith('-')?'-':''}${peso(valu
 const inputDefault={kind:'expense',amount:'',description:'',notes:'',category_id:'',transaction_date:today()};
 function ErrorNotice({message,onDismiss}){return message?<Notice type="error" title="Please review" onDismiss={onDismiss}>{message}</Notice>:null;}
 function Login({onLogin,initialError}){const[email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[saving,setSaving]=useState(false);
+  const [forgot,setForgot]=useState(false);
   const {retrySeconds,delayRetry}=useRetryCooldown(initialError);
   useEffect(()=>{if(initialError)setError(initialError.message)},[initialError]);
   const submit=async e=>{e.preventDefault();if(saving||retrySeconds>0)return;setSaving(true);setError('');try{const r=await api('/auth/login',{method:'POST',data:{email,password}});onLogin(r.user);}catch(err){delayRetry(err);setError(err.message);}finally{setSaving(false);}};
-  return <main className="login-shell"><form className="login-box" onSubmit={submit}><div className="eyebrow">D&C Prime Realty</div><h1>Finance Management</h1><p>Independent finance account. Your Realty and HR sessions do not grant access here.</p><label>Email<input type="email" autoComplete="username" value={email} required onChange={e=>setEmail(e.target.value)}/></label><label>Password<input type="password" autoComplete="current-password" value={password} required onChange={e=>setPassword(e.target.value)}/></label><ErrorNotice message={error} onDismiss={()=>setError('')}/><button disabled={saving||retrySeconds>0} className="btn primary" type="submit">{saving?'Signing in…':retrySeconds>0?`Try again in ${retrySeconds}s`:'Sign in'}</button></form></main>;
+  if(forgot)return <PasswordRecovery initialEmail={email} onClose={()=>setForgot(false)}/>;
+  return <main className="login-shell"><form className="login-box" onSubmit={submit}><div className="eyebrow">D&C Prime Realty</div><h1>Finance Management</h1><p>Independent finance account. Your Realty and HR sessions do not grant access here.</p><label>Email<input type="email" autoComplete="username" maxLength={150} value={email} required onChange={e=>setEmail(e.target.value)}/></label><PasswordField autoComplete="current-password" value={password} required onChange={e=>setPassword(e.target.value)}/><button className="text-btn forgot-password" type="button" onClick={()=>{setPassword('');setError('');setForgot(true)}}>Forgot password?</button><ErrorNotice message={error} onDismiss={()=>setError('')}/><button disabled={saving||retrySeconds>0} className="btn primary" type="submit">{saving?'Signing in…':retrySeconds>0?`Try again in ${retrySeconds}s`:'Sign in'}</button></form></main>;
 }
 function CashTile({icon:Icon,label,value,hint}){return <div className="tile"><div className="tile-head"><span>{label}</span><Icon/></div><strong>{value == null ? "—" : signedPeso(value)}</strong><small>{hint}</small></div>;}
 function EntryForm({categories,initial,onSubmit,onCancel,busy,correcting=false}){
@@ -34,6 +38,11 @@ function EntryForm({categories,initial,onSubmit,onCancel,busy,correcting=false})
 }
 export default function App(){const[user,setUser]=useState(undefined),[tab,setTab]=useState('overview'),[range,setRange]=useState(defaultRange),[dashboard,setDashboard]=useState(null),[transactions,setTransactions]=useState([]),[count,setCount]=useState(0),[categories,setCategories]=useState([]),[logs,setLogs]=useState([]),[users,setUsers]=useState([]),[page,setPage]=useState(1),[status,setStatus]=useState('posted'),[kind,setKind]=useState('all'),[error,setError]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[entry,setEntry]=useState(null),[prompt,setPrompt]=useState(null),[categoryInput,setCategoryInput]=useState({kind:'expense',name:''});
   const [sessionError,setSessionError]=useState(null),[notice,setNotice]=useState(''),[refreshKey,setRefreshKey]=useState(0);const requestVersion=useRef(0);
+  const [resetToken,setResetToken]=useState(()=>new URLSearchParams(window.location.hash.slice(1)).get('reset-password')||'');
+  useEffect(()=>{
+    const receiveResetLink=()=>{const token=new URLSearchParams(window.location.hash.slice(1)).get('reset-password');if(token){setResetToken(token);window.history.replaceState(null,'',window.location.pathname+window.location.search)}};
+    receiveResetLink();window.addEventListener('hashchange',receiveResetLink);return()=>window.removeEventListener('hashchange',receiveResetLink);
+  },[]);
   const canWrite=user?.role==='admin'||user?.role==='accountant';const canAdmin=user?.role==='admin';
   const refresh=useCallback(async()=>{if(!user||user.must_change_password)return;const version=++requestVersion.current;setLoading(true);setError('');try{const q=new URLSearchParams({...range,page:String(page),status,kind});const requests=[api(`/finance/dashboard?from=${range.from}&to=${range.to}`),api(`/finance/transactions?${q}`),api('/finance/categories')];if(canAdmin&&(tab==='audit'||tab==='users'))requests.push(api(tab==='users'?'/finance/users':'/finance/audit'));
     const [d,t,c,a]=await Promise.all(requests);if(version!==requestVersion.current)return;setDashboard(d);setTransactions(t.transactions||[]);setCount(t.total||0);setCategories(c.categories||[]);if(a){if(tab==='users')setUsers(a.users||[]);else setLogs(a.items||[]);}
@@ -41,6 +50,7 @@ export default function App(){const[user,setUser]=useState(undefined),[tab,setTa
   useEffect(()=>{api('/auth/me').then(r=>setUser(r.user)).catch(error=>{setSessionError(error.status===401?null:error);setUser(null);});},[]);
   useEffect(()=>{if(user)refresh();},[user,refresh]);
   const mutate=async(path,data,method='POST')=>{setBusy(true);setError('');setNotice('');try{await api(path,{method,data});setEntry(null);setPrompt(null);await refresh();setNotice(path.endsWith('/void')?'Transaction voided. The original record remains in your history.':path.endsWith('/correct')?'Correction saved. The original and replacement remain in your history.':'Changes saved. Finance records are up to date.');return true;}catch(e){setError(e.message);return false;}finally{setBusy(false);}};
+  if(resetToken)return <PasswordRecovery key={resetToken} token={resetToken} onClose={()=>{setResetToken('');setUser(null);setSessionError(null)}}/>;
   if(user===undefined)return <main className="login-shell"><p>Connecting to Finance…</p></main>;
   if(!user)return <Login initialError={sessionError} onLogin={value=>{setSessionError(null);setUser(value);}}/>;
   if(user.must_change_password)return <PasswordSetup user={user} onChanged={setUser} onSignOut={async()=>{await api('/auth/logout',{method:'POST'});setUser(null)}}/>;

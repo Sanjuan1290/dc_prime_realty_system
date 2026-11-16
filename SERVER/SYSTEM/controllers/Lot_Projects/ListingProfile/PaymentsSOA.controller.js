@@ -2028,7 +2028,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
 
 export const updateLotProjectListingSoaTerms = async (req, res) => {
   const connection = await db.getConnection();
-  let transactionStarted=false;
+  let transactionStarted = false;
 
   try {
     const user = await getAuthenticatedUser(req);
@@ -2041,7 +2041,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
 
     const lookup = getListingLookupWhere(listingLookup);
-    await connection.beginTransaction();transactionStarted=true;
+    await connection.beginTransaction();
+    transactionStarted = true;
 
     const [listingRows] = await connection.query(
       `
@@ -2068,8 +2069,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
           AND lot_project_payment_status<>'Cancelled'`,
         [project.lot_project_id,listing.lot_project_listing_id,listing.lot_project_client_profile_id,listing.lot_project_account_id])
       : [[]];
-    const paymentCount=recordedPayments.length;
-    const firstDueDateLocked=recordedPayments.some(locksSoaFirstDueDate);
+    const paymentCount = recordedPayments.length;
+    const firstDueDateLocked = recordedPayments.some(locksSoaFirstDueDate);
 
     const dpDiscountPercentage = Number(req.body.dpDiscountPercentage ?? req.body.soa_dp_discount_percentage ?? listing.soa_dp_discount_percentage ?? 0);
     const downpaymentPercentage = Number(req.body.downpaymentPercentage ?? req.body.soa_downpayment_percentage ?? listing.soa_downpayment_percentage ?? 30);
@@ -2085,8 +2086,9 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
           0
       ) === 1
     );
-    const interestRateSource = 'listing';
-    const annualInterestRate = Number(listing.annual_interest_rate || 0);
+    const interestRateOverridden = Number(listing.soa_interest_rate_overridden || 0) === 1;
+    const interestRateSource = interestRateOverridden ? 'custom' : 'listing';
+    const annualInterestRate = getComputedSoaTerms(listing).annualInterestRate;
     const firstDueDate = dateOrNull(req.body.firstDueDate || req.body.soa_first_due_date || listing.soa_first_due_date);
     const currentHistoricalEntry = Number(listing.soa_is_historical_entry || 0) === 1;
     const isHistoricalEntry = req.body.isHistoricalEntry !== undefined
@@ -2151,8 +2153,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       Number(monthlyTerms) !== Number(listing.soa_monthly_terms ?? 36) ||
       Number(reservationFeeAppliedToDownpayment) !== Number(listing.soa_reservation_fee_applied_to_downpayment || 0) ||
       Number(isHistoricalEntry) !== Number(currentHistoricalEntry);
-    const firstDueDateChanged=firstDueDate!==currentFirstDueDate;
-    const structuralTermsChanged=otherStructuralTermsChanged||firstDueDateChanged;
+    const firstDueDateChanged = firstDueDate !== currentFirstDueDate;
+    const structuralTermsChanged = otherStructuralTermsChanged || firstDueDateChanged;
     const penaltyTermsChanged =
       !sameNumber(dailyPenaltyRate, listing.soa_penalty_rate_percent) ||
       Number(penaltyGraceDays) !== Number(listing.soa_penalty_grace_days ?? 0) ||
@@ -2176,7 +2178,9 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       });
     }
 
-    if(firstDueDateChanged&&firstDueDateLocked)return res.status(409).json({message:'First Due Date cannot be changed after a downpayment or installment payment is recorded.'});
+    if (firstDueDateChanged && firstDueDateLocked) {
+      return res.status(409).json({message: 'First Due Date cannot be changed after a downpayment or installment payment is recorded.'});
+    }
 
     const updateColumns = [];
     const updateParams = [];
@@ -2194,7 +2198,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     await addProfileUpdate('soa_reservation_fee_applied_to_downpayment', reservationFeeAppliedToDownpayment ? 1 : 0);
     await addProfileUpdate('soa_monthly_terms', monthlyTerms);
     await addProfileUpdate('soa_annual_interest_rate', annualInterestRate);
-    await addProfileUpdate('soa_interest_rate_overridden', 0);
+    await addProfileUpdate('soa_interest_rate_overridden', interestRateOverridden ? 1 : 0);
     await addProfileUpdate('soa_first_due_date', firstDueDate);
     await addProfileUpdate('soa_is_historical_entry', isHistoricalEntry ? 1 : 0);
     await addProfileUpdate('soa_penalty_calculation_method', 'daily');
@@ -2229,7 +2233,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         soa_reservation_fee_applied_to_downpayment: reservationFeeAppliedToDownpayment ? 1 : 0,
         soa_monthly_terms: monthlyTerms,
         soa_annual_interest_rate: annualInterestRate,
-        soa_interest_rate_overridden: 0,
+        soa_interest_rate_overridden: interestRateOverridden ? 1 : 0,
         soa_first_due_date: firstDueDate,
         soa_is_historical_entry: isHistoricalEntry ? 1 : 0,
         soa_penalty_calculation_method: 'daily',
@@ -2240,106 +2244,105 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       const terms = getComputedSoaTerms(updatedListing, []);
       const computedRows = recomputeComputedSoaBalances(createComputedSoaRows(terms), terms);
 
-      if(Number(paymentCount)>0){
-        const savedRows=await getExistingSoaScheduleRows(connection,project.lot_project_id,listing.lot_project_listing_id,listing.lot_project_client_profile_id,listing.lot_project_account_id);
-        const changes=planSoaDueDateUpdates(savedRows,computedRows);
-        if(!changes.length)throw Object.assign(new Error('This account has no existing installment schedule to re-date safely.'),{statusCode:409});
-        for(const change of changes)await connection.query(`UPDATE lot_project_payment_schedules SET due_date=?,updated_at=NOW()
+      if (paymentCount > 0) {
+        const savedRows = await getExistingSoaScheduleRows(connection,project.lot_project_id,listing.lot_project_listing_id,listing.lot_project_client_profile_id,listing.lot_project_account_id);
+        const changes = planSoaDueDateUpdates(savedRows, computedRows);
+        if (!changes.length) throw Object.assign(new Error('This account has no existing installment schedule to re-date safely.'),{statusCode:409});
+        for (const change of changes) await connection.query(`UPDATE lot_project_payment_schedules SET due_date=?,updated_at=NOW()
           WHERE lot_project_payment_schedule_id=? AND lot_project_account_id=? AND schedule_status<>'Cancelled'`,[change.dueDate,change.id,listing.lot_project_account_id]);
-      }else{
-      // Keep the previous zero-payment schedule as account history instead of deleting it.
-      await connection.query(
-        `
-          UPDATE lot_project_payment_schedules
-          SET schedule_status = 'Cancelled',
-              updated_at = NOW()
-          WHERE lot_project_id = ?
-            AND lot_project_listing_id = ?
-            AND lot_project_client_profile_id = ?
-            AND schedule_status <> 'Cancelled'
-        `,
-        [project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id]
-      );
-
-      if (computedRows.length > 0) {
-        const baseColumns = [
-          'lot_project_id',
-          'lot_project_listing_id',
-          'lot_project_client_profile_id',
-          'lot_project_account_id',
-          'due_date',
-          'description',
-          'beginning_balance',
-          'due_amount',
-          'penalty_amount',
-          'amount_paid',
-          'date_paid',
-          'reference_id',
-          'ending_balance',
-          'schedule_status',
-        ];
-        const optionalColumns = [];
-        const addOptionalColumn = async (column) => {
-          if (await columnExists(connection, 'lot_project_payment_schedules', column)) optionalColumns.push(column);
-        };
-
-        await addOptionalColumn('interest_amount');
-        await addOptionalColumn('discount_amount');
-        await addOptionalColumn('principal_amount');
-        await addOptionalColumn('monthly_amortization_amount');
-        await addOptionalColumn('paid_interest_amount');
-        await addOptionalColumn('paid_principal_amount');
-        await addOptionalColumn('paid_penalty_amount');
-
-        const columns = [...baseColumns, ...optionalColumns, 'created_at', 'updated_at'];
-        const insertValues = computedRows.flatMap((row) => {
-          const baseValues = [
-            project.lot_project_id,
-            listing.lot_project_listing_id,
-            listing.lot_project_client_profile_id,
-            listing.lot_project_account_id,
-            row.dueDate,
-            row.description,
-            roundMoneyValue(row.beginningBalance || 0),
-            roundMoneyValue(row.dueAmount || 0),
-            roundMoneyValue(row.penalty || 0),
-            roundMoneyValue(row.amountPaid || 0),
-            row.datePaid && row.datePaid !== '-' ? row.datePaid : null,
-            row.referenceId && row.referenceId !== '-' ? row.referenceId : null,
-            roundMoneyValue(row.endingBalance || 0),
-            row.status || 'Unpaid',
-          ];
-          const optionalValues = optionalColumns.map((column) => {
-            if (column === 'interest_amount') return roundMoneyValue(row.interest || 0);
-            if (column === 'discount_amount') return roundMoneyValue(row.discountAmount || row.discount_amount || 0);
-            if (column === 'principal_amount') return roundMoneyValue(row.principalAmount || row.principal_amount || 0);
-            if (column === 'monthly_amortization_amount') return roundMoneyValue(row.monthlyAmortizationAmount || row.dueAmount || 0);
-            if (column === 'paid_interest_amount') return roundMoneyValue(row.paidInterestAmount || 0);
-            if (column === 'paid_principal_amount') return roundMoneyValue(row.paidPrincipalAmount || 0);
-            if (column === 'paid_penalty_amount') return roundMoneyValue(row.paidPenaltyAmount || 0);
-            return 0;
-          });
-
-          return [...baseValues, ...optionalValues];
-        });
-
+      } else {
+        // Keep the previous zero-payment schedule as account history instead of deleting it.
         await connection.query(
           `
-            INSERT INTO lot_project_payment_schedules (
-              ${columns.join(',\n              ')}
-            ) VALUES ${computedRows.map(() => `(${columns.map((column) => column === 'created_at' || column === 'updated_at' ? 'NOW()' : '?').join(', ')})`).join(', ')}
+            UPDATE lot_project_payment_schedules
+            SET schedule_status = 'Cancelled',
+                updated_at = NOW()
+            WHERE lot_project_id = ?
+              AND lot_project_listing_id = ?
+              AND lot_project_client_profile_id = ?
+              AND schedule_status <> 'Cancelled'
           `,
-          insertValues
+          [project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id]
         );
-      }
-    }
 
+        if (computedRows.length > 0) {
+          const baseColumns = [
+            'lot_project_id',
+            'lot_project_listing_id',
+            'lot_project_client_profile_id',
+            'lot_project_account_id',
+            'due_date',
+            'description',
+            'beginning_balance',
+            'due_amount',
+            'penalty_amount',
+            'amount_paid',
+            'date_paid',
+            'reference_id',
+            'ending_balance',
+            'schedule_status',
+          ];
+          const optionalColumns = [];
+          const addOptionalColumn = async (column) => {
+            if (await columnExists(connection, 'lot_project_payment_schedules', column)) optionalColumns.push(column);
+          };
+
+          await addOptionalColumn('interest_amount');
+          await addOptionalColumn('discount_amount');
+          await addOptionalColumn('principal_amount');
+          await addOptionalColumn('monthly_amortization_amount');
+          await addOptionalColumn('paid_interest_amount');
+          await addOptionalColumn('paid_principal_amount');
+          await addOptionalColumn('paid_penalty_amount');
+
+          const columns = [...baseColumns, ...optionalColumns, 'created_at', 'updated_at'];
+          const insertValues = computedRows.flatMap((row) => {
+            const baseValues = [
+              project.lot_project_id,
+              listing.lot_project_listing_id,
+              listing.lot_project_client_profile_id,
+              listing.lot_project_account_id,
+              row.dueDate,
+              row.description,
+              roundMoneyValue(row.beginningBalance || 0),
+              roundMoneyValue(row.dueAmount || 0),
+              roundMoneyValue(row.penalty || 0),
+              roundMoneyValue(row.amountPaid || 0),
+              row.datePaid && row.datePaid !== '-' ? row.datePaid : null,
+              row.referenceId && row.referenceId !== '-' ? row.referenceId : null,
+              roundMoneyValue(row.endingBalance || 0),
+              row.status || 'Unpaid',
+            ];
+            const optionalValues = optionalColumns.map((column) => {
+              if (column === 'interest_amount') return roundMoneyValue(row.interest || 0);
+              if (column === 'discount_amount') return roundMoneyValue(row.discountAmount || row.discount_amount || 0);
+              if (column === 'principal_amount') return roundMoneyValue(row.principalAmount || row.principal_amount || 0);
+              if (column === 'monthly_amortization_amount') return roundMoneyValue(row.monthlyAmortizationAmount || row.dueAmount || 0);
+              if (column === 'paid_interest_amount') return roundMoneyValue(row.paidInterestAmount || 0);
+              if (column === 'paid_principal_amount') return roundMoneyValue(row.paidPrincipalAmount || 0);
+              if (column === 'paid_penalty_amount') return roundMoneyValue(row.paidPenaltyAmount || 0);
+              return 0;
+            });
+
+            return [...baseValues, ...optionalValues];
+          });
+
+          await connection.query(
+            `
+              INSERT INTO lot_project_payment_schedules (
+                ${columns.join(',\n              ')}
+              ) VALUES ${computedRows.map(() => `(${columns.map((column) => column === 'created_at' || column === 'updated_at' ? 'NOW()' : '?').join(', ')})`).join(', ')}
+            `,
+            insertValues
+          );
+        }
+      }
     }
 
     if (await tableExists(connection, 'lot_project_payment_schedules')) {
       const refreshedListing = {
         ...listing,
-        soa_first_due_date:firstDueDate,
+        soa_first_due_date: firstDueDate,
         soa_penalty_calculation_method: 'daily',
         soa_penalty_rate_percent: dailyPenaltyRate,
         soa_penalty_grace_days: penaltyGraceDays,
@@ -2378,7 +2381,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       },
     });
 
-    await connection.commit();transactionStarted=false;
+    await connection.commit();
+    transactionStarted = false;
 
     return res.json({
       success: true,
@@ -2402,10 +2406,13 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       },
     });
   } catch (error) {
-    if(transactionStarted){await connection.rollback();transactionStarted=false;}
-    return res.status(error.statusCode||500).json({ message: getErrorMessage(error) });
+    if (transactionStarted) {
+      await connection.rollback();
+      transactionStarted = false;
+    }
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
-    if(transactionStarted)await connection.rollback();
+    if (transactionStarted) await connection.rollback();
     connection.release();
   }
 };

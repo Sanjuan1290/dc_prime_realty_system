@@ -3,7 +3,7 @@ import { readApiFailure } from '../../../shared/apiFailure.js'
 import { createApiReadiness } from '../../../shared/apiReadiness.js'
 const ensureReady=createApiReadiness()
 
-const AUTH_PATHS = new Set(['/auth/login','/auth/logout'])
+const AUTH_PATHS = new Set(['/auth/login','/auth/logout','/auth/forgot-password','/auth/reset-password'])
 const KIOSK_MUTATION_PATHS = new Set(['/attendance-kiosk/unlock','/attendance-kiosk/lock','/attendance-kiosk/scan'])
 const TIMEOUT_MS = 60000
 

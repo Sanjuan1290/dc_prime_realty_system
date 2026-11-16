@@ -595,7 +595,9 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
               value={form.annualInterestRate}
               onChange={(value) => updateField('annualInterestRate', value)}
               placeholder="0"
-              helper={isProtectedListing ? 'Locked after reservation/sale.' : 'Used for monthly amortization and SOA interest view.'}
+              helper={isProtectedListing
+                ? `Listing default, locked after reservation/sale. This buyer's SOA rate is ${Number(listing?.soaAnnualInterestRate ?? listing?.annualInterestRate ?? 0).toFixed(2)}%.`
+                : 'Default rate for monthly amortization. A buyer-specific rate can be set when reserving.'}
               disabled={isProtectedListing}
             />
 

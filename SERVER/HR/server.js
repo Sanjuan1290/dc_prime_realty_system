@@ -28,7 +28,7 @@ app.get('/api/v1/health',(_req,res)=>{
   return res.json({success:true,service:'hr',status:'ok'});
 });
 app.use('/api/v1',(_req,res,next)=>databaseReady?next():res.status(503).set('Retry-After','5').json({code:'SERVER_UNAVAILABLE',message:'HR is connecting to its database. Please try again shortly.',retryAfterSeconds:5}));
-app.use('/api/v1/auth',hrAuth);
+app.use('/api/v1/auth',(_req,res,next)=>{res.set('Cache-Control','no-store');next();},hrAuth);
 const writesAllowed=process.env.HR_READ_ONLY!=='true';
 const guard=(req,res,next)=> (['POST','PUT','PATCH','DELETE'].includes(req.method) && !writesAllowed) ? res.status(503).json({code:'HR_READ_ONLY',message:'HR is temporarily read-only. Your administrator can restore editing.'}) : next();
 app.get('/api/v1/audit-logs',authenticateUser,requirePermission(PERMISSIONS.AUDIT_VIEW),listHrAudit);
@@ -37,7 +37,7 @@ app.use('/api/v1/attendance',guard,attendance);
 app.use('/api/v1/employee-payroll',guard,payroll);
 app.use('/api/v1/attendance-kiosk',guard,kiosk);
 app.use((_req,res)=>res.status(404).json({code:'HR_ROUTE_NOT_FOUND'}));
-app.use((err,_req,res,_next)=>{console.error('[HR]',err.code || err.message);const status=Number(err?.statusCode || 0);res.status(status>=400&&status<500?status:500).json({code:status>=400&&status<500?(err.code||'HR_REQUEST_ERROR'):'HR_INTERNAL_ERROR',message:status>=400&&status<500?err.message:'HR request could not be completed.'})});
+app.use((err,_req,res,_next)=>{console.error('[HR]',err.code || err.message);const status=Number(err?.statusCode || 0),publicError=(status>=400&&status<500)||status===503;res.status(publicError?status:500).json({code:publicError?(err.code||'HR_REQUEST_ERROR'):'HR_INTERNAL_ERROR',message:publicError?err.message:'HR request could not be completed.'})});
 if (!process.env.HR_JWT_SECRET || process.env.HR_JWT_SECRET.length < 32) throw new Error('HR_JWT_SECRET must be at least 32 characters.');
 
 const port = Number(

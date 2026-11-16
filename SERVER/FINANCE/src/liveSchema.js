@@ -1,3 +1,4 @@
+import {ensurePasswordRecoverySchema} from './passwordRecovery.js';
 // Additive, idempotent upgrade. Existing passwords and sessions remain valid.
 export async function ensureInvitationSchema(pool){
   const [columns]=await pool.execute("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='finance_users'");
@@ -18,4 +19,4 @@ export async function ensureImportSchema(pool){
   if(!column('finance_import_mutex','id'))await pool.execute('CREATE TABLE IF NOT EXISTS finance_import_mutex (id TINYINT UNSIGNED NOT NULL PRIMARY KEY)');
   await pool.execute('INSERT IGNORE INTO finance_import_mutex(id) VALUES(1)');
 }
-export async function ensureFinanceSchema(pool){await ensureInvitationSchema(pool);await ensureImportSchema(pool);}
+export async function ensureFinanceSchema(pool){await ensureInvitationSchema(pool);await ensureImportSchema(pool);await ensurePasswordRecoverySchema(pool);}
