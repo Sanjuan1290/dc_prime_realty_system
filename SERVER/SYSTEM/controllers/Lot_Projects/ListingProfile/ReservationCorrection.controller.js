@@ -1199,7 +1199,6 @@ export const correctReservationUnit = async (req, res) => {
         correctionSummary: `Corrected reservation from ${source.lot_project_listing_unit_id} to ${destination.lot_project_listing_unit_id}: ${reason}`,
         afterSnapshot: { ...after, projectSlug: clean(req.params.projectSlug), listingId: destinationId, sourceListingId: sourceId, correctionId: Number(correctionResult.insertId) },
         metadata: { correctionId: Number(correctionResult.insertId), sourceListingId: sourceId, destinationListingId: destinationId },
-        notificationTitle: `Reservation correction needs Auditor recheck · ${correctionAuthorization.auditCase.case_number}`,
       })
     } else if (returnedReview) {
       workflow = await resubmitReturnedOperationalReview(connection, {

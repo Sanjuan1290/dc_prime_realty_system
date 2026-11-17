@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 import {
-  listOperationalReviews,getReviewCenterSummary,getOperationalReview,getOperationalReviewProofContent,getOperationalReviewRecordPreview,getOperationalReviewSignedReceiptContent,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,resubmitManualReviewCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,markAllInternalNotificationsRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
+  listOperationalReviews,getReviewCenterSummary,getOperationalReview,getOperationalReviewProofContent,getOperationalReviewRecordPreview,getOperationalReviewSignedReceiptContent,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,resubmitManualReviewCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,markAllInternalNotificationsRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,resolveAuditCaseByAdmin,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
 } from '../../controllers/System/workflow.controller.js';
 
 const router=express.Router();
@@ -31,6 +31,7 @@ router.post('/reviews/:id/return',requireReviewCenterRole,requirePermission(PERM
 router.post('/reviews/:id/resubmit-manual',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),resubmitManualReviewCorrection);
 router.post('/reviews/:id/auditor-verify',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_AUDIT_REVIEW),auditorVerifyReview);
 router.post('/reviews/:id/audit-case',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE),openAuditCase);
+router.post('/audit-cases/:caseId/resolve-with-notes',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY),resolveAuditCaseByAdmin);
 router.get('/audit-cases/:caseId',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getAuditCase);
 router.post('/audit-cases/:caseId/head-response',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_CASE_RESPOND),respondToAuditCase);
 router.post('/audit-cases/:caseId/reassign-responder',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),reassignAuditCaseResponder);

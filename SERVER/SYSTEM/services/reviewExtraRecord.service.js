@@ -33,6 +33,7 @@ const limitedList = async (connection, sql, params, page) => {
   return { rows: rows.slice(0, limit), hasMore: rows.length > limit, page };
 };
 export const supportedReviewExtraTypes = Object.freeze([
+  'lot_project_payment',
   'lot_project_buyer_form', 'lot_project_listing_import',
   'lot_project_network_profit_release', 'network_member_import',
 ]);
@@ -47,6 +48,41 @@ export async function getReviewExtraRecord(connection, review, requestedPage = 1
   const entityId = validId(String(review.entity_id || '').split(':')[0]);
   const projectId = validId(review.lot_project_id);
   const page = pageNumber(requestedPage);
+  if (type === 'lot_project_payment') {
+    if (!entityId || !projectId) return unreachable();
+    const [payments] = await connection.query(`SELECT p.lot_project_payment_id AS paymentId,
+      COALESCE(a.buyer_name_snapshot,cp.buyer_full_name) AS buyerName,
+      l.lot_project_listing_unit_id AS unitCode, a.account_reference AS accountReference,
+      p.lot_project_payment_amount AS amount, p.lot_project_payment_method AS paymentMethod,
+      p.lot_project_payment_date AS paymentDate, p.lot_project_payment_reference_id AS paymentReference,
+      p.lot_project_payment_status AS status, p.lot_project_payment_type AS paymentType,
+      p.lot_project_payment_schedule_id AS scheduleId
+      FROM lot_project_payments p
+      INNER JOIN lot_project_listings l ON l.lot_project_listing_id=p.lot_project_listing_id AND l.lot_project_id=p.lot_project_id
+      LEFT JOIN lot_project_accounts a ON a.lot_project_account_id=p.lot_project_account_id
+      LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_client_profile_id=p.lot_project_client_profile_id
+      WHERE p.lot_project_payment_id=? AND p.lot_project_id=? LIMIT 1`, [entityId,projectId]);
+    if (!payments.length) return unreachable();
+    const [schedules] = await connection.query(`SELECT DISTINCT s.lot_project_payment_schedule_id AS scheduleId, s.description, s.due_date AS dueDate
+      FROM lot_project_payment_schedules s LEFT JOIN lot_project_payment_allocations a
+        ON a.lot_project_payment_schedule_id=s.lot_project_payment_schedule_id AND a.lot_project_payment_id=?
+      WHERE s.lot_project_id=? AND (s.lot_project_payment_schedule_id=? OR a.lot_project_payment_id IS NOT NULL)
+      ORDER BY s.due_date,s.lot_project_payment_schedule_id`, [entityId,projectId,payments[0].scheduleId]);
+    const [proofs] = await connection.query(`SELECT lot_project_payment_proof_id AS proofId, file_name AS fileName,
+      file_mime_type AS fileType, malware_scan_status AS malwareScanStatus, proof_status AS proofStatus,
+      created_at AS uploadedAt FROM lot_project_payment_proofs WHERE lot_project_payment_id=? AND proof_status='active'
+      ORDER BY lot_project_payment_proof_id LIMIT 25`, [entityId]);
+    const [receipts] = await connection.query(`SELECT lot_project_payment_acknowledgement_file_id AS signedCopyId,
+      file_name AS fileName, file_version AS fileVersion, file_status AS fileStatus, malware_scan_status AS malwareScanStatus
+      FROM lot_project_payment_acknowledgement_files WHERE lot_project_payment_id=? AND file_status='active'
+      ORDER BY lot_project_payment_acknowledgement_file_id DESC LIMIT 1`,[entityId]);
+    const {scheduleId,...fields}=payments[0];
+    const label = row => `${row.description || `Schedule ID #${row.scheduleId}`}${row.dueDate ? ` · Due ${row.dueDate instanceof Date ? row.dueDate.toISOString().slice(0,10) : String(row.dueDate).slice(0,10)}` : ''}`;
+    fields.relatedSoaEntry = schedules.length ? schedules.map(label) : scheduleId ? `Schedule ID #${scheduleId}` : null;
+    return {supported:true,available:true,type,title:'Payment Details',fields,
+      proofs:proofs.map(file=>({...file,previewAvailable:file.malwareScanStatus==='approved' && file.proofStatus==='active'})),
+      signedCopy:receipts[0] || null};
+  }
   if (type === 'lot_project_buyer_form') {
     const submissionId = entityId || validId(after.submissionId) || validId(before.submissionId);
     if (!submissionId || !projectId) return unreachable();

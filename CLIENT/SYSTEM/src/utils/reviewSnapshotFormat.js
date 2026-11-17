@@ -69,6 +69,7 @@ const lookupName = (key, value, lookups = {}) => {
 
 export const formatSnapshotValue = (key, value, { lookups = {}, labelFor = humanizeKey, isHidden = () => false } = {}) => {
   if (isEmptyValue(value)) return 'Not set'
+  if (/^(scheduleId|soaRowId|lot_project_payment_schedule_id)$/.test(key)) return `Schedule ID #${value}`
   if (/(?:^|_)(?:bank_?)?account_?number$|^(?:bank)?AccountNumber$/i.test(String(key))) {
     const digits = String(value).replace(/\s+/g, '')
     return digits.length > 4 ? `••••${digits.slice(-4)}` : '••••'

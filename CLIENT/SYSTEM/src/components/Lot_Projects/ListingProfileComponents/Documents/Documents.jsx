@@ -1,14 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FiAlertCircle,
-  FiCheckCircle,
   FiEdit3,
   FiFileText,
   FiImage,
   FiLoader,
   FiLock,
-  FiRefreshCw,
-  FiTrash2,
   FiUploadCloud,
 } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
@@ -20,62 +17,48 @@ import { getDocumentResponsiblePartyLabel, normalizeDocumentResponsibleParty } f
 
 const statusStyles = {
   Approved: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  Submitted: 'border-blue-200 bg-blue-50 text-blue-700',
   Missing: 'border-red-200 bg-red-50 text-red-700',
   Rejected: 'border-red-200 bg-red-50 text-red-700',
-  Pending: 'border-amber-200 bg-amber-50 text-amber-700',
 }
 
-const requirementStyles = {
-  Required: 'border-blue-200 bg-blue-50 text-blue-700',
-  Optional: 'border-slate-200 bg-slate-100 text-slate-600',
+const StatusPill = ({ value = 'Missing' }) => {
+  const label = value === 'Rejected' ? 'Needs Resubmission' : value
+  const colored = ['Approved', 'Missing', 'Rejected'].includes(value)
+  return <span className={colored ? `inline-flex rounded-full border px-3 py-1 text-xs font-bold ${statusStyles[value]}` : 'text-sm font-semibold text-slate-600'}>{label}</span>
 }
+const LibraryStatusPill = ({ value }) => <span className="text-sm text-slate-600">{String(value || 'active').toLowerCase() === 'active' ? 'Active' : 'Deactivated'}</span>
+const RequirementPill = ({ value }) => <span className="text-sm text-slate-600">{value || 'Optional'}</span>
+const ResponsibilityPill = ({ value }) => <span className="text-sm text-slate-600">{getDocumentResponsiblePartyLabel(normalizeDocumentResponsibleParty(value))}</span>
 
-const StatusPill = ({ value, requirement }) => (
-  <span
-    className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${
-      statusStyles[value] || 'border-slate-200 bg-slate-100 text-slate-600'
-    }`}
-  >
-    <span className="h-1.5 w-1.5 rounded-full bg-current" />
-    {value === 'Missing' && requirement === 'Optional' ? 'Missing / Optional' : value === 'Rejected' ? 'Needs Resubmission' : (value || 'Missing')}
-  </span>
-)
-
-const LibraryStatusPill = ({ value }) => {
-  const active = String(value || 'active').toLowerCase() === 'active'
-  return (
-    <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${active ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-300 bg-slate-100 text-slate-600'}`}>
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {active ? 'Active' : 'Deactivated'}
-    </span>
-  )
+const DocumentActionsMenu = ({ children, name }) => {
+  const ref = useRef(null)
+  const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState({ left: 0, top: 0 })
+  useEffect(() => {
+    if (!open) return
+    const close = event => { if (!ref.current?.contains(event.target)) ref.current.open = false }
+    const closeOnMove = () => { if (ref.current) ref.current.open = false }
+    document.addEventListener('pointerdown', close)
+    window.addEventListener('scroll', closeOnMove, true)
+    window.addEventListener('resize', closeOnMove)
+    return () => { document.removeEventListener('pointerdown', close); window.removeEventListener('scroll', closeOnMove, true); window.removeEventListener('resize', closeOnMove) }
+  }, [open])
+  return <details ref={ref} onToggle={event => {
+    const expanded = event.currentTarget.open
+    if (expanded) {
+      const bounds = event.currentTarget.querySelector('summary').getBoundingClientRect()
+      const height = event.currentTarget.querySelector('[data-document-menu]').getBoundingClientRect().height
+      setPosition({ left: Math.max(8, Math.min(window.innerWidth - 208, bounds.right - 192)), top: bounds.bottom + height + 8 < window.innerHeight ? bounds.bottom + 4 : Math.max(8, bounds.top - height - 4) })
+    }
+    setOpen(expanded)
+  }} className="relative" onKeyDown={event => {
+    if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus() }
+  }} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false }}>
+    <summary aria-label={`More actions for ${name}`} className="flex h-9 cursor-pointer list-none items-center rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">More</summary>
+    <div data-document-menu style={position} className="fixed z-[90] grid w-48 gap-1 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg" onClick={() => { if (ref.current) ref.current.open = false }}>{children}</div>
+  </details>
 }
-
-const RequirementPill = ({ value }) => (
-  <span
-    className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-black ${
-      requirementStyles[value] || requirementStyles.Optional
-    }`}
-  >
-    {value || 'Optional'}
-  </span>
-)
-
-const ResponsibilityPill = ({ value }) => {
-  const responsibleParty = normalizeDocumentResponsibleParty(value)
-  const styles = {
-    client: 'border-blue-200 bg-blue-50 text-blue-700',
-    internal: 'border-violet-200 bg-violet-50 text-violet-700',
-    seller: 'border-amber-200 bg-amber-50 text-amber-700',
-  }
-
-  return (
-    <span className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-black ${styles[responsibleParty]}`}>
-      {getDocumentResponsiblePartyLabel(responsibleParty)}
-    </span>
-  )
-}
+const secondaryAction = 'rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50'
 
 const Documents = ({
   documents = [],
@@ -189,7 +172,7 @@ const Documents = ({
       return
     }
 
-    if (document.status === 'Missing') {
+    if (['Missing','Rejected'].includes(document.status) || !getDocumentFiles(document).length) {
       setAlert({ type: 'error', message: `Upload ${document.name} before approving it.` })
       return
     }
@@ -284,35 +267,35 @@ const Documents = ({
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="flex flex-wrap gap-2">
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+            <span className="text-xs font-semibold text-slate-600">
               {rows.length} docs
             </span>
 
-            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
+            <span className="text-xs font-semibold text-slate-600">
               {approvedCount} approved
             </span>
 
-            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">
+            <span className="text-xs font-semibold text-slate-600">
               {submittedCount} submitted
             </span>
 
-            <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-black text-red-700">
+            <span className="text-xs font-semibold text-slate-600">
               {missingCount} missing
             </span>
 
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
+            <span className="text-xs font-semibold text-slate-600">
               {requiredCount} required
             </span>
 
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+            <span className="text-xs font-semibold text-slate-600">
               {actionCounts.client} client action
             </span>
 
-            <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-black text-violet-700">
+            <span className="text-xs font-semibold text-slate-600">
               {actionCounts.internal} internal action
             </span>
 
-            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">
+            <span className="text-xs font-semibold text-slate-600">
               {actionCounts.seller} seller action
             </span>
           </div>
@@ -425,52 +408,19 @@ const Documents = ({
                   </td>
 
                   <td className="px-4 py-4">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleUploadClick(row)}
-                        disabled={!canManage || isActive}
-                        className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <FiUploadCloud className="h-4 w-4" />
-                        {row.status === 'Rejected' ? 'Upload Corrected Copy' : 'Add Images'}
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => files.length && !['Missing','Rejected'].includes(row.status) ? setShowImages([row]) : handleUploadClick(row)}
+                        disabled={isActive || (!files.length || ['Missing','Rejected'].includes(row.status)) && (!canManage || readOnly)}
+                        className="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-xl border border-blue-200 bg-white px-3 text-xs font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
+                        {isActive ? <FiLoader className="animate-spin" /> : files.length && !['Missing','Rejected'].includes(row.status) ? <FiFileText /> : <FiUploadCloud />}
+                        {isActive ? 'Saving...' : row.status === 'Rejected' ? 'Upload Corrected Copy' : !files.length || row.status === 'Missing' ? 'Upload File' : row.status === 'Submitted' ? 'Review File' : 'View File'}
                       </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleApproveDocument(row)}
-                        disabled={!canManage || isActive || ['Missing', 'Rejected'].includes(row.status)}
-                        className="inline-flex h-9 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <FiCheckCircle className="h-4 w-4" />
-                        Approve
-                      </button>
-
-                      {normalizeDocumentResponsibleParty(row.responsibleParty || row.responsible_party) === 'client' ? (
-                        <button
-                          type="button"
-                          onClick={() => handleRequestResubmission(row)}
-                          disabled={!canManage || isActive || !['Submitted', 'Approved'].includes(row.status)}
-                          className="inline-flex h-9 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-black text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <FiRefreshCw className="h-4 w-4" />
-                          Request Resubmission
-                        </button>
-                      ) : null}
-
-                      <button
-                        type="button"
-                        onClick={() => handleClearDocument(row)}
-                        disabled={!canManage || isActive}
-                        className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isActive ? (
-                          <FiLoader className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <FiTrash2 className="h-4 w-4" />
-                        )}
-                        {isActive ? 'Saving...' : 'Clear'}
-                      </button>
+                      {!readOnly && canManage && files.length ? <DocumentActionsMenu name={row.name}>
+                        {row.status === 'Submitted' ? <button type="button" onClick={() => handleApproveDocument(row)} disabled={isActive} className={secondaryAction}>Approve</button> : null}
+                        <button type="button" onClick={() => handleUploadClick(row)} disabled={isActive} className={secondaryAction}>Add Files</button>
+                        {normalizeDocumentResponsibleParty(row.responsibleParty || row.responsible_party) === 'client' && ['Submitted','Approved'].includes(row.status) ? <button type="button" onClick={() => handleRequestResubmission(row)} disabled={isActive} className={secondaryAction}>Request Resubmission</button> : null}
+                        <button type="button" onClick={() => handleClearDocument(row)} disabled={isActive} className={`${secondaryAction} text-red-700`}>Clear Files</button>
+                      </DocumentActionsMenu> : null}
                     </div>
                   </td>
                 </tr>
@@ -479,7 +429,7 @@ const Documents = ({
 
             {!rows.length ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center">
+                <td colSpan={7} className="px-4 py-10 text-center">
                   <FiImage className="mx-auto h-8 w-8 text-slate-300" />
 
                   <p className="mt-3 text-sm font-black text-slate-700">
@@ -511,7 +461,7 @@ const Documents = ({
 
       {showImages ? (
         <DocumentImagesModal
-          documents={rows}
+          documents={Array.isArray(showImages) ? showImages : rows}
           onClose={() => setShowImages(false)}
         />
       ) : null}

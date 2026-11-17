@@ -14,6 +14,20 @@ const DEFAULT_DEPARTMENTS = [
 ]
 
 const timeInput = (value, fallback) => String(value || fallback).slice(0, 5)
+const clockMinutes = (value) => {
+  const [hours, minutes] = String(value).split(':').map(Number)
+  return hours * 60 + minutes
+}
+export const calculatedShiftMinutes = (form) => {
+  const start = clockMinutes(form.scheduledTimeIn)
+  const end = clockMinutes(form.scheduledTimeOut)
+  const duration = (end - start + 1440) % 1440
+  const breakAt = clockMinutes(form.breakStart)
+  const breakLength = Number(form.breakMinutes)
+  if (![start, end, duration, breakAt, breakLength].every(Number.isFinite) || duration <= 0 || duration > 960) return null
+  const overlap = [0, 1440].reduce((sum, offset) => sum + Math.max(0, Math.min(start + duration, breakAt + offset + breakLength) - Math.max(start, breakAt + offset)), 0)
+  return Math.max(0, duration - overlap)
+}
 const inputClass = 'h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
 
 let departmentRowCounter = 0
@@ -140,6 +154,9 @@ const AddDepartmentModal = ({ existingDepartments = [], onClose, onAdd }) => {
 const AttendanceSettingsModal = ({ settings, onClose, onSaved }) => {
   const queryClient = useQueryClient()
   const [form, setForm] = useState(() => initialForm(settings))
+  const [mismatchAcknowledged, setMismatchAcknowledged] = useState(false)
+  const shiftMinutes = calculatedShiftMinutes(form)
+  const shiftMismatch = shiftMinutes !== null && Math.round(Number(form.regularWorkingHours) * 60) !== shiftMinutes
   const [notice, setNotice] = useState(null)
   const [showAddDepartment, setShowAddDepartment] = useState(false)
 
@@ -148,7 +165,10 @@ const AttendanceSettingsModal = ({ settings, onClose, onSaved }) => {
     return item ? `${item.name.trim()} → ${item.prefix.trim().toUpperCase()}-001` : 'IT → IT-001'
   }, [form.departmentConfigs])
 
-  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }))
+  const update = (field, value) => {
+    setMismatchAcknowledged(false)
+    setForm((current) => ({ ...current, [field]: value }))
+  }
 
   const mutation = useMutation({
     mutationFn: (payload) => useFetchPut('/attendance/settings', payload, { confirmationHandled: 'compact' }),
@@ -168,6 +188,14 @@ const AttendanceSettingsModal = ({ settings, onClose, onSaved }) => {
     event.preventDefault()
     const regularWorkingHours = Number(form.regularWorkingHours)
     const breakMinutes = Number(form.breakMinutes)
+    if (shiftMinutes === null || shiftMinutes <= 0) {
+      setNotice({ type: 'warning', message: 'Enter a valid scheduled shift of at most 16 hours with working time remaining after the break.' })
+      return
+    }
+    if (shiftMismatch && !mismatchAcknowledged) {
+      setNotice({ type: 'warning', message: 'Review the difference between scheduled attendance hours and the approved regular workday, then acknowledge it before saving.' })
+      return
+    }
     if (!Number.isFinite(regularWorkingHours) || regularWorkingHours <= 0 || regularWorkingHours > 24) {
       setNotice({ type: 'warning', message: 'Regular Working Hours must be greater than 0 and not more than 24.' })
       return
@@ -227,11 +255,19 @@ const AttendanceSettingsModal = ({ settings, onClose, onSaved }) => {
               <Field label="Scheduled Time In *"><input type="time" required value={form.scheduledTimeIn} onChange={(e) => update('scheduledTimeIn', e.target.value)} className={inputClass} /></Field>
               <Field label="Scheduled Time Out *"><input type="time" required value={form.scheduledTimeOut} onChange={(e) => update('scheduledTimeOut', e.target.value)} className={inputClass} /></Field>
               <Field label="Automatic Time Out *" helper="Open attendance records are closed automatically at this time."><input type="time" required value={form.automaticTimeOut} onChange={(e) => update('automaticTimeOut', e.target.value)} className={inputClass} /></Field>
-              <Field label="Regular Working Hours *" helper="Reference value shown in Excel."><input type="number" min="0.25" max="24" step="0.25" required value={form.regularWorkingHours} onChange={(e) => update('regularWorkingHours', e.target.value)} className={inputClass} /></Field>
+              <Field label="Approved Regular Workday (hours) *" helper="Used for absence deductions and the regular-attendance cap. Salary rates use the approved 260-day / 8-paid-hour basis."><input type="number" min="0.25" max="24" step="0.25" required value={form.regularWorkingHours} onChange={(e) => update('regularWorkingHours', e.target.value)} className={inputClass} /></Field>
               <Field label="Break Start *"><input type="time" required value={form.breakStart} onChange={(e) => update('breakStart', e.target.value)} className={inputClass} /></Field>
               <Field label="Break Duration (minutes) *"><input type="number" min="0" max="240" step="1" required value={form.breakMinutes} onChange={(e) => update('breakMinutes', e.target.value)} className={inputClass} /></Field>
               <Field label="Late After *" helper="Normal workdays become Late after this time."><input type="time" required value={form.lateAfter} onChange={(e) => update('lateAfter', e.target.value)} className={inputClass} /></Field>
               <Field label="Highlight Row Red After *" helper="Excel row turns red strictly after this time."><input type="time" required value={form.redHighlightAfter} onChange={(e) => update('redHighlightAfter', e.target.value)} className={inputClass} /></Field>
+            </div>
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm" aria-live="polite">
+              <p className="font-bold text-slate-900">Scheduled Attendance Hours: {shiftMinutes === null ? 'Enter valid shift times' : `${(shiftMinutes / 60).toLocaleString('en-PH', { maximumFractionDigits: 2 })} hours per scheduled day`}</p>
+              <p className="mt-1 text-slate-600">Calculated from Scheduled Time In to Time Out, excluding the overlapping unpaid break. Finalized receipts keep their recorded hours.</p>
+              {shiftMismatch ? <div role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950">
+                <p>The calculated shift differs from the approved {form.regularWorkingHours}-hour regular workday. Changing the approved workday can change absence deductions and regular hours credited to new payroll drafts.</p>
+                <label className="mt-3 flex items-start gap-2 font-semibold"><input type="checkbox" checked={mismatchAcknowledged} onChange={(event) => setMismatchAcknowledged(event.target.checked)} className="mt-1" />Keep this approved regular workday despite the different scheduled shift.</label>
+              </div> : null}
             </div>
           </section>
 

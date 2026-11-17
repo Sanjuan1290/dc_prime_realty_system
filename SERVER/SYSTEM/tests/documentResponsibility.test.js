@@ -57,7 +57,8 @@ test('document management UIs keep Required/Optional separate from Responsible P
   const reserve = read('CLIENT/SYSTEM/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal.jsx');
   const reserveChecklist = read('CLIENT/SYSTEM/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveDocumentChecklistModal.jsx');
 
-  assert.match(documents, /Missing \/ Optional/);
+  assert.match(documents, /RequirementPill/);
+  assert.match(documents, /DocumentActionsMenu/);
   assert.match(documents, /Responsible Party/);
   assert.match(documents, /client action/);
   assert.match(documents, /internal action/);

@@ -492,7 +492,6 @@ export const updateLotProjectClientProfile = async (req, res) => {
         correctionSummary: `Corrected buyer profile for ${buyerName}.`,
         afterSnapshot,
         metadata: { clientProfileId, listingId: listing.lot_project_listing_id },
-        notificationTitle: `Buyer-profile correction needs Auditor recheck · ${auditCase.case_number}`,
       });
     } else if (returnedReview) {
       workflow = await resubmitReturnedOperationalReview(connection, {

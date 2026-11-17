@@ -26,8 +26,8 @@ test('preview route enforces workflow role and review-view permission', () => {
   assert.match(controller,/canActorViewReview\(db, req\.authUser, review\)/)
 })
 test('preview binds proof to the review payment instead of trusting a request payment ID', () => {
-  assert.match(controller,/WHERE lot_project_payment_proof_id = \? AND lot_project_payment_id = \? LIMIT 1/)
-  assert.match(controller,/\[proofId, Number\(review\.entity_id\)\]/)
+  assert.match(controller,/WHERE lot_project_payment_proof_id = \? AND lot_project_payment_id = \?[\s\S]*p\.lot_project_id=\?/)
+  assert.match(controller,/\[proofId, Number\(review\.entity_id\), Number\(review\.lot_project_id\)\]/)
 })
 test('only server-confirmed approved scans may show previews', () => {
   assert.match(controller,/String\(proof\.malware_scan_status \|\| ''\)\.toLowerCase\(\) !== 'approved'/)
@@ -37,8 +37,8 @@ test('no public Cloudinary URL or public ID is sent to Review Center browser', (
   const liveMapping = controller.slice(controller.indexOf('const liveReviewProofs'), controller.indexOf('// Use the review\'s own visibility'))
   assert.doesNotMatch(liveMapping,/cloudinary_public_id|cloudinary\.com|asset_id/)
 })
-test('UI hides internal payment/schedule identifiers only for payment create', () => {
-  assert.match(page,/reviewActionKey === 'payment\.create' && \['paymentId', 'scheduleId', 'listingId'\]/)
+test('UI hides internal payment identifiers but retains a readable schedule reference', () => {
+  assert.match(page,/reviewActionKey === 'payment\.create' && \['paymentId', 'listingId'\]/)
   assert.match(page,/isHiddenField=\{reviewSnapshotHidden\}/)
   assert.match(page,/referenceId: 'Payment Reference'/)
 })

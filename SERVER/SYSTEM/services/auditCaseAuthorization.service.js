@@ -1,5 +1,4 @@
 import { appendReviewEvent } from './operationalReview.service.js';
-import { notifyAuditors } from './internalNotification.service.js';
 
 export const getAuditCorrectionRole = (row = {}) => (
   row.approval_type === 'emergency_super_admin' || row.initiated_by_role === 'super_admin'
@@ -33,21 +32,22 @@ export const getPendingAuditCorrectionCase = async (connection, {
   if (actor?.role && actor.role !== correctionRole) {
     throw Object.assign(
       new Error(correctionRole === 'super_admin'
-        ? 'This Audit Case originated from a Super Admin direct entry and must be corrected by Super Admin before Auditor recheck.'
-        : 'This Audit Case requires a controlled System Admin correction before Auditor recheck.'),
+        ? 'This Audit Case originated from a Super Admin direct entry and must be corrected by Super Admin and resolved with notes.'
+        : 'This Audit Case requires a controlled System Admin correction and resolved with notes.'),
       { statusCode: 403, code: 'AUDIT_CORRECTION_ROLE_REQUIRED', correctionRole }
     );
   }
   return { ...row, correction_role: correctionRole };
 };
 
+// Retain the exported name for existing module callers; this records a correction
+// and keeps the case in the admin queue until Resolve with Notes.
 export const advanceAuditCaseToRecheck = async (connection, {
   auditCase,
   actor,
   correctionSummary,
   afterSnapshot = null,
   metadata = null,
-  notificationTitle = null,
 }) => {
   if (!auditCase?.audit_case_id || !auditCase?.operational_review_id) {
     throw Object.assign(new Error('A valid Audit Case is required to record the correction.'), { statusCode: 409 });
@@ -65,7 +65,7 @@ export const advanceAuditCaseToRecheck = async (connection, {
   if (summary.length < 5) throw Object.assign(new Error('Describe the correction that was applied.'), { statusCode: 400 });
   const [result] = await connection.query(
     `UPDATE audit_cases
-     SET status='pending_auditor_recheck', system_admin_user_id=?, correction_summary=?, correction_applied_at=NOW()
+     SET status='pending_system_admin_correction', system_admin_user_id=?, correction_summary=?, correction_applied_at=NOW()
      WHERE audit_case_id=? AND status='pending_system_admin_correction'`,
     [actor?.id || null, summary, auditCase.audit_case_id]
   );
@@ -84,7 +84,7 @@ export const advanceAuditCaseToRecheck = async (connection, {
   const priorRevision = Math.max(1, Number(previous.revision || 1));
   await connection.query(
     `UPDATE operational_reviews
-     SET status='pending_auditor_recheck', revision=revision+1, after_snapshot_json=COALESCE(?, after_snapshot_json)
+     SET status='correction_required', revision=revision+1, after_snapshot_json=COALESCE(?, after_snapshot_json)
      WHERE operational_review_id=?`,
     [afterSnapshot == null ? null : JSON.stringify(afterSnapshot), auditCase.operational_review_id]
   );
@@ -93,7 +93,7 @@ export const advanceAuditCaseToRecheck = async (connection, {
     eventType: 'controlled_correction_applied',
     actor,
     fromStatus: 'correction_required',
-    toStatus: 'pending_auditor_recheck',
+    toStatus: 'correction_required',
     message: summary,
     metadata: {
       auditCaseId: auditCase.audit_case_id, correctionRole: expectedRole,
@@ -108,14 +108,8 @@ export const advanceAuditCaseToRecheck = async (connection, {
       ...(metadata || {}),
     },
   });
-  await notifyAuditors(connection, {
-    reviewId: auditCase.operational_review_id,
-    auditCaseId: auditCase.audit_case_id,
-    type: 'audit_correction_recheck',
-    title: notificationTitle || `Correction needs Auditor recheck · ${auditCase.case_number || auditCase.review_number}`,
-    message: summary,
-  });
-  return { reviewId: auditCase.operational_review_id, auditCaseId: auditCase.audit_case_id, status: 'pending_auditor_recheck' };
+  // The correction is saved; the authorized admin closes the case separately with Resolve with Notes.
+  return { reviewId: auditCase.operational_review_id, auditCaseId: auditCase.audit_case_id, status: 'correction_required' };
 };
 
 

@@ -443,7 +443,6 @@ export const saveLotProjectPaymentAcknowledgementSignedCopy = async (req, res) =
         correctionSummary: `Replaced the signed acknowledgement receipt for ${context.payment.lot_project_payment_reference_id || `payment #${paymentId}`}.`,
         afterSnapshot,
         metadata: { paymentId, signedCopyId: Number(result.insertId), listingId: Number(context.payment.lot_project_listing_id) },
-        notificationTitle: `Signed-receipt correction needs Auditor recheck · ${auditCase.case_number}`,
       });
     } else if (returnedReview) {
       workflow = await resubmitReturnedOperationalReview(connection, {

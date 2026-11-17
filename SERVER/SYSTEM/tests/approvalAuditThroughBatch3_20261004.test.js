@@ -90,15 +90,15 @@ test('Review visibility prevents ordinary Staff from seeing the whole department
   assert.match(workflowService, /Number\(review\.initiated_by_user_id \|\| 0\) !== Number\(actor\.id \|\| 0\)/);
 });
 
-test('Batch 3 creates Audit Cases with Head explanation and System Admin correction states', () => {
+test('Legacy case states remain readable while new findings go directly to correction', () => {
   assert.match(batch3, /CREATE TABLE IF NOT EXISTS audit_cases/);
   for (const state of ['awaiting_head_response','under_auditor_review','finding_invalid','pending_system_admin_correction','pending_auditor_recheck','closed']) {
     assert.ok(batch3.includes(`'${state}'`), state);
   }
   // 2026-10-05: responder rules moved to auditCaseResponder.service (original Head
   // first, fallback Head, reassignment, Super Admin for emergency changes).
-  assert.match(workflowController, /resolveAuditCaseResponders/);
-  assert.match(workflowController, /AUDIT_CASE_RESPONDER_REQUIRED/);
+  assert.match(workflowController, /notifyCorrectionOwners/);
+  assert.match(workflowController, /AUDIT_FLOW_UPDATED/);
   assert.match(workflowController, /pending_system_admin_correction/);
   assert.match(workflowController, /pending_auditor_recheck/);
 });
@@ -131,7 +131,8 @@ test('System Admin correction is restricted to the exact Auditor-approved paymen
   assert.match(paymentController, /auditCase\.entity_type !== 'lot_project_payment'/);
   assert.match(paymentController, /String\(auditCase\.entity_id\) !== String\(existingPayment\.lot_project_payment_id\)/);
   assert.match(paymentController, /authorizationType: 'audit_case'/);
-  assert.match(paymentController, /status='pending_auditor_recheck'/);
+  assert.match(paymentController, /status='correction_required'/);
+  assert.doesNotMatch(paymentController, /status='pending_auditor_recheck'/);
 });
 
 test('Super Admin remains emergency fallback with password and email code only', () => {

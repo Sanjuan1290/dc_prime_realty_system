@@ -1,3 +1,4 @@
+import { capturePaymentSchedule } from '../../../services/paymentReviewSchedule.service.js';
 import {locksSoaFirstDueDate,planSoaDueDateUpdates} from '../../../services/soaFirstDueDate.service.js';
 import { isOwnerAdministrator } from '../../../config/permissions.js';
 import bcrypt from 'bcrypt';
@@ -524,7 +525,7 @@ const requirePaymentCorrectionVerification = async (connection, req, { action, l
 const completePaymentCorrectionWorkflow = async (connection, {
   actor, project, listing, existingPayment, paymentId, action, authorization, afterSnapshot,
 }) => {
-  const beforeSnapshot = {
+  const beforeSnapshot = await capturePaymentSchedule(connection, {
     amount: Number(existingPayment.lot_project_payment_amount || 0),
     paymentDate: plainDate(existingPayment.lot_project_payment_date),
     paymentType: existingPayment.lot_project_payment_type,
@@ -532,7 +533,8 @@ const completePaymentCorrectionWorkflow = async (connection, {
     referenceId: existingPayment.lot_project_payment_reference_id,
     scheduleId: existingPayment.lot_project_payment_schedule_id,
     status: existingPayment.lot_project_payment_status,
-  };
+  }, project.lot_project_id);
+  afterSnapshot = await capturePaymentSchedule(connection, afterSnapshot, project.lot_project_id);
 
   if (authorization.authorizationType === 'returned_review') {
     const review = authorization.returnedReview;
@@ -581,7 +583,7 @@ const completePaymentCorrectionWorkflow = async (connection, {
     const summary = `${action === 'void' ? 'Voided' : 'Corrected'} payment ${existingPayment.lot_project_payment_reference_id || paymentId}: ${authorization.reason}`;
     await connection.query(
       `UPDATE audit_cases
-       SET status='pending_auditor_recheck',
+       SET status='pending_system_admin_correction',
            system_admin_user_id=?,
            correction_summary=?,
            correction_applied_at=NOW()
@@ -597,7 +599,7 @@ const completePaymentCorrectionWorkflow = async (connection, {
     const priorRevision = Math.max(1, Number(previousReview.revision || 1));
     await connection.query(
       `UPDATE operational_reviews
-       SET status='pending_auditor_recheck', revision=revision+1, after_snapshot_json=?
+       SET status='correction_required', revision=revision+1, after_snapshot_json=?
        WHERE operational_review_id=?`,
       [JSON.stringify(afterSnapshot), auditCase.operational_review_id]
     );
@@ -606,7 +608,7 @@ const completePaymentCorrectionWorkflow = async (connection, {
       eventType: 'system_correction_applied',
       actor,
       fromStatus: 'correction_required',
-      toStatus: 'pending_auditor_recheck',
+      toStatus: 'correction_required',
       message: summary,
       metadata: {
         auditCaseId: auditCase.audit_case_id, action, paymentId,
@@ -618,17 +620,10 @@ const completePaymentCorrectionWorkflow = async (connection, {
         nextBeforeSnapshot: beforeSnapshot, nextAfterSnapshot: afterSnapshot,
       },
     });
-    await notifyAuditors(connection, {
-      reviewId: auditCase.operational_review_id,
-      auditCaseId: auditCase.audit_case_id,
-      type: 'audit_correction_recheck',
-      title: `Payment correction needs Auditor recheck · ${auditCase.case_number}`,
-      message: summary,
-    });
     return {
       reviewId: auditCase.operational_review_id,
       auditCaseId: auditCase.audit_case_id,
-      status: 'pending_auditor_recheck',
+      status: 'correction_required',
     };
   }
 
@@ -875,12 +870,11 @@ const completeAccountingAdjustmentReview = async (connection, {
       actor,
       afterSnapshot,
       correctionSummary: `${actionKey} corrected by System Admin after Auditor finding.`,
-      notificationTitle: `Accounting correction needs Auditor recheck · ${authorization.auditCase.case_number}`,
     });
     return {
       reviewId: authorization.auditCase.operational_review_id,
       auditCaseId: authorization.auditCase.audit_case_id,
-      status: 'pending_auditor_recheck',
+      status: 'correction_required',
     };
   }
 
@@ -2577,7 +2571,6 @@ export const restoreSeparateLegalMiscFeeFromAuditCase = async (req, res) => {
       correctionSummary: reason,
       afterSnapshot,
       metadata: { scheduleId, originalLmfAmount, originalTcp },
-      notificationTitle: `LMF correction needs Auditor recheck · ${listing.lot_project_listing_unit_id}`,
     });
 
     await connection.commit();

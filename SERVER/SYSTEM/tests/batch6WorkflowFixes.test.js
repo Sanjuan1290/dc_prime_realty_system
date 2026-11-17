@@ -164,8 +164,8 @@ test('Review Center makes post-action checks explicit and keeps correction contr
   assert.match(page, /does not automatically undo or lock it/);
   assert.match(page, /Super Admin direct entry/);
   assert.match(page, /Correct &amp; Confirm/);
-  assert.match(page, /reassign-responder/);
-  assert.match(page, /responders\?\.canRespond/);
+  assert.match(page, /resolve-with-notes/);
+  assert.match(page, /canApplyAuditCorrection/);
   assert.match(page, /approvalStatus/);
 });
 

@@ -28,17 +28,17 @@ import NetworkImportReviewSummary from '../../components/Shared/NetworkImportRev
 import { matchSnapshotRecords, RECORD_STATE_STYLES, sameValue } from '../../utils/reviewSnapshotFormat'
 import { getReviewRecordLink } from '../../utils/reviewRecordLinks'
 import useCurrentUser from '../../utils/useCurrentUser'
-import { getDoubleCheckNotice, useFetch, useFetchPatch, useFetchPost, useFetchPost as postWorkflow } from '../../utils/useFetch'
+import { getDoubleCheckNotice, useFetch, useFetchPatch, useFetchPost } from '../../utils/useFetch'
 import { DEPARTMENT_HEAD_ROLE, DEPARTMENT_STAFF_ROLES, ROLE_LABELS } from '../../config/permissions'
 
 const REVIEW_CENTER_ROLES = new Set(['super_admin','system_admin','auditor','marketing_head','sales_head','accounting_head','operations_head', ...DEPARTMENT_STAFF_ROLES])
 
 const getQueueCopy = (role) => {
   if (role === 'auditor') return { title: 'Auditor Review Queue', description: 'Check saved changes, verify correct records, or report issues that need correction.' }
-  if (role === 'system_admin') return { title: 'System Correction Queue', description: 'Shows Auditor-confirmed corrections, Audit Cases awaiting a System Admin explanation, and cases requiring responder reassignment.' }
+  if (role === 'system_admin') return { title: 'System Correction Queue', description: 'Correct records flagged by the Auditor, then resolve each case with notes.' }
   if (role === 'super_admin') return { title: 'Owner Correction Queue', description: 'Shows only correction cases that specifically require Super Admin authority.' }
   if (DEPARTMENT_STAFF_ROLES.includes(role)) return { title: 'My Correction Queue', description: 'Shows only records you entered that your Department Head returned for correction. Open an item, review the reason, correct the record, and resubmit the same Review.' }
-  return { title: 'Department Head Review Queue', description: 'Shows only Staff changes from your department and Audit Cases waiting for your explanation.' }
+  return { title: 'Department Head Review Queue', description: 'Review Staff changes from your department before they reach the Auditor.' }
 }
 
 const parseJson = (value) => {
@@ -70,14 +70,9 @@ const REVIEW_STATUS_LABELS = Object.freeze({
 
 // System Admin and Super Admin share the owner-level direct-entry path (stored
 // as emergency_super_admin), so the label must name whoever actually entered it.
-const auditCaseStatusLabel = (auditCase, responders) => {
-  if (auditCase?.status !== 'awaiting_head_response') return titleCase(auditCase?.status)
-  if (responders?.mode === 'reassigned') return 'Awaiting Assigned Responder'
-  if (['system_admin_case_responder', 'initiating_system_admin', 'system_admin_fallback'].includes(responders?.mode)) {
-    return 'Awaiting System Admin Response'
-  }
-  return 'Awaiting Head Response'
-}
+const auditCaseStatusLabel = (auditCase) => auditCase?.resolved_at
+  ? `Resolved by ${auditCase.resolved_by_role === 'super_admin' ? 'Super Admin' : 'System Admin'}`
+  : auditCase?.status === 'pending_system_admin_correction' ? 'Awaiting Correction / Resolution' : titleCase(auditCase?.status)
 
 const directEntryRoleLabel = (review = {}) => (review?.initiated_by_role === 'system_admin' ? 'System Admin' : 'Super Admin')
 const approvalTypeLabel = (review = {}) => (review?.approval_type === 'emergency_super_admin'
@@ -245,7 +240,7 @@ export const reviewTaskGuidance = (review, role, canAct) => {
   if (!canAct) return { title: 'For your reference', detail: 'This review is not waiting for a decision from your account. You can inspect the saved record and review history.' }
   switch (review?.status) {
     case 'pending_auditor_review':
-      return { title: 'What you need to check', detail: 'Compare the saved Before and After values. If the change is correct, select Verify — No Issue Found. If something is wrong, select Report an Issue to open an Audit Case.' }
+      return { title: 'What you need to check', detail: 'Compare the saved Before and After values. If the change is correct, select Complete Review - No Issue Found. If something is wrong, select Report an Issue to open an Audit Case.' }
     case 'pending_auditor_recheck':
       return { title: 'Recheck the correction', detail: 'Compare the correction with the original finding. Verify the correction if it resolves the issue, or explain what still needs fixing.' }
     case 'pending_head_review':
@@ -253,7 +248,7 @@ export const reviewTaskGuidance = (review, role, canAct) => {
     case 'returned_for_correction':
       return { title: 'Correct and resubmit', detail: 'Read the Department Head’s reason. Correct the affected record using the permitted workflow, then resubmit this review.' }
     case 'correction_required':
-      return { title: 'Apply the required correction', detail: 'An Auditor confirmed a finding. Follow the assigned correction workflow; the Auditor will recheck the result.' }
+      return { title: 'Apply the required correction', detail: 'Read the Auditor finding, correct the underlying record, then select Resolve with Notes. The Auditor receives the resolution and its timestamp.' }
     case 'audit_case_open':
       return { title: 'Follow up on the Audit Case', detail: 'Review the recorded finding and provide the response or decision available to your role.' }
     default:
@@ -283,29 +278,6 @@ const APPROVAL_TYPE_LABELS = {
   emergency_super_admin: 'Super Admin direct entry',
 }
 
-const ReassignResponderModal = ({ options = [], onClose, onConfirm, busy }) => {
-  const [userId, setUserId] = useState('')
-  const [reason, setReason] = useState('')
-  return <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/60 p-4">
-    <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl">
-      <header className="flex items-start justify-between border-b border-slate-200 p-5"><div><h3 className="text-xl font-black">Reassign who answers this case</h3><p className="mt-1 text-sm font-semibold text-slate-500">Use this when the Head who confirmed the record left or no Head covers the project.</p></div><button type="button" onClick={onClose} disabled={busy} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="Close"><FiX /></button></header>
-      <div className="grid gap-4 p-5">
-        <label className="grid gap-2 text-sm font-black text-slate-700">Department Head
-          <select value={userId} onChange={(e) => setUserId(e.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 font-semibold outline-none focus:border-blue-400">
-            <option value="">Select a Head</option>
-            {options.map((option) => <option key={option.id} value={option.id}>{option.full_name}</option>)}
-          </select>
-          {!options.length ? <span className="text-xs font-semibold text-amber-700">No active Head covers this project. Create or assign a Head first.</span> : null}
-        </label>
-        <label className="grid gap-2 text-sm font-black text-slate-700">Reason
-          <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Example: The original Accounting Head has left the company." className="rounded-xl border border-slate-300 p-3 font-semibold outline-none focus:border-blue-400" />
-        </label>
-      </div>
-      <footer className="flex justify-end gap-2 border-t p-5"><button type="button" onClick={onClose} disabled={busy} className="h-11 rounded-xl border px-5 font-black">Cancel</button><button type="button" onClick={() => onConfirm({ userId: Number(userId), reason: reason.trim() })} disabled={busy || !userId || reason.trim().length < 5} className="h-11 rounded-xl bg-violet-700 px-5 font-black text-white disabled:opacity-50">Reassign Responder</button></footer>
-    </div>
-  </div>
-}
-
 export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
   const navigate = useNavigate()
   const { data: me } = useCurrentUser()
@@ -332,11 +304,8 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
       if (type === 'return') return useFetchPost(`/workflow/reviews/${reviewId}/return`, { reason: text }, { confirmationHandled: 'compact' })
       if (type === 'manual-resubmit') return useFetchPost(`/workflow/reviews/${reviewId}/resubmit-manual`, { correctionSummary: text }, { confirmationHandled: 'compact' })
       if (type === 'audit-verify') return useFetchPost(`/workflow/reviews/${reviewId}/auditor-verify`, { note: text || 'Verified — no issue found.' }, { confirmationHandled: 'compact' })
-      if (type === 'audit-recheck-reject') return useFetchPost(`/workflow/reviews/${reviewId}/auditor-verify`, { verified: false, decision: 'reject', note: text }, { confirmationHandled: 'compact' })
+      if (type === 'resolve-with-notes') return useFetchPost(`/workflow/audit-cases/${auditCase.audit_case_id}/resolve-with-notes`, { notes: text }, { confirmationHandled: 'compact' })
       if (type === 'open-case') return useFetchPost(`/workflow/reviews/${reviewId}/audit-case`, { finding: text }, { confirmationHandled: 'compact' })
-      if (type === 'head-response') return useFetchPost(`/workflow/audit-cases/${auditCase.audit_case_id}/head-response`, { response: text }, { confirmationHandled: 'compact' })
-      if (type === 'resolve-case') return useFetchPost(`/workflow/audit-cases/${auditCase.audit_case_id}/resolve`, { decision, resolution: text }, { confirmationHandled: 'compact' })
-      if (type === 'reassign') return postWorkflow(`/workflow/audit-cases/${auditCase.audit_case_id}/reassign-responder`, { userId: decision, reason: text }, { confirmationHandled: 'compact' })
       throw new Error('Unknown workflow action.')
     },
     onSuccess: async (result) => {
@@ -406,7 +375,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
                                     : review?.entity_type === 'accredited_seller'
                                       ? 'seller_edit_review'
                                       : ''
-  const isExtraPreview = ['lot_project_buyer_form','lot_project_listing_import','lot_project_network_profit_release'].includes(review?.entity_type) || ['network.members.import','network.members.import.undo'].includes(reviewActionKey)
+  const isExtraPreview = ['lot_project_payment','lot_project_buyer_form','lot_project_listing_import','lot_project_network_profit_release'].includes(review?.entity_type) || ['network.members.import','network.members.import.undo'].includes(reviewActionKey)
   const isNetworkImportReview = reviewActionKey === 'network.members.import'
   const recordLink = getReviewRecordLink({
     review, actorRole: actor.role, reviewId, auditCaseId: auditCase?.audit_case_id,
@@ -418,7 +387,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
   })
   const snapshotLabels = isNetworkImportReview ? IMPORT_SNAPSHOT_LABELS : SNAPSHOT_LABELS
   const reviewSnapshotHidden = (key) => isTechnicalSnapshotField(key)
-    || (reviewActionKey === 'payment.create' && ['paymentId', 'scheduleId', 'listingId'].includes(key))
+    || (reviewActionKey === 'payment.create' && ['paymentId', 'listingId'].includes(key))
     || (reviewActionKey === 'payment_proof.verify' && ['paymentId', 'listingId', 'proofId', 'proofSequence', 'proofStatus', 'malwareScanStatus'].includes(key))
   const recordActionLabel = review?.entity_type === 'lot_project_payment'
     ? 'Open Payment for Controlled Correction'
@@ -487,9 +456,6 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
   const correctAndConfirm = () => {
     if (correctionLink) navigate(`${correctionLink}${correctionLink.includes('?') ? '&' : '?'}headCorrection=1`)
   }
-  const responders = auditCase?.responders || null
-  const canRespondToCase = auditCase?.status === 'awaiting_head_response' && Boolean(responders?.canRespond)
-  const canReassignResponder = canAct && auditCase?.status === 'awaiting_head_response' && ['system_admin', 'super_admin'].includes(actor.role)
   const correctionRole = auditCase?.correctionRole || (review?.approval_type === 'emergency_super_admin' || review?.initiated_by_role === 'super_admin' ? 'super_admin' : 'system_admin')
   const correctionRoleLabel = correctionRole === 'super_admin' ? 'Super Admin' : 'System Admin'
   const isOriginalStaffCorrection = review?.status === 'returned_for_correction'
@@ -542,7 +508,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
         {review.snapshotRecoveredFromAuditLog ? <p role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-800">Older price values were recovered from the matching Audit Log. No saved records were changed.</p> : null}
         {reviewActionKey === 'payment_proof.verify' ? <PaymentProofReviewFiles reviewId={reviewId} files={review.proofFiles || []} /> : null}
         {review.entity_type === 'lot_project_signed_receipt' ? <ReviewSignedReceiptFile reviewId={reviewId} before={before} after={after}/> : null}
-        {auditCase ? <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-wide text-red-600">Audit Case</p><p className="text-lg font-black text-red-950">{auditCase.case_number}</p></div><span className="rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-black text-red-700">{auditCaseStatusLabel(auditCase, responders)}</span></div><div className="mt-3 grid gap-3"><div><p className="text-xs font-black uppercase text-red-600">Finding</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.finding}</p></div>{auditCase.head_response ? <div><p className="text-xs font-black uppercase text-red-600">Responder Explanation</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.head_response}</p></div> : null}{auditCase.auditor_resolution ? <div><p className="text-xs font-black uppercase text-red-600">Auditor Resolution</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.auditor_resolution}</p></div> : null}{auditCase.correction_summary ? <div><p className="text-xs font-black uppercase text-red-600">{correctionRoleLabel} Correction</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.correction_summary}</p></div> : null}{responders ? <div><p className="text-xs font-black uppercase text-red-600">Who must answer</p><p className="mt-1 text-sm font-semibold text-red-950">{responders.label}{responders.users?.length ? `: ${responders.users.map((user) => user.full_name).join(', ')}` : ': nobody is available. An administrator must reassign the responder.'}</p></div> : null}</div></section> : null}
+        {auditCase ? <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-wide text-red-600">Audit Case</p><p className="text-lg font-black text-red-950">{auditCase.case_number}</p></div><span className="rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-black text-red-700">{auditCaseStatusLabel(auditCase)}</span></div><div className="mt-3 grid gap-3"><div><p className="text-xs font-black uppercase text-red-600">Finding</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.finding}</p></div>{auditCase.resolution_notes ? <div><p className="text-xs font-black uppercase text-emerald-800">Resolved by {auditCase.resolved_by_role === 'super_admin' ? 'Super Admin' : 'System Admin'}</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-slate-900">{auditCase.resolution_notes}</p><p className="mt-1 text-xs text-slate-600">{auditCase.resolved_by_name} / {fmtDate(auditCase.resolved_at)}</p></div> : null}{auditCase.head_response ? <div><p className="text-xs font-black uppercase text-red-600">Responder Explanation</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.head_response}</p></div> : null}{auditCase.auditor_resolution ? <div><p className="text-xs font-black uppercase text-red-600">Auditor Resolution</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.auditor_resolution}</p></div> : null}{auditCase.correction_summary ? <div><p className="text-xs font-black uppercase text-red-600">{correctionRoleLabel} Correction</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.correction_summary}</p></div> : null}</div></section> : null}
         <section id="review-history" className="scroll-mt-24 rounded-2xl border border-slate-200 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Review History</p><div className="mt-3 space-y-3">{(review.events || []).map((event) => <div key={event.operational_review_event_id} className="flex gap-3 border-l-2 border-blue-200 pl-3"><div className="min-w-0"><p className="font-black text-slate-800">{titleCase(event.event_type)}</p><p className="text-xs font-semibold text-slate-500">{event.actor_name || ROLE_LABELS[event.actor_role] || 'System'} · {fmtDate(event.created_at)}</p>{event.message ? <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{event.message}</p> : null}</div></div>)}</div></section>
 
         {isHead && review.status === 'pending_head_review' && !supportsRecordCorrection ? <StatusAlert type="info" message="This action is already completed and cannot be edited in place. If it is incorrect, use Return for Correction to notify the original staff member. They can make an authorized follow-up change, describe the correction, and resubmit the Review for your check. No records are locked." /> : null}
@@ -552,13 +518,10 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
           {isOriginalStaffCorrection && supportsRecordCorrection && correctionLink ? <button type="button" onClick={() => navigate(correctionLink)} className="h-10 rounded-xl bg-amber-600 px-4 font-black text-white"><FiExternalLink className="mr-2 inline" />Correct &amp; Resubmit</button> : null}
           {isOriginalStaffCorrection && !supportsRecordCorrection ? <button type="button" onClick={() => setAction('manual-resubmit')} disabled={mutation.isPending} className="h-10 rounded-xl bg-amber-600 px-4 font-black text-white">Submit Correction Details for Recheck</button> : null}
           {isHead && review.status === 'pending_head_review' ? <><button type="button" onClick={() => mutation.mutate({ type: 'head-confirm' })} disabled={mutation.isPending} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white"><FiCheckCircle className="mr-2 inline" />Confirm — No Mistake</button><button type="button" onClick={() => setAction('return')} disabled={mutation.isPending} className="h-10 rounded-xl bg-amber-600 px-4 font-black text-white">Return for Correction</button></> : null}
-          {isActingAuditor && review.status === 'pending_auditor_review' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} disabled={mutation.isPending} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white"><FiCheckCircle className="mr-2 inline" />Verify — No Issue Found</button><button type="button" onClick={() => setAction('open-case')} disabled={mutation.isPending} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white"><FiAlertTriangle className="mr-2 inline" />Report an Issue</button></> : null}
-          {canRespondToCase ? <button type="button" onClick={() => setAction('head-response')} className="h-10 rounded-xl bg-blue-600 px-4 font-black text-white">Submit Explanation</button> : null}
-          {canReassignResponder ? <button type="button" onClick={() => setAction('reassign')} className="h-10 rounded-xl border border-violet-300 bg-violet-50 px-4 font-black text-violet-800">Reassign Responder</button> : null}
+          {isActingAuditor && review.status === 'pending_auditor_review' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} disabled={mutation.isPending} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white"><FiCheckCircle className="mr-2 inline" />Complete Review - No Issue Found</button><button type="button" onClick={() => setAction('open-case')} disabled={mutation.isPending} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white"><FiAlertTriangle className="mr-2 inline" />Report an Issue</button></> : null}
           {isHead && review.status === 'pending_head_review' && supportsRecordCorrection && correctionLink ? <button type="button" onClick={correctAndConfirm} className="h-10 rounded-xl border border-blue-300 bg-white px-4 font-black text-blue-700"><FiExternalLink className="mr-2 inline" />Correct &amp; Confirm</button> : null}
-          {isActingAuditor && auditCase?.status === 'under_auditor_review' ? <><button type="button" onClick={() => setAction('resolve-invalid')} className="h-10 rounded-xl border border-emerald-300 bg-emerald-50 px-4 font-black text-emerald-700">Finding Invalid</button><button type="button" onClick={() => setAction('resolve-valid')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Finding Valid</button></> : null}
+          {canApplyAuditCorrection ? <button type="button" onClick={() => setAction('resolve-with-notes')} disabled={mutation.isPending} className="h-10 rounded-xl bg-emerald-700 px-4 font-black text-white disabled:opacity-50">Resolve with Notes</button> : null}
           {canApplyAuditCorrection && supportsRecordCorrection && correctionLink ? <button type="button" onClick={() => navigate(correctionLink)} className="h-10 rounded-xl bg-violet-700 px-4 font-black text-white"><FiExternalLink className="mr-2 inline" />{recordActionLabel}</button> : null}
-          {isActingAuditor && review.status === 'pending_auditor_recheck' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white">Verify Correction & Close</button><button type="button" onClick={() => setAction('recheck-reject')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Correction Still Wrong</button></> : null}
           {review?.recordUnavailableReason && !recordLink ? <p role="status" className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">{review.recordUnavailableReason}</p> : null}
           {!recordLink && !isExtraPreview && !review?.recordUnavailableReason ? <p role="status" className="w-full text-xs font-semibold text-slate-500">The current record is unavailable. Saved Before &amp; After details remain above.</p> : null}
           <button type="button" onClick={() => document.getElementById('review-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="h-10 rounded-xl border border-slate-300 px-4 font-bold text-slate-700"><FiClock className="mr-2 inline" />View Review History</button>
@@ -570,12 +533,8 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
     {showExtraPreview ? <ReviewExtraRecordModal reviewId={reviewId} onClose={() => setShowExtraPreview(false)}/> : null}
     {action === 'return' ? <TextActionModal title="Return for Correction" label="What needs to be corrected?" helper="The original staff member will receive an action-required alert. Authorized users may still edit the record while this Review waits for the original Staff member to correct and resubmit it." placeholder="Example: Reference ID does not match the deposit slip." confirmLabel="Return & Notify Staff" tone="red" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'return', text })} /> : null}
     {action === 'manual-resubmit' ? <TextActionModal title="Submit Correction for Head Recheck" label="Describe the follow-up correction you completed" helper="Use only after correcting the record through an authorized action (for example, editing affected imported units or reversing/re-importing a batch). State what changed and any reference numbers. The original completed action and its snapshots remain in the audit trail. This does not itself modify the original record." placeholder="Example: Corrected units #2 and #4 in Listings; see audit logs for edits made today. Import reference IMP-2026-000001." confirmLabel="Resubmit to Department Head" tone="blue" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'manual-resubmit', text })} /> : null}
-    {action === 'open-case' ? <TextActionModal title="Report an Issue" label="What is incorrect?" helper="Describe the specific mismatch. This opens an Audit Case; it does not automatically reverse the saved change." placeholder="Example: The saved project commission rate differs from the approved rate." confirmLabel="Open Audit Case" tone="red" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'open-case', text })} /> : null}
-    {action === 'head-response' ? <TextActionModal title="Explain Audit Finding" label="Explanation" placeholder="Explain why the recorded values are correct, or acknowledge the mistake." confirmLabel="Submit Explanation" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'head-response', text })} /> : null}
-    {action === 'resolve-invalid' ? <TextActionModal title="Mark Finding Invalid" label="Auditor resolution" placeholder="Explain why the original record is valid." confirmLabel="Close as Invalid" tone="emerald" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'resolve-case', decision: 'invalid', text })} /> : null}
-    {action === 'resolve-valid' ? <TextActionModal title="Mark Finding Valid" label="Required correction" placeholder={`Explain exactly what ${correctionRoleLabel} must correct.`} confirmLabel={`Send to ${correctionRoleLabel}`} tone="red" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'resolve-case', decision: 'valid', text })} /> : null}
-    {action === 'reassign' ? <ReassignResponderModal options={auditCase?.headOptions || []} busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={({ userId, reason }) => mutation.mutate({ type: 'reassign', decision: userId, text: reason })} /> : null}
-    {action === 'recheck-reject' ? <TextActionModal title="Correction Still Wrong" label="What still needs to be fixed?" placeholder="Describe the remaining error." confirmLabel={`Return to ${correctionRoleLabel}`} tone="red" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'audit-recheck-reject', text })} /> : null}
+    {action === 'resolve-with-notes' ? <TextActionModal title="Resolve with Notes" label="What was corrected?" helper="Correct the underlying record first. These notes close the case and notify the Auditor." placeholder="Describe the correction and reference the affected record." confirmLabel="Resolve with Notes" tone="emerald" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'resolve-with-notes', text })} /> : null}
+    {action === 'open-case' ? <TextActionModal title="Report an Issue" label="What is incorrect?" helper="Describe the specific mismatch. This sends the finding directly to the authorized administrator in the correction queue. It does not reverse the saved change." placeholder="Example: The saved project commission rate differs from the approved rate." confirmLabel="Open Audit Case" tone="red" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'open-case', text })} /> : null}
   </div>
 }
 

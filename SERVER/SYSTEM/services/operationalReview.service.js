@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { DEPARTMENT_HEAD_ROLE, getRoleDepartment } from '../config/permissions.js';
 import { createInternalNotifications, notifyAuditors, notifyDepartmentHeads, settleReviewNotifications } from './internalNotification.service.js';
 import { assertRegisteredReviewAction, getReviewActionLabel } from '../config/reviewActions.js';
+import { capturePaymentSchedule } from './paymentReviewSchedule.service.js';
 
 // Operational reviews and Audit Cases are evidence/review queues, not record locks.
 // Access controls and protected pre-approvals still apply to the underlying action.
@@ -332,6 +333,10 @@ export const createOperationalReview = async (connection, {
   const expectedHeadRole = DEPARTMENT_HEAD_ROLE[department];
   if (!expectedHeadRole) throw Object.assign(new Error('Review department is invalid.'), { statusCode: 400 });
   assertRegisteredReviewAction(actionKey, department);
+  if (entityType === 'lot_project_payment') {
+    beforeSnapshot = await capturePaymentSchedule(connection, beforeSnapshot, projectId);
+    afterSnapshot = await capturePaymentSchedule(connection, afterSnapshot, projectId);
+  }
 
   const isEmergency = isOwnerAdministrator(actor);
   const isDepartmentHead = actor.role === expectedHeadRole;

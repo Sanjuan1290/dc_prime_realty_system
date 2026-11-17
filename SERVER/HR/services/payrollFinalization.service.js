@@ -252,6 +252,11 @@ export const getPayrollFinalizationReview = async (connection, payroll, today) =
   });
   const storedAttendanceFingerprint = hashPayrollAttendanceFingerprint(storedAttendancePayload);
   const attendanceChanged = storedAttendanceFingerprint !== liveAttendance.fingerprint;
+  const savedRows = payroll.attendance_breakdown || [];
+  const hasSavedClockHours = savedRows.length > 0 && savedRows.every(row => row.scheduled_attendance_minutes !== undefined && Number.isFinite(Number(row.scheduled_attendance_minutes)));
+  const draftScheduledMinutes = hasSavedClockHours ? savedRows.reduce((total,row) => total + Number(row.scheduled_attendance_minutes), 0) : null;
+  const currentScheduledMinutes = liveAttendance.attendance.rows.filter(row => row.scheduledDay).length * liveAttendance.attendance.schedule.attendanceWorkingMinutes;
+  const scheduledHoursChanged = hasSavedClockHours && draftScheduledMinutes !== currentScheduledMinutes;
 
   const currentPayrollSettings = await getPayrollSettingsSnapshot(connection);
   const draftPayrollSettings = payroll.payroll_settings_snapshot || {};
@@ -270,7 +275,10 @@ export const getPayrollFinalizationReview = async (connection, payroll, today) =
   const incompletePunchDays = attendanceReviewDays.filter((day) => day.issue === 'incomplete');
   return {
     payroll,
-    can_finalize: !attendanceChanged && !compensationChanged && !payrollSettingsChanged && holidayOvertimeDays.length === 0 && incompletePunchDays.length === 0,
+    can_finalize: !attendanceChanged && !scheduledHoursChanged && !compensationChanged && !payrollSettingsChanged && holidayOvertimeDays.length === 0 && incompletePunchDays.length === 0,
+    scheduled_hours_changed_since_draft: scheduledHoursChanged,
+    draft_scheduled_attendance_minutes: draftScheduledMinutes,
+    current_scheduled_attendance_minutes: currentScheduledMinutes,
     attendance_review_required: false,
     attendance_review_days: incompletePunchDays,
     incomplete_punches_require_correction: incompletePunchDays.length > 0,

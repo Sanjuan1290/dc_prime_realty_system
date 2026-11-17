@@ -521,7 +521,6 @@ export const updateLotProjectSettings = async (req, res) => {
         correctionSummary: reason,
         afterSnapshot: after,
         metadata: { authorizationType, projectId: project.lot_project_id },
-        notificationTitle: `Project Settings correction needs Auditor recheck · ${project.lot_project_name}`,
       });
     } else {
       review = await createOperationalReview(connection, {

@@ -934,7 +934,7 @@ export const approveLotProjectListingDocument = async (req, res) => {
     );
 
     const clientDocument = rows[0];
-    if (!clientDocument?.lot_project_client_document_file_name) {
+    if (!clientDocument?.lot_project_client_document_file_name || String(clientDocument.lot_project_client_document_status || '').toLowerCase() === 'missing') {
       return res.status(400).json({ message: `Upload ${context.document.document_name} before approving it.` });
     }
     if (String(clientDocument.lot_project_client_document_status || '').toLowerCase() === 'rejected') {

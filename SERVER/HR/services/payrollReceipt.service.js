@@ -175,6 +175,8 @@ export const buildFundReleaseReceipt = (payroll, { today = null } = {}) => {
     },
     half_month_basic: halfMonthBasic,
     hourly_rate: n(compensation.hourly_rate ?? payroll?.hourly_rate_snapshot),
+    calculated_shift_hours: /^employee-salary-260days-compressed-shift-v(?:[4-9]|[1-9]\d+)/.test(String(source.calculation_version || payroll?.calculation_version || '')),
+    approved_regular_workday_minutes: n(attendance.regular_working_minutes ?? payroll?.regular_working_minutes_snapshot),
     compressed_shift: /^employee-salary-260days-compressed-shift-/.test(String(source.calculation_version || payroll?.calculation_version || '')) && Number(attendance.regular_working_minutes ?? payroll?.regular_working_minutes_snapshot) > 480,
     scheduled_attendance_minutes: attendanceMinutes,
     actual_worked_minutes: actualMinutes,

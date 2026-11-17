@@ -23,12 +23,13 @@ test('Review Center includes Department Staff with correction-scoped access', ()
 
 test('role queues are action-specific and Staff receive only their own returned corrections', () => {
   const controller = read('SERVER/SYSTEM/controllers/System/workflow.controller.js');
-  assert.match(controller, /role === 'auditor'[\s\S]*pending_auditor_review[\s\S]*pending_auditor_recheck/);
+  assert.match(controller, /role === 'auditor'[\s\S]*pending_auditor_review/);
   assert.match(controller, /role === 'system_admin'[\s\S]*correction_required/);
-  assert.match(controller, /role === 'super_admin'[\s\S]*emergency_super_admin/);
+  assert.match(controller, /\['system_admin','super_admin'\]\.includes\(role\)/);
+  assert.match(controller, /getAuditCorrectionRole\(review\)/);
   assert.match(controller, /DEPARTMENT_STAFF_ROLES\.includes\(role\)[\s\S]*status='returned_for_correction'[\s\S]*initiated_by_user_id=\?/);
   assert.match(controller, /review\.status === 'returned_for_correction'[\s\S]*review\.initiated_by_user_id[\s\S]*actor\.id/);
-  assert.match(controller, /pending_head_review[\s\S]*awaiting_head_response/);
+  assert.match(controller, /department=\?[\s\S]*pending_head_review/);
   assert.match(controller, /const canAct = await canActorOpenReview/);
   assert.match(controller, /canActorViewReview/);
   assert.match(controller, /viewer: \{ canAct, readOnly: !canAct \}/);

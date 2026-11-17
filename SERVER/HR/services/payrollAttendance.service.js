@@ -2,6 +2,7 @@ import { dateOnly } from '../controllers/System/Employees/employeeModule.shared.
 import { enumerateDateRange, getAttendanceRuntimeSettings } from '../controllers/System/Employees/attendanceLite.shared.js';
 import { getEmployeeRestDaysAsOf, getRestDayAssignmentsForRange } from './employeeRestDay.service.js';
 import { getAttendanceShift, getNightShiftSeconds, getShiftBreakSeconds } from './nightShiftTime.service.js';
+import { scheduledAttendanceMinutes } from './scheduledAttendance.service.js';
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const validDayTypes = new Set(['regular', 'double_pay', 'regular_holiday', 'special_holiday']);
@@ -177,7 +178,7 @@ export const getPayrollAttendanceSummary = async (connection, { employeeId, date
     // Override only for payroll calculations; keep the Attendance clock unchanged.
     regularWorkingMinutes: paidWorkMinutesOverride ?? runtime.regularWorkingMinutes,
     // The attendance workday may be 10h even when the approved payroll basis is 8h.
-    attendanceWorkingMinutes: runtime.regularWorkingMinutes,
+    attendanceWorkingMinutes: scheduledAttendanceMinutes(runtime),
     lateAfter: runtime.lateAfter,
   };
 

@@ -53,7 +53,8 @@ export const buildReviewFormSections = ({ before, after, entityType, labels = {}
   const used = new Set()
   const sections = template.sections.map(([name, fields])=>({
     name,
-    fields: fields.filter(key => available.has(key)).map(key=>{ used.add(key); return {key,label:labels[key]||humanizeKey(key)} }),
+    fields: fields.filter(key => available.has(key) || (entityType === 'lot_project_payment' && ['unitId','accountReference','buyerName','paymentMethod','paymentDate','referenceId','paymentStatus','scheduleDescription','scheduleDueDate'].includes(key)))
+      .filter(key => !neverShow(key,isHiddenField)).map(key=>{ used.add(key); return {key,label:labels[key]||humanizeKey(key)} }),
   })).filter(group=>group.fields.length)
   const remaining = availableKeys.filter(key=>!used.has(key)).map(key=>({key,label:labels[key]||humanizeKey(key)}))
   if (remaining.length) sections.push({name:template.sections.length ? 'Other Saved Details' : 'Record Details',fields:remaining})

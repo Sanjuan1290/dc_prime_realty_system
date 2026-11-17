@@ -1218,7 +1218,7 @@ const PaymentsSOA = ({
     onSuccess: async (result) => {
       setLmfAuditRestoreRow(null)
       setLmfAuditRestoreAlert(null)
-      setAlert({ type: 'success', message: result?.message || 'Legal / Misc Fee restored. Auditor recheck is pending.' })
+      setAlert({ type: 'success', message: result?.message || 'Legal / Misc Fee restored. Resolve the audit case with notes after reviewing the correction.' })
       await refreshProfile()
     },
     onError: (error) => setLmfAuditRestoreAlert(getDoubleCheckNotice(error, 'The Legal / Misc Fee correction could not be applied.')),

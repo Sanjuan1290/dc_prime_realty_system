@@ -25,7 +25,8 @@ export const REVIEW_FORM_TEMPLATES = Object.freeze({
   ] },
   lot_project_payment: { title: 'Payment Details', sections: [
     ['Payment Information', ['paymentType','paymentMethod','paymentDate','amount','paymentAmount','referenceId','paymentStatus']],
-    ['Buyer Account', ['listingId','accountId','paymentId','buyerName']],
+    ['Buyer Account', ['unitId','accountReference','listingId','accountId','paymentId','buyerName']],
+    ['Related SOA Entry', ['scheduleId','scheduleDescription','scheduleDueDate']],
   ] },
   lot_project_reservation: { title: 'Reservation Details', sections: [
     ['Reservation', ['unitCode','listingId','accountId','reservationDate','reservationFee','status']],

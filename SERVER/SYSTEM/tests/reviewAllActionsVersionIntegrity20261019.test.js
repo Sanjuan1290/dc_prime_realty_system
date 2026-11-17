@@ -122,7 +122,7 @@ test('Audit Case corrections preserve prior saved evidence as a separate review 
     auditCase:{audit_case_id:91,operational_review_id:27,correction_role:'system_admin',case_number:'CASE-91'},
     actor:{id:5,role:'system_admin'},correctionSummary:'Corrected saved price',afterSnapshot:{price:13},
   })
-  assert.equal(result.status,'pending_auditor_recheck')
+  assert.equal(result.status,'correction_required')
   assert.ok(statements.some(sql=>/revision=revision\+1/.test(sql)))
   const event=savedEvents.find(x=>x.eventType==='controlled_correction_applied')
   assert.ok(event,'correction must have immutable event evidence')

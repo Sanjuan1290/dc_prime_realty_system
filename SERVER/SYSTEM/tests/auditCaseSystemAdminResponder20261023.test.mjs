@@ -67,21 +67,15 @@ test('No active System Admin produces no false Super Admin assignment', async ()
   assert.equal(result.mode,'system_admin_case_responder');
 });
 
-test('UI labels, queue permissions, reassignment options, and notifications all use System Admin', () => {
+test('Current UI routes findings to correction; legacy responder history remains readable', () => {
   const controller = source('SERVER/SYSTEM/controllers/System/workflow.controller.js');
-  const notifications = source('SERVER/SYSTEM/services/internalNotification.service.js');
+  const service = source('SERVER/SYSTEM/services/auditCaseWorkflow.service.js');
   const ui = source('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');
-  const script = source('SERVER/SYSTEM/scripts/backfill-audit-case-system-admin-notifications.mjs');
-  assert.match(controller,/isAdminDirectAuditCase\(review\) \? 'system_admin'/);
-  assert.match(controller,/isAdminDirectAuditCase\(c\)\?'system_admin'/);
-  assert.match(controller,/qac\.assigned_responder_user_id=\?/);
-  assert.match(controller,/responders\.userIds\.includes\(Number\(req\.authUser\?\.id/);
-  assert.match(notifications,/audit_case_response_required:[\s\S]*responder_user\.role = 'system_admin'/);
-  assert.match(ui,/responders\.label/);
-  assert.match(ui,/Awaiting System Admin Response/);
-  assert.match(ui,/auditCaseStatusLabel\(auditCase, responders\)/);
-  assert.match(script,/!present\.has\(id\)/);
-  assert.match(script,/process\.argv\.includes\('--apply'\)/);
+  assert.match(controller,/notifyCorrectionOwners/);
+  assert.match(controller,/AUDIT_FLOW_UPDATED/);
+  assert.match(service,/getAuditCorrectionRole/);
+  assert.match(service,/audit_case_flow_updated/);
+  assert.match(ui,/Resolve with Notes/);
+  assert.match(ui,/Resolved by/);
+  assert.doesNotMatch(ui,/>Submit Explanation<|>Reassign Responder</);
 });
-
-

@@ -521,7 +521,6 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
         correctionSummary: `Updated payment proof files for ${context.payment.lot_project_payment_reference_id || `payment #${paymentId}`}.`,
         afterSnapshot,
         metadata: { paymentId, proofIds: insertedIds, listingId: Number(context.payment.lot_project_listing_id) },
-        notificationTitle: `Payment-proof correction needs Auditor recheck · ${workflowContext.auditCase.case_number}`,
       });
     } else if (workflowContext.returnedReview) {
       workflow = await resubmitReturnedOperationalReview(connection, {
@@ -752,7 +751,6 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
         correctionSummary: `Removed incorrect payment proof ${proof.file_name} from ${context.payment.lot_project_payment_reference_id || `payment #${paymentId}`}.`,
         afterSnapshot,
         metadata: { paymentId, proofId, listingId: Number(context.payment.lot_project_listing_id) },
-        notificationTitle: `Payment-proof correction needs Auditor recheck · ${workflowContext.auditCase.case_number}`,
       });
     } else if (workflowContext.returnedReview) {
       workflow = await resubmitReturnedOperationalReview(connection, {

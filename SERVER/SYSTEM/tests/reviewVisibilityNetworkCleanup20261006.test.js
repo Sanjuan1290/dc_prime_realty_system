@@ -6,10 +6,11 @@ import { activeNotificationSql, REVIEW_ACTION_NOTIFICATION_STAGES, settleReviewN
 
 const read = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
 
-test('Head audit-case access check uses the actor id (no undefined variable)', () => {
+test('Head action scope stays limited to its department and project', () => {
   const controller = read('SERVER/SYSTEM/controllers/System/workflow.controller.js');
   assert.doesNotMatch(controller, /includes\(Number\(actorId\)\)/);
-  assert.match(controller, /responders\.userIds\.includes\(Number\(actor\.id \|\| 0\)\)/);
+  assert.match(controller, /DEPARTMENT_HEAD_ROLE\[department\] === actor\.role/);
+  assert.match(controller, /canActorSeeReview\(connection, actor, review\)/);
 });
 
 test('Review list supports a History scope, excluding work waiting on the viewer', () => {

@@ -1402,7 +1402,6 @@ export const adjustLotProjectListingCommission = async (req, res) => {
         correctionSummary: `Adjusted commission for ${context.listing.lot_project_listing_unit_id}: ${reason}`,
         afterSnapshot: { projectSlug: req.params.projectSlug, listingId: context.listing.lot_project_listing_id, accountId: entityId, groupRate: adjustment.groupRate, hierarchy: updatedRows },
         metadata: { accountId: entityId, listingId: context.listing.lot_project_listing_id },
-        notificationTitle: `Commission correction needs Auditor recheck · ${authorization.auditCase.case_number}`,
       });
     } else {
       workflow = await createOperationalReview(connection, {

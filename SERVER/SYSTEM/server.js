@@ -1,3 +1,4 @@
+import { carryForwardOpenAuditCases } from './services/auditCaseWorkflow.service.js'
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
@@ -170,6 +171,7 @@ const startServer = () => {
     console.log(`Checking TiDB connection (startup deadline: ${startupTimeoutMs}ms).`)
     try {
       await checkStartupDatabase(db, { timeoutMs: startupTimeoutMs })
+      await carryForwardOpenAuditCases(db)
       databaseReady = true
       console.log('TiDB connected')
       startDailyPenaltyScheduler()

@@ -1,3 +1,4 @@
+import { snapshotPayrollAttendance } from './payrollAttendanceSnapshot.service.js';
 import { createHash } from 'node:crypto';
 import { calculateDraftPayrollMoney, evaluateAttendanceBonus } from './payrollCalculation.service.js';
 import { getPayrollAttendanceSummary } from './payrollAttendance.service.js';
@@ -192,7 +193,7 @@ const buildCurrentCorrectedSnapshot = async (connection, payroll, today) => {
     overtime_minutes: attendance.summary.overtimeMinutes,
     rest_day_overtime_minutes: attendance.summary.restDayOvertimeMinutes,
     night_differential_minutes: attendance.summary.nightDifferentialMinutes,
-    attendance_breakdown: attendance.rows,
+    attendance_breakdown: snapshotPayrollAttendance(attendance),
     attendance_deduction: money.attendanceDeduction,
     overtime_pay: money.overtimePay,
     rest_day_overtime_pay: money.restDayOvertimePay,
