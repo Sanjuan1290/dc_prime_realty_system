@@ -1,3 +1,4 @@
+import {buildSignedFinanceCsv} from '../../SERVER/FINANCE/src/financeTransferCsv.js';
 // Requires setup-local-db.mjs and serve-local.mjs. Synthetic records only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -5,7 +6,7 @@ import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {revision,summarize,canonicalCsv,sha256} from '../../SERVER/FINANCE/src/importContract.js';
 const require=createRequire(new URL('../../SERVER/FINANCE/package.json',import.meta.url));
-const mysql=require('mysql2/promise'), JSZip=require('jszip');
+const mysql=require('mysql2/promise');
 const base='http://127.0.0.1:4179', password='Synthetic-QA-only-2026!';
 const pools=new Map();
 const db=(app)=>{if(!pools.has(app))pools.set(app,mysql.createPool({host:'127.0.0.1',port:13307,user:`qa_${app}`,password:'qa-isolated-only-password',database:`dc_prime_${app==='system'?'realty_system':app}_db`,dateStrings:true}));return pools.get(app)};
@@ -91,11 +92,11 @@ test('FINANCE: audit/import-history/reconciliation execute real SQL',async()=>{
   for(const p of ['/finance/audit?page=2','/finance/imports?page=2','/finance/reconciliation?from=2026-10-01&to=2026-10-30'])ok(await finance(p));
   for(const p of ['/finance/audit?page=1.5','/finance/imports?page=NaN'])ok(await finance(p),400);
 });
-test('FINANCE: real ZIP preview, automatic categories, commit, concurrent retry and duplicate detection',async()=>{
+test('FINANCE: signed CSV preview, automatic categories, commit, concurrent retry and duplicate detection',async()=>{
   const row={schema_version:'1.0',source_system:'realty',source_transaction_id:'property:105',source_version:'1',transaction_date:'2026-10-20',recorded_at:'2026-10-20 09:35:12',transaction_type:'income',category:'QA Property Collections',description:'QA source transfer',amount:'50000.00',currency:'PHP',status:'posted',reference_id:'',source_type:'property'};
   row.source_revision_sha256=revision(row);const rows=[row],csv=Buffer.from(canonicalCsv(rows));
   const manifest={schema_version:'1.0',source_system:'realty',export_id:randomUUID(),generated_at:'2026-10-27T10:00:00.000Z',currency:'PHP',period:{from:'2026-10-01',to:'2026-10-27'},filters:{kind:'all',source:'all',category:'all'},status_scope:'posted_only',salary_source:'legacy',warnings:[],reconciled:true,snapshot:summarize(rows),context:{},transactions_sha256:sha256(csv),checksum_algorithm:'sha256',data_file:'transactions.csv'};
-  const zip=new JSZip();zip.file('manifest.json',JSON.stringify(manifest));zip.file('transactions.csv',csv);const body={filename:'qa-transfer.zip',base64:(await zip.generateAsync({type:'nodebuffer'})).toString('base64')};
+  const buffer=buildSignedFinanceCsv({rows,csv:csv.toString('utf8'),manifest},{secret:'qa-csv-signing-key-only-'.repeat(3)});const body={filename:'qa-transfer.csv',base64:buffer.toString('base64')};
   let r=await finance('/finance/imports/preview',{method:'POST',body});ok(r,201);assert.equal(r.data.ready,true);assert.equal(r.data.counts.new,1);
   const path=`/finance/imports/${r.data.batch_id}/commit`;const rs=await Promise.all(Array.from({length:3},()=>finance(path,{method:'POST',body:{}})));for(const result of rs)ok(result);
   assert.equal(rs.filter(v=>!v.data.already_committed).length,1);

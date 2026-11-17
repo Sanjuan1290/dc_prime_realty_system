@@ -133,6 +133,8 @@ const EmploymentChangeModal = ({ employee, departmentConfigs = [], departments =
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['employees'] })
       queryClient.invalidateQueries({ queryKey: ['employee-employment-history', employee.employee_id] })
+      queryClient.invalidateQueries({ queryKey: ['employee-payroll-eligible-employees'] })
+      queryClient.invalidateQueries({ queryKey: ['employee-salary'] })
       onSaved?.(result?.message || 'Employment change saved successfully.')
       onClose?.()
     },

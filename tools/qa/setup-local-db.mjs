@@ -19,6 +19,8 @@ try {
   const [[existing]]=await conn.query("SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME LIKE 'dc_prime_%'");
   if(Number(existing.n)) throw new Error('QA schemas already exist; refusing to overwrite.');
   await conn.query(readFileSync(resolve(root,'DATABASES/FRESH_START/00_ALL_THREE_EMPTY_SCHEMAS_144_TABLES.sql'),'utf8'));
+  await conn.query('USE dc_prime_realty_system_db');
+  await conn.query(readFileSync(resolve(root,'SERVER/SYSTEM/migrations/20261027_batch8_realty_salary_inbox.sql'),'utf8'));
   const [counts]=await conn.query("SELECT TABLE_SCHEMA AS name,COUNT(*) AS tables FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA LIKE 'dc_prime_%' GROUP BY TABLE_SCHEMA");
   console.log('Empty snapshot schemas created:',JSON.stringify(counts));
   // Separate database grants prove app-level SQL cannot read another app's data.

@@ -142,6 +142,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['employees'] })
       queryClient.invalidateQueries({ queryKey: ['employee-salary'] })
+      queryClient.invalidateQueries({ queryKey: ['employee-payroll-eligible-employees'] })
       if (isEdit) {
         onSaved?.(result?.message || 'Employee updated.')
         onClose?.()
@@ -238,7 +239,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
                 {isHireDateChanged ? (
                   <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                     <label className="grid gap-1.5"><span className="text-xs font-semibold text-amber-900">Reason for changing hire date *</span><input className={inputClass} maxLength={500} value={form.hire_date_change_reason} onChange={(e) => setValue('hire_date_change_reason', e.target.value)} placeholder="e.g. Correcting the original start date" /></label>
-                    <p className="mt-2 text-xs text-amber-800">Existing paid payroll cannot be changed here. Draft payroll must be recalculated after a correction.</p>
+                    <p className="mt-2 text-xs text-amber-800">Correcting the hire date also updates the original salary and rest-day start dates. Paid payroll cannot be changed here. Recalculate existing drafts after a correction.</p>
                   </div>
                 ) : null}
               </section>
@@ -305,7 +306,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
                   })}
                 </div>
                 <p className="mt-3 text-xs font-semibold text-slate-500">
-                  {isEdit ? 'Changes to Rest Days start on the day you save. Older schedules are preserved.' : 'The first Rest Day schedule starts on the hire date.'}
+                  {isHireDateChanged ? 'The original rest-day schedule moves with the corrected hire date. Changes to the selected rest days still start today.' : isEdit ? 'Changes to Rest Days start on the day you save. Older schedules are preserved.' : 'The first Rest Day schedule starts on the hire date.'}
                 </p>
               </section>
             </>

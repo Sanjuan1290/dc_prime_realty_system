@@ -28,27 +28,14 @@ test('future-dated source transaction is rejected',()=>{const r=row();r.transact
 test('wrong type filter rejects otherwise valid source records',()=>{const f=fixture();f.manifest.filters.kind='expense';reject(()=>check(f),'FILTER_MISMATCH');});
 test('malformed unquoted values fail strict CSV parsing',()=>{const f=fixture();const s=f.csv.toString().replace('"1.0"','1.0');reject(()=>parseCsv(Buffer.from(s)),'INVALID_CSV');});
 test('excessive CSV rows fail before processing',()=>{const f=fixture(Array.from({length:501},(_,i)=>{const r=row();r.source_transaction_id=`property:${i+1}`;r.source_revision_sha256=revision(r);return r;}));reject(()=>parseCsv(f.csv),'TOO_MANY_ROWS');});
-test('upload validation rejects renamed, invalid and oversized files',()=>{const tiny=Buffer.from('PK ABC');assert.equal(decodeUpload({filename:'finance.zip',base64:tiny.toString('base64')}).format,'zip');reject(()=>decodeUpload({filename:'finance.csv',base64:tiny.toString('base64')}),'INVALID_IMPORT_FILE');reject(()=>decodeUpload({filename:'../../finance.zip',base64:tiny.toString('base64')}),'INVALID_IMPORT_FILE');reject(()=>decodeUpload({filename:'finance.zip',base64:'bad##'}),'INVALID_IMPORT_FILE');reject(()=>decodeUpload({filename:'finance.zip',base64:Buffer.alloc(MAX_FILE_BYTES+1).toString('base64')}),'INVALID_IMPORT_FILE');});
-test('ZIP manifest and transactions imported by strict parser',async()=>{const f=fixture();const zip={files:{'manifest.json':{name:'manifest.json',_data:{uncompressedSize:Buffer.byteLength(JSON.stringify(f.manifest))},dir:false},'transactions.csv':{name:'transactions.csv',_data:{uncompressedSize:f.csv.length},dir:false}},file(name){return {async:async type=>name==='transactions.csv'?f.csv:JSON.stringify(f.manifest)}}};const result=await parseUpload({format:'zip',buffer:Buffer.from('ZIP')},{JSZip:{loadAsync:async()=>zip}});assert.equal(result.rows[0].amount,'50000.00');});
-test('ZIP with extra file is rejected',async()=>{const f=fixture(),zip={files:{'manifest.json':{name:'manifest.json'},'transactions.csv':{name:'transactions.csv'},'x.txt':{name:'x.txt'}}};await assert.rejects(()=>parseUpload({format:'zip',buffer:Buffer.from('a')},{JSZip:{loadAsync:async()=>zip}}),{code:'INVALID_IMPORT_FILE'});});
-test('ZIP with missing central-directory sizes is rejected',async()=>{const zip={files:{'manifest.json':{name:'manifest.json'},'transactions.csv':{name:'transactions.csv'}}};await assert.rejects(()=>parseUpload({format:'zip',buffer:Buffer.from('a')},{JSZip:{loadAsync:async()=>zip}}),{code:'INVALID_IMPORT_FILE'});});
+test('upload accepts CSV names and rejects ZIP, Excel, path traversal and oversized uploads',()=>{
+ const tiny=Buffer.from('test');assert.equal(decodeUpload({filename:'finance.csv',base64:tiny.toString('base64')}).format,'csv');
+ for(const filename of ['finance.zip','finance.xlsx','../../finance.csv'])reject(()=>decodeUpload({filename,base64:tiny.toString('base64')}),'INVALID_IMPORT_FILE');
+ reject(()=>decodeUpload({filename:'finance.csv',base64:'bad##'}),'INVALID_IMPORT_FILE');
+ reject(()=>decodeUpload({filename:'finance.csv',base64:Buffer.alloc(MAX_FILE_BYTES+1).toString('base64')}),'INVALID_IMPORT_FILE');
+});
+test('ZIP and Excel payloads cannot bypass CSV-only parsing',async()=>{
+ for(const format of ['zip','xlsx'])await assert.rejects(()=>parseUpload({format,buffer:Buffer.from('anything')}),{code:'INVALID_IMPORT_FILE'});
+});
 test('Batch 13 SQL includes category approvals, preview history, source traceability and immutable-source restriction',()=>{const sql=readFileSync(resolve(base,'SERVER/FINANCE/migrations/04_finance_import.sql'),'utf8');for(const table of ['finance_import_batches','finance_import_items','finance_import_category_mappings'])assert.match(sql,new RegExp(table));assert.match(sql,/VARCHAR\(1500\)/);});
 test('backend endpoints are protected by admin permissions',()=>{const server=readFileSync(resolve(base,'SERVER/FINANCE/src/server.js'),'utf8');for(const route of ['/imports/preview','/imports/:id/commit','/imports/:id/undo'])assert.ok(server.includes(route));assert.match(server,/imports\/preview`,requireRole\('admin'\),requireImportEnabled/);});
-function excelFixture({formula=false,wrongSummary=false}={}){
-  const f=fixture();
-  const text=v=>({type:3,value:String(v)});
-  const sheet=(name,records)=>({name,rowCount:records.length,getRow(n){const values=records[n-1]||[];return {cellCount:values.length,getCell(i){return values[i-1]||{type:0,value:null};}};}});
-  const tx=sheet('Transactions',[COLUMNS.map(text),COLUMNS.map(k=>text(f.rows[0][k]))]);
-  if(formula)tx.getRow=(n=>{const rows=[COLUMNS.map(text),COLUMNS.map(k=>text(f.rows[0][k]))];return i=>{const values=rows[i-1];if(i===2)values[8]={type:6,value:{formula:'1+1',result:'2'}};return {cellCount:15,getCell:j=>values[j-1]};};})();
-  const labels=[['Export ID',f.manifest.export_id],['From',f.manifest.period.from],['To',f.manifest.period.to],['Exported Transactions',String(f.manifest.snapshot.record_count)],['Income PHP',wrongSummary?'0.00':f.manifest.snapshot.money_in],['Expense PHP',f.manifest.snapshot.money_out],['Net Change PHP',f.manifest.snapshot.net_change],['Reconciled','true']];
-  const summary=sheet('Summary',[['Metric','Value'].map(text),...labels.map(x=>x.map(text))]);
-  const meta=sheet('Metadata',[['Field','Value'].map(text),...Object.entries(f.manifest).map(([k,v])=>[text(k),text(typeof v==='object'?JSON.stringify(v):String(v))])]);
-  const sheets=[tx,summary,meta];
-  const workbook={worksheets:sheets,getWorksheet:n=>sheets.find(s=>s.name===n),xlsx:{load:async()=>{}}};
-  const Zip={loadAsync:async()=>({files:{'xl/workbook.xml':{name:'xl/workbook.xml',_data:{uncompressedSize:100}},'[Content_Types].xml':{name:'[Content_Types].xml',_data:{uncompressedSize:100}}}})};
-  return {file:{format:'xlsx',buffer:Buffer.from('fake ZIP')},deps:{JSZip:Zip,ExcelJS:{Workbook:class{constructor(){return workbook;}}}}};
-}
-test('XLSX text-only workbook and Metadata/Summary contract validate',async()=>{const f=excelFixture();const parsed=await parseUpload(f.file,f.deps);assert.equal(parsed.rows[0].source_transaction_id,'property:105');});
-test('XLSX formula-valued cells are rejected',async()=>{const f=excelFixture({formula:true});await assert.rejects(()=>parseUpload(f.file,f.deps),{code:'NON_TEXT_WORKBOOK_CELL'});});
-test('XLSX conflicting Summary and Metadata totals fail',async()=>{const f=excelFixture({wrongSummary:true});await assert.rejects(()=>parseUpload(f.file,f.deps),{code:'INVALID_IMPORT_FILE'});});
-test('XLSX external links/embedded code are rejected',async()=>{const f=excelFixture();f.deps.JSZip={loadAsync:async()=>({files:{'xl/externalLinks/externalLink1.xml':{name:'xl/externalLinks/externalLink1.xml',_data:{uncompressedSize:80}}}})};await assert.rejects(()=>parseUpload(f.file,f.deps),{code:'INVALID_IMPORT_FILE'});});

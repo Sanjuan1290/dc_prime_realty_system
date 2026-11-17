@@ -8,6 +8,7 @@ import { clampPayrollAttendanceThrough, payrollPeriodFromDates, resolvePayrollPe
 import { getPayrollSettingsSnapshot } from './payrollSettings.service.js';
 import { getEmployeeRestDaysAsOf } from './employeeRestDay.service.js';
 import { computeNewHireWorkdayFraction } from './payrollNewHireProration.service.js';
+import { getPayrollEmploymentPeriodIssue } from './payrollEmploymentPeriod.service.js';
 
 export const PAYROLL_CALCULATION_VERSION = 'employee-salary-260days-compressed-shift-v3';
 let payrollSchemaReady = false;
@@ -292,6 +293,8 @@ export const calculateAndStoreDraftPayroll = async (connection, {
     : resolvePayrollPeriod({ month: period.month, periodType: period.periodType });
   const attendanceThrough = clampPayrollAttendanceThrough({ ...normalizedPeriod, today });
   const employee = await getEmployee(connection, employeeId);
+  const employmentIssue = getPayrollEmploymentPeriodIssue(employee, normalizedPeriod);
+  if (employmentIssue) throw payrollError(employmentIssue.message, employmentIssue.code, 409, employmentIssue.data);
   const payrollSettings = await getPayrollSettingsSnapshot(connection);
   normalizedPeriod.scheduledReleaseDate = payrollPayday({
     month: normalizedPeriod.month,

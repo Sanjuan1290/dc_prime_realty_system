@@ -6,7 +6,8 @@ import {fileURLToPath} from 'node:url';
 import {writeFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {canonicalCsv,revision,sha256,summarize} from '../../SERVER/FINANCE/src/importContract.js';
-import {buildFinanceTransferZip} from '../../SERVER/HR/services/salaryFinanceExport.service.js';
+import {buildSignedFinanceCsv} from '../../SERVER/HR/services/financeTransferCsv.js';
+process.env.FINANCE_TRANSFER_SIGNING_SECRET='qa-csv-signing-key-only-'.repeat(3);
 Object.assign(process.env,{NODE_ENV:'test',TIDB_HOST:'127.0.0.1',TIDB_PORT:'13307',TIDB_USERNAME:'qa_finance',TIDB_PASSWORD:'qa-isolated-only-password',TIDB_DATABASE:'dc_prime_finance_db',TIDB_SSL:'false',FINANCE_STAGING_ENABLED:'true'});
 const {getPool}=await import('../../SERVER/FINANCE/src/db.js');
 const {createUser,resendInvitation}=await import('../../SERVER/FINANCE/src/users.js');
@@ -52,11 +53,11 @@ test('Admins cannot assign passwords; failed email can be resent without exposin
 test('HR audit is permissioned and released salary export downloads through Pages',async()=>{
   let login=await fetch(base+'/hr-api/api/v1/auth/login',{method:'POST',headers:{origin:base,'content-type':'application/json'},body:JSON.stringify({email:'hr@qa.invalid',password:'Synthetic-QA-only-2026!'})});assert.equal(login.status,200);const hrCookie=login.headers.get('set-cookie').split(';')[0];
   const audit=await fetch(base+'/hr-api/api/v1/audit-logs',{headers:{cookie:hrCookie}});assert.equal(audit.status,200);assert.ok((await audit.json()).total>0);
-  const result=await fetch(base+'/hr-api/api/v1/employee-payroll/finance-export?from=2026-10-01&to=2026-10-31&format=zip',{headers:{cookie:hrCookie}});
+  const result=await fetch(base+'/hr-api/api/v1/employee-payroll/finance-export?from=2026-10-01&to=2026-10-31&format=csv',{headers:{cookie:hrCookie}});
   assert.equal(result.status,200,await result.clone().text());
-  const buffer=Buffer.from(await result.arrayBuffer()),parsed=await parseUpload({format:'zip',buffer});assert.ok(parsed.rows.length);assert.ok(parsed.rows.every(r=>r.source_system==='hr'&&r.transaction_type==='expense'));
+  const buffer=Buffer.from(await result.arrayBuffer()),parsed=await parseUpload({format:'csv',buffer});assert.ok(parsed.rows.length);assert.ok(parsed.rows.every(r=>r.source_system==='hr'&&r.transaction_type==='expense'));
   const financeLogin=await request('/auth/login',{body:{email:'admin@qa.invalid',password:'Synthetic-QA-only-2026!'},session:null});cookie=financeLogin.cookie;
-  const upload={filename:'hr-salaries.zip',base64:buffer.toString('base64')};
+  const upload={filename:'hr-salaries.csv',base64:buffer.toString('base64')};
   const preview=await request('/finance/imports/preview',{body:upload});assert.equal(preview.status,201,JSON.stringify(preview.data));assert.equal(preview.data.ready,true);
   const commit=await request(`/finance/imports/${preview.data.batch_id}/commit`,{body:{}});assert.equal(commit.status,200);assert.equal(commit.data.result.imported,preview.data.counts.new);
   const duplicate=await request('/finance/imports/preview',{body:upload});assert.equal(duplicate.data.counts.duplicate,parsed.rows.length);assert.equal(duplicate.data.counts.new,0);
@@ -79,17 +80,17 @@ test('Previously imported external HR salaries labelled Realty are recognized wi
   await pool.execute("INSERT INTO finance_import_batches(id,source_system,export_id,file_name,file_sha256,file_format,source_from,source_to,source_generated_at,manifest_json,total_rows,selected_money_in,selected_money_out,created_by,status,committed_by,committed_at,result_json) VALUES(?,'realty',?,'old-external.zip',?,'zip','2026-10-01','2026-10-31',?,?,1,'0.00','12.34',1,'committed',1,UTC_TIMESTAMP(),?)",[batch,manifest.export_id,'a'.repeat(64),manifest.generated_at,JSON.stringify(manifest),JSON.stringify({imported:1})]);
   await pool.execute("INSERT INTO finance_import_items(batch_id,`row_number`,source_system,source_transaction_id,source_revision_sha256,source_category,source_kind,category_id,decision,source_row_json,transaction_id) VALUES(?,2,'realty',?,?,'Salary','expense',?,'imported',?,?)",[batch,sourceId,row.source_revision_sha256,mapping.category_id,JSON.stringify(row),insert.insertId]);
   const current={...row,source_system:'hr'},csv=canonicalCsv([current]),updated={...manifest,source_system:'hr',export_id:randomUUID(),transactions_sha256:sha256(csv)};
-  const data=await buildFinanceTransferZip({rows:[current],csv,manifest:updated});
-  const preview=await request('/finance/imports/preview',{body:{filename:'hr-previously-imported.zip',base64:data.toString('base64')}});assert.equal(preview.status,201,JSON.stringify(preview.data));assert.equal(preview.data.counts.duplicate,1);assert.equal(preview.data.counts.new,0);
+  const data=await buildSignedFinanceCsv({rows:[current],csv,manifest:updated});
+  const preview=await request('/finance/imports/preview',{body:{filename:'hr-previously-imported.csv',base64:data.toString('base64')}});assert.equal(preview.status,201,JSON.stringify(preview.data));assert.equal(preview.data.counts.duplicate,1);assert.equal(preview.data.counts.new,0);
   const committed=await request(`/finance/imports/${preview.data.batch_id}/commit`,{body:{}});assert.equal(committed.status,200);assert.equal(committed.data.result.imported,0);
   const [[count]]=await pool.execute('SELECT COUNT(*) AS n FROM finance_transactions WHERE source_transaction_id=?',[sourceId]);assert.equal(count.n,1);
 });
-test('Actual Company Finances ZIP and Excel exports import through Finance without deployment approval flags',async()=>{
+test('Actual Company Finances CSV exports import through Finance without deployment approval flags',async()=>{
   const login=await fetch(base+'/api/v1/user/login',{method:'POST',headers:{origin:base,'content-type':'application/json'},body:JSON.stringify({email:'system@qa.invalid',password:'Synthetic-QA-only-2026!'})});assert.equal(login.status,200);const systemCookie=login.headers.get('set-cookie').split(';')[0];
   const system=async(path,body)=>fetch(base+'/api/v1/company-finances'+path,{method:body?'POST':'GET',headers:{cookie:systemCookie,origin:base,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
   const categoryResponse=await system('/categories',{kind:'expense',name:'QA Company Export '+Date.now()}),category=(await categoryResponse.json()).data;assert.equal(categoryResponse.status,200);
   const entry=await system('/transactions',{kind:'expense',amount:'44.55',transaction_date:'2026-10-25',category_id:category.id,description:'Synthetic company export payment'});assert.equal(entry.status,200);
-  for(const [format,extension] of [['csv','zip'],['xlsx','xlsx']]){
+  for(const [format,extension] of [['csv','csv']]){
     const response=await system('/transactions/export?'+new URLSearchParams({from:'2026-10-01',to:'2026-10-31',profile:'transfer',format,category:category.name}));assert.equal(response.status,200,await response.clone().text());
     const buffer=Buffer.from(await response.arrayBuffer()),parsed=await parseUpload({format:extension,buffer});assert.equal(parsed.totals.money_out,'44.55');
     const preview=await request('/finance/imports/preview',{body:{filename:'company-finances.'+extension,base64:buffer.toString('base64')}});assert.equal(preview.status,201,JSON.stringify(preview.data));assert.equal(preview.data.ready,true);

@@ -31,6 +31,7 @@ export default function CompanyFinances(){
   const [exportSource,setExportSource]=useState('all')
   const [exportCategory,setExportCategory]=useState('all')
   const [error,setError]=useState('')
+  const [notice,setNotice]=useState('')
   const [formMode,setFormMode]=useState(null)
   const [entry,setEntry]=useState({kind:'expense',amount:'',transaction_date:today(),category_id:'',description:'',notes:''})
   const [categoryName,setCategoryName]=useState('')
@@ -51,35 +52,33 @@ export default function CompanyFinances(){
   const saveEntry=(e)=>{e.preventDefault();mutation.mutate({path:formMode==='edit'?`/company-finances/transactions/${entry.id}`:'/company-finances/transactions',body:entry,method:formMode==='edit'?'PUT':'POST'})}
   const editing=(record)=>{const matched=list.find(c=>c.name===record.category&&c.kind===record.kind);setEntry({id:Number(record.reference.split(':')[1]),kind:record.kind,amount:String(record.amount),transaction_date:record.txn_date,category_id:matched?.id||'',description:record.title,notes:record.notes||''});setFormMode('edit');setError('')}
   const handleCategory=(e)=>{e.preventDefault();mutation.mutate({path:'/company-finances/categories',body:{name:categoryName,kind:categoryKind}});setCategoryName('')}
-  const exportFile=async(format='csv',profile='report')=>{
+  const exportFile=async()=>{
     if(!data?.configured || exporting || !from || !to || from>to) return
     setExporting(true)
     setError('')
+    setNotice('')
     try {
       // Every export reloads the complete filtered date range; page 1 never limits the file.
-      const params=new URLSearchParams({from,to})
+      const exportTo=to>today()?today():to
+      const params=new URLSearchParams({from,to:exportTo})
       params.set('kind',exportKind)
       params.set('source',exportSource)
       params.set('category',exportCategory)
-      params.set('format',format)
-      params.set('profile',profile)
+      params.set('format','csv')
+      params.set('profile','transfer')
       const result=await useFetchBlob(`/company-finances/transactions/export?${params}`,{redirectOnUnavailable:false})
       const url=URL.createObjectURL(result.blob)
       const anchor=document.createElement('a')
       anchor.href=url
-      const extension=profile==='transfer'&&format==='csv'?'zip':format
-      anchor.download=`DCP-Company-Finances-${from}-to-${to}${profile==='transfer'?'-transfer':''}.${extension}`
+      anchor.download=`DCP-Company-Finances-${from}-to-${exportTo}-finance.csv`
       document.body.appendChild(anchor)
       anchor.click()
       anchor.remove()
       URL.revokeObjectURL(url)
+      setNotice('Finance CSV downloaded. Upload the original file in Finance → Imports. Edited files will be rejected.')
     }catch(e){setError(e.message||'Unable to export transactions. Please try again.')}
     finally{setExporting(false)}
   }
-  const exportCsv=async()=>exportFile('csv','report')
-  const exportExcel=async()=>exportFile('xlsx','report')
-  const exportTransferCsv=async()=>exportFile('csv','transfer')
-  const exportTransferExcel=async()=>exportFile('xlsx','transfer')
   const exportCategories=useMemo(()=>['all',...new Set([
     ...list.map(c=>c.name),
     'Salary','Property Collections','Commissions','Refunds',
@@ -101,6 +100,7 @@ export default function CompanyFinances(){
       <button className={`${btn} border border-slate-300 bg-white text-slate-700`} onClick={()=>{finance.refetch();categories.refetch()}}><FiRefreshCw/> Refresh</button>
     </header>
     {error?<StatusAlert type="error" message={error}/>:null}
+    {notice?<StatusAlert type="success" message={notice} onClose={()=>setNotice('')}/>:null}
     {finance.isError?<StatusAlert type="error" message={finance.error?.message||'Unable to load finances.'}/>:null}
     <Card>
       <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
@@ -149,12 +149,9 @@ export default function CompanyFinances(){
         <label className="grid gap-1"><span className="text-xs font-semibold text-slate-600">Export category</span><select aria-label="Export category" value={exportCategory} onChange={e=>setExportCategory(e.target.value)} className={field}>{exportCategories.map(c=><option key={c} value={c}>{c==='all'?'All categories':c}</option>)}</select></label>
       </div>:null}
       <div className="flex flex-wrap items-center gap-2">{canRecord?<><button onClick={()=>newEntry('income')} className={`${btn} bg-emerald-600 text-white`}><FiPlus/> Add Income</button><button onClick={()=>newEntry('expense')} className={`${btn} bg-blue-600 text-white`}><FiPlus/> Add Expense</button></>:null}<div className="flex-1"/>{tab==='transactions'?<>
-        <button onClick={exportCsv} disabled={exporting || !data.total_records} className={`${btn} border border-slate-300 bg-white text-slate-700`}><FiDownload/> {exporting?'Exporting…':'Export CSV (all pages)'}</button>
-        <button onClick={exportExcel} disabled={exporting || !data.total_records} className={`${btn} border border-slate-300 bg-white text-slate-700`}><FiDownload/> Excel report</button>
-        <button onClick={exportTransferCsv} disabled={exporting || !data.total_records || !data.transfer_export_ready} className={`${btn} border border-slate-300 bg-white text-slate-700`} title="Upload this file in Finance → Imports. Maximum 500 payments per file."><FiDownload/> Export to Finance (ZIP)</button>
-        <button onClick={exportTransferExcel} disabled={exporting || !data.total_records || !data.transfer_export_ready} className={`${btn} border border-slate-300 bg-white text-slate-700`} title="Upload this workbook in Finance → Imports. Maximum 500 payments per file."><FiDownload/> Export to Finance (Excel)</button>
+        <button onClick={exportFile} disabled={exporting || !data.total_records || !data.transfer_export_ready} className={`${btn} border border-slate-300 bg-white text-slate-700`} title="Upload this file in Finance → Imports. Maximum 500 payments per file."><FiDownload/> {exporting?'Preparing CSV…':'Export to Finance (CSV)'}</button>
       </>:null}{['transactions','categories'].map(t=><button key={t} onClick={()=>{setTab(t);setError('')}} className={`${btn} ${tab===t?'bg-slate-900 text-white':'bg-slate-100 text-slate-600'}`}>{t==='transactions'?'Transactions':'Categories'}</button>)}</div>
-      {tab==='transactions' && !data.balance_verified?<p className="mt-2 text-xs font-semibold text-amber-700">Finance transfer files are unavailable while reconciliation warnings remain. Standard reports are still available.</p>:null}
+      {tab==='transactions' && !data.balance_verified?<p className="mt-2 text-xs font-semibold text-amber-700">Finance transfer files are unavailable while reconciliation warnings remain.</p>:null}
       {tab==='transactions'?<Card>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-black text-slate-950">Transactions <span className="text-sm font-semibold text-slate-500">({pageInfo.total_records.toLocaleString('en-PH')} total)</span></h2>

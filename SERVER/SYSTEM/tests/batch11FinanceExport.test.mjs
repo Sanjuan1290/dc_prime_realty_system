@@ -127,16 +127,14 @@ test('invalid range and out-of-period transactions are rejected',()=>{
  assert.throws(()=>make(tx,{from:'2026-11-01',to:'2026-10-01'}));
  assert.throws(()=>make([{...tx[0],txn_date:'2026-09-30'}]));
 });
-test('endpoint preserves legacy route and permission but adds types',()=>{
+test('Finance export endpoint serves signed CSV only and retains reconciliation and access checks',()=>{
  const file=fs.readFileSync(new URL('../controllers/System/companyFinances.controller.js',import.meta.url),'utf8');
  const router=fs.readFileSync(new URL('../routers/System/companyFinances.routers.js',import.meta.url),'utf8');
- assert.match(file,/profile==='report' && format==='csv'/);
- assert.match(file,/!snapshot\.manifest\.reconciled/);
- assert.match(file,/50000/);
+ assert.match(file,/Only Export to Finance CSV is available/);assert.match(file,/buildSignedFinanceCsv/);assert.match(file,/!snapshot\.manifest\.reconciled/);assert.match(file,/selected\.length>500/);
  assert.match(router,/requirePermission\(PERMISSIONS.COMPANY_FINANCES_VIEW\)/);
 });
-test('frontend advertises CSV, XLSX, ZIP and has the three filters',()=>{
+test('Company Finances offers only Finance CSV and retains export filters',()=>{
  const ui=fs.readFileSync(new URL('../../../CLIENT/SYSTEM/src/pages/System/CompanyFinances.jsx',import.meta.url),'utf8');
- for(const label of ['Export transaction type','Export source','Export category','Excel report','Export to Finance (ZIP)','Export to Finance (Excel)'])assert.ok(ui.includes(label),label);
- assert.match(ui,/const exportCsv=async/);
+ for(const label of ['Export transaction type','Export source','Export category','Export to Finance (CSV)'])assert.ok(ui.includes(label),label);
+ for(const removed of ['Excel report','Export to Finance (ZIP)','Export to Finance (Excel)','Export CSV (all pages)'])assert.ok(!ui.includes(removed),removed);
 });

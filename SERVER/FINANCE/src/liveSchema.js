@@ -11,6 +11,7 @@ export async function ensureImportSchema(pool){
   const [columns]=await pool.execute("SELECT TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('finance_import_batches','finance_import_items','finance_categories','finance_import_mutex')");
   const column=(table,name)=>columns.find(c=>c.TABLE_NAME===table&&c.COLUMN_NAME===name);
   const batchChanges=[];
+  if(!String(column('finance_import_batches','file_format')?.COLUMN_TYPE).includes("'csv'"))batchChanges.push("MODIFY COLUMN file_format ENUM('zip','xlsx','csv') NOT NULL");
   if(!String(column('finance_import_batches','status')?.COLUMN_TYPE).includes("'undone'"))batchChanges.push("MODIFY COLUMN status ENUM('preview','committed','rejected','undone') NOT NULL DEFAULT 'preview'");
   for(const [name,type] of [['undone_by','BIGINT UNSIGNED NULL'],['undone_at','DATETIME NULL'],['undo_reason','VARCHAR(500) NULL'],['undo_result_json','JSON NULL']])if(!column('finance_import_batches',name))batchChanges.push(`ADD COLUMN ${name} ${type}`);
   if(batchChanges.length)await pool.execute('ALTER TABLE finance_import_batches '+batchChanges.join(', '));

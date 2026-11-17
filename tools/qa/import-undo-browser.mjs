@@ -5,12 +5,13 @@ import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {canonicalCsv,revision,sha256,summarize} from '../../SERVER/FINANCE/src/importContract.js';
-import {buildFinanceTransferZip} from '../../SERVER/HR/services/salaryFinanceExport.service.js';
+import {buildSignedFinanceCsv} from '../../SERVER/HR/services/financeTransferCsv.js';
+process.env.FINANCE_TRANSFER_SIGNING_SECRET='qa-csv-signing-key-only-'.repeat(3);
 const root=fileURLToPath(new URL('../../',import.meta.url)),out=resolve(root,'QA_REPORTS/evidence/import-undo');mkdirSync(out,{recursive:true});
-const base='http://127.0.0.1:4179',run=Date.now(),filename=`browser-payments-${run}.zip`,filePath=resolve(out,filename),checks=[],exceptions=[],requests=[];
+const base='http://127.0.0.1:4179',run=Date.now(),filename=`browser-payments-${run}.csv`,filePath=resolve(out,filename),checks=[],exceptions=[],requests=[];
 const rows=[['income','500.10','Browser income'],['expense','123.45','Browser payroll']].map(([kind,amount,category],index)=>{const row={schema_version:'1.0',source_system:'realty',source_transaction_id:`manual:${run}${index+1}`,source_version:'1',transaction_date:'2026-10-25',recorded_at:'2026-10-25 12:00:00',transaction_type:kind,category:category+' '+run,description:category+' payment '+run,amount,currency:'PHP',status:'posted',reference_id:'',source_type:'manual'};return {...row,source_revision_sha256:revision(row)}});
 const csv=canonicalCsv(rows),manifest={schema_version:'1.0',source_system:'realty',export_id:randomUUID(),generated_at:'2026-10-31T00:00:00Z',currency:'PHP',period:{from:'2026-10-01',to:'2026-10-31'},filters:{kind:'all',source:'all',category:'all'},status_scope:'posted_only',salary_source:'legacy',warnings:[],reconciled:true,snapshot:summarize(rows),context:{},transactions_sha256:sha256(csv),checksum_algorithm:'sha256',data_file:'transactions.csv'};
-writeFileSync(filePath,await buildFinanceTransferZip({rows,csv,manifest}));
+writeFileSync(filePath,await buildSignedFinanceCsv({rows,csv,manifest}));
 const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'}),context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage();page.setDefaultTimeout(12000);
 page.on('pageerror',error=>exceptions.push(error.message));page.on('request',request=>{if(request.url().startsWith(base))requests.push({path:new URL(request.url()).pathname,method:request.method()})});
 async function check(name,action){try{await action();checks.push({name,status:'PASS'})}catch(error){checks.push({name,status:'FAIL',reason:error.message});await page.screenshot({path:resolve(out,'failure-'+checks.length+'.png'),fullPage:true}).catch(()=>{})}console.log(JSON.stringify(checks.at(-1)))}

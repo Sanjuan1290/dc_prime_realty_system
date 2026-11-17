@@ -14,9 +14,10 @@ const root=fileURLToPath(new URL('../../',import.meta.url)),runtime=resolve(root
 mkdirSync(runtime,{recursive:true});
 const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>/^(PATH|SystemRoot|WINDIR|TEMP|TMP|COMSPEC|PATHEXT|LOCALAPPDATA|APPDATA|USERPROFILE)$/i.test(k)));
 const token='qa-local-integration-token-'.repeat(3);
+env.FINANCE_TRANSFER_SIGNING_SECRET='qa-csv-signing-key-only-'.repeat(3);
 const common={...env,NODE_ENV:'test',TIDB_HOST:'127.0.0.1',TIDB_PORT:'13307',TIDB_PASSWORD:'qa-isolated-only-password',TIDB_SSL:'false',CORS_ORIGIN:'http://127.0.0.1:4179',HR_LEGACY_MODE:'frozen'};
 const configurations=[
-  ['SYSTEM','server.js',{...common,PORT:'5201',TIDB_USERNAME:'qa_system',TIDB_DATABASE:'dc_prime_realty_system_db',JWT_SECRET:'qa-system-only-secret-'.repeat(3),REALTY_HR_SALARY_INGEST:'true',REALTY_HR_INTEGRATION_TOKEN:token}],
+  ['SYSTEM','server.js',{...common,PORT:'5201',TIDB_USERNAME:'qa_system',TIDB_DATABASE:'dc_prime_realty_system_db',JWT_SECRET:'qa-system-only-secret-'.repeat(3),FINANCE_SALARY_SOURCE:'external',REALTY_HR_SALARY_INGEST:'true',REALTY_HR_INTEGRATION_TOKEN:token}],
   ['HR','server.js',{...env,NODE_ENV:'test',PORT:'5202',HR_ENABLE_JOBS:'true',HR_ENABLE_SALARY_DELIVERY:'true',REALTY_FINANCE_SALARY_ENDPOINT:'http://127.0.0.1:5201/api/v1/internal/finance/salary-events',HR_TO_REALTY_INTEGRATION_TOKEN:token,HR_DB_HOST:'127.0.0.1',HR_DB_PORT:'13307',HR_DB_USER:'qa_hr',HR_DB_PASSWORD:'qa-isolated-only-password',HR_DB_NAME:'dc_prime_hr_db',HR_DB_TLS:'false',HR_JWT_SECRET:'qa-hr-only-secret-'.repeat(4),HR_COOKIE_SECURE:'false',HR_CORS_ORIGIN:'http://127.0.0.1:4179',ATTENDANCE_PINCODE:'724381',ATTENDANCE_KIOSK_SECRET:'qa-kiosk-only-'.repeat(4)}],
   ['FINANCE','src/server.js',{...common,PORT:'5203',TIDB_USERNAME:'qa_finance',TIDB_DATABASE:'dc_prime_finance_db',FINANCE_ALLOWED_ORIGINS:'http://127.0.0.1:4179',FINANCE_COOKIE_SECURE:'false'}],
   ['WEBSITE','server.js',{...env,NODE_ENV:'test',PORT:'5204'}],

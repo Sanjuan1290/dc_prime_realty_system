@@ -1,6 +1,7 @@
+import {buildSignedFinanceCsv} from '../../services/financeTransferCsv.js';
 import { db } from '../../db/connect.js';
 import { writeAuditLog } from './auditLogs.controller.js';
-import { buildSalaryFinanceSnapshot, buildFinanceTransferZip, buildFinanceExcel } from '../../services/salaryFinanceExport.service.js';
+import { buildSalaryFinanceSnapshot } from '../../services/salaryFinanceExport.service.js';
 
 const date = value => {
   const s=String(value??'');
@@ -16,8 +17,8 @@ const range = query => {
 export async function exportSalaryFinance(req,res,next){
   let conn;
   try{
-    const {from,to}=range(req.query),format=req.query.format||'zip';
-    if(!['zip','xlsx'].includes(format))throw Object.assign(new Error('Choose ZIP or Excel.'),{statusCode:400});
+    const {from,to}=range(req.query),format=req.query.format||'csv';
+    if(format!=='csv')throw Object.assign(new Error('Only Export to Finance CSV is available.'),{statusCode:400});
     conn=await db.getConnection();await conn.beginTransaction();
     // The release event is immutable and shared with Realty. Re-exporting either
     // route therefore yields the same Finance source identity and fingerprint.
@@ -27,11 +28,11 @@ export async function exportSalaryFinance(req,res,next){
       WHERE p.payroll_status='released' AND p.net_fund_release>0 AND p.released_date BETWEEN ? AND ?
       ORDER BY p.employee_payroll_id LIMIT 501`,[from,to]);
     const snapshot=buildSalaryFinanceSnapshot({payrolls:rows,from,to});
-    const content=format==='zip'?await buildFinanceTransferZip(snapshot):await buildFinanceExcel(snapshot);
+    const content=buildSignedFinanceCsv(snapshot);
     await writeAuditLog(conn,req,{action:'payroll.finance_export',module:'Payroll',entityType:'finance_export',entityId:snapshot.manifest.export_id,title:'Salary export for Finance',metadata:{period:{from,to},...snapshot.manifest.snapshot}});
     await conn.commit();
     res.set('Cache-Control','no-store').set('Content-Disposition',`attachment; filename="hr-salary-finance-${from}-${to}.${format}"`);
-    res.type(format==='zip'?'application/zip':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(content);
+    res.type('text/csv; charset=utf-8').set('X-Content-Type-Options','nosniff').send(content);
   }catch(e){if(conn)await conn.rollback().catch(()=>{});next(e);}finally{conn?.release();}
 }
 

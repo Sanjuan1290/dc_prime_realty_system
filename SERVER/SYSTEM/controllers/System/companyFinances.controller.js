@@ -1,7 +1,8 @@
+import {buildSignedFinanceCsv} from '../../services/financeTransferCsv.js';
 import { db } from '../../db/connect.js';
 import { writeAuditLog } from './auditLogs.controller.js';
-import { loadFinanceSummary, validateFinanceEntry, dateOnly, buildFinanceCsv } from '../../services/companyFinances.service.js';
-import { parseFinanceExportFilters, selectFinanceExportRows, buildFinanceExportSnapshot, buildFinanceTransferZip, buildFinanceExcel } from '../../services/companyFinanceExport.service.js';
+import { loadFinanceSummary, validateFinanceEntry, dateOnly } from '../../services/companyFinances.service.js';
+import { parseFinanceExportFilters, selectFinanceExportRows, buildFinanceExportSnapshot } from '../../services/companyFinanceExport.service.js';
 const respondError=(res,e)=>res.status(e.statusCode||500).json({success:false,code:e.code||'FINANCE_ERROR',message:e.statusCode?e.message:'Unable to save company finances.'});
 const bad=(msg,code='FINANCE_INVALID',statusCode=400)=>Object.assign(new Error(msg),{code,statusCode});
 // Each live export must pass the actual source consistency checks.
@@ -26,47 +27,28 @@ export const overview=async(req,res)=>{
     return res.json({success:true,data:{...data,transfer_export_ready:transferApproved(data,to)}});
   }catch(e){return respondError(res,e)}
 };
-/** All matching rows, not the paginated table subset. Financial reports remain unchanged. */
+/** Export the complete filtered set as one signed Finance CSV. */
 export const exportTransactions = async(req,res)=>{
   try {
     const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-    const to=dateOnly(req.query.to||today);
+    const requestedTo=dateOnly(req.query.to||today),to=requestedTo>today?today:requestedTo;
     const from=dateOnly(req.query.from||`${to.slice(0,7)}-01`);
-    if(from>to) throw bad('From date cannot be after To date.');
-    const format=String(req.query.format||'csv');
-    const profile=String(req.query.profile||'report');
-    if(!['csv','xlsx'].includes(format)||!['report','transfer'].includes(profile))throw bad('Unsupported export format.');
-    const filters=parseFinanceExportFilters(req.query);
-    const data=await loadFinanceSummary(db,{from,to,allTransactions:true});
-    const suffix=`DCP-Company-Finances-${from}-to-${to}`;
+    if(from>to)throw bad('From date cannot be after To date.');
+    if(String(req.query.format||'csv')!=='csv'||String(req.query.profile||'transfer')!=='transfer')throw bad('Only Export to Finance CSV is available.');
+    const filters=parseFinanceExportFilters(req.query),data=await loadFinanceSummary(db,{from,to,allTransactions:true});
+    if(!transferApproved(data))throw bad('Resolve the Company Finances balance warnings before exporting payments for Finance.','FINANCE_EXPORT_NOT_RECONCILED',409);
     const selected=selectFinanceExportRows(data.transactions,filters);
-    if (selected.length>(profile==='transfer'?500:50000)) throw bad(`Choose a smaller date range: at most ${profile==='transfer'?500:50000} records per file.`,'FINANCE_EXPORT_TOO_LARGE',413);
-    let bytes,filename,type;
-    if (profile==='report' && format==='csv') {
-      // Preserves existing 7-column report when new filters are not selected.
-      bytes=buildFinanceCsv(selected);
-      filename=`${suffix}.csv`;type='text/csv; charset=utf-8';
-    } else {
-      if(profile==='transfer'&&!transferApproved(data,to)) throw bad('Resolve the Company Finances balance warnings before exporting payments for Finance.','FINANCE_EXPORT_NOT_RECONCILED',409);
-      const snapshot=buildFinanceExportSnapshot({transactions:data.transactions,from,to,filters,overview:data});
-      if (profile==='transfer' && !snapshot.manifest.reconciled)
-        throw bad('Finance warnings or incomplete HR reconciliation prevent an import-ready export. Review finance warnings first.','FINANCE_EXPORT_NOT_RECONCILED',409);
-      if (format==='xlsx') {
-        bytes=await buildFinanceExcel(snapshot);filename=`${suffix}-${profile}.xlsx`;
-        type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      } else {
-        // CSV transfer includes a JSON manifest to support checksum/empty export validation.
-        bytes=await buildFinanceTransferZip(snapshot);filename=`${suffix}-transfer.zip`;
-        type='application/zip';
-      }
-    }
-    res.setHeader('Content-Type',type);
-    res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
-    res.setHeader('Cache-Control','no-store');
-    res.setHeader('X-Content-Type-Options','nosniff');
+    if(selected.length>500)throw bad('Choose a smaller date range: at most 500 payments per file.','FINANCE_EXPORT_TOO_LARGE',413);
+    const snapshot=buildFinanceExportSnapshot({transactions:data.transactions,from,to,filters,overview:data});
+    if(!snapshot.manifest.reconciled)throw bad('Finance warnings or incomplete HR reconciliation prevent an export.','FINANCE_EXPORT_NOT_RECONCILED',409);
+    const bytes=buildSignedFinanceCsv(snapshot);
+    res.setHeader('Content-Type','text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition',`attachment; filename="DCP-Company-Finances-${from}-to-${to}-finance.csv"`);
+    res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');
     return res.send(bytes);
-  } catch(e){return respondError(res,e)}
+  }catch(e){return respondError(res,e)}
 };
+
 export const categories=async(_req,res)=>{
   try {const [rows]=await db.query('SELECT id,kind,name,protected,is_active FROM company_finance_categories ORDER BY kind,name');return res.json({success:true,data:rows})}catch(e){return respondError(res,e)}
 };

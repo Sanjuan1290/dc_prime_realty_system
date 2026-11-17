@@ -6,6 +6,7 @@ import { calculateDraftPayrollMoney } from './payrollCalculation.service.js';
 import { clampPayrollAttendanceThrough } from './payrollPeriod.service.js';
 import { getEmployeeRestDaysAsOf } from './employeeRestDay.service.js';
 import { getPayrollAttendanceReviewDays } from './payrollAttendanceReview.service.js';
+import { getPayrollEmploymentPeriodIssue } from './payrollEmploymentPeriod.service.js';
 
 const valuePresent = (value) => value !== null && value !== undefined && String(value).trim() !== '';
 
@@ -40,6 +41,16 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
       if (!ok && entry.required) issues.push({ code: `MISSING_${entry.field.toUpperCase()}`, message: `${entry.label} must be provided in Employees.` });
       return { ...entry, ok, value: fieldValue ?? null };
     });
+
+  const employmentIssue = getPayrollEmploymentPeriodIssue(employee, period);
+  if (employmentIssue) {
+    checks.push({field: 'employment_period', label: 'Employment overlaps the selected pay period', source: 'Employees', required: true, ok: false, value: employmentIssue.data});
+    return {
+      eligible: false, can_generate: false, issues: [employmentIssue], warnings: [], checks,
+      compensation: null,
+      attendance: {recorded_days: 0, incomplete_days: 0, checked_days: 0, rest_days: [], review_days: []},
+    };
+  }
 
   let compensation = null;
   try {
@@ -112,7 +123,7 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
     issues.push(friendlyIssue(error));
   }
   checks.push({ field: 'rest_days', label: 'Rest days', source: 'Employees / Attendance', required: false, ok: restDays.length > 0, value: restDays });
-  if (!restDays.length) warnings.push('No rest-day assignment was found for this payroll period. Verify the employee schedule before generating.');
+  if (!restDays.length) warnings.push(`No rest-day assignment was found for this payroll period (${period.periodStart} to ${period.periodEnd}). Check the schedule's effective dates; current rest days may start later.`);
   const recordedDays = attendance?.rows?.filter((row) => Boolean(row.timeIn || row.timeOut))?.length || 0;
   const incompleteDays = attendance?.rows?.filter((row) => Boolean(row.timeIn) && !row.timeOut)?.length || 0;
   checks.push({ field: 'attendance', label: 'Recorded Attendance days', source: 'Attendance', required: false, ok: recordedDays > 0 && incompleteDays === 0, value: { recordedDays, incompleteDays, checkedDays: attendance?.rows?.length || 0 } });
@@ -144,6 +155,7 @@ export const assessPayrollReadiness = async (connection, employee, { period, tod
   if (holidayIssue) warnings.push(holidayIssue);
 
   return {
+    eligible: true,
     can_generate: issues.length === 0,
     issues,
     warnings,

@@ -70,6 +70,7 @@ export async function commitImport(batchId,actor){
     const batch=found[0];if(!batch)invalid('NOT_FOUND','Import preview not found.',404);
     if(batch.status==='committed')return {batch_id:batchId,status:'committed',already_committed:true,result:parseJson(batch.result_json)};
     if(batch.status!=='preview')invalid('IMPORT_NOT_ACTIVE','Import preview is no longer available.',409);
+    if(batch.file_format!=='csv')invalid('CSV_REQUIRED','Upload a new Export to Finance CSV and preview it again.',409);
     if(String(batch.created_by)!==String(actor.id))invalid('IMPORT_OWNER','Only the user who prepared this preview can confirm it.',403);
     const [fresh]=await conn.execute('SELECT created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 60 MINUTE) AS fresh FROM finance_import_batches WHERE id=?',[batchId]);
     if(Number(fresh[0]?.fresh)!==1)invalid('PREVIEW_EXPIRED','Import preview expired. Upload and preview again.',409);

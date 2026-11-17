@@ -194,7 +194,7 @@ test('Company Finances UI shows six requested columns, real pagination and type-
   assert.doesNotMatch(ui,/<Label>Type<\/Label>/);
   assert.match(ui,/newEntry\('income'\)/);
   assert.match(ui,/newEntry\('expense'\)/);
-  assert.match(ui,/exportCsv=async/);
+  assert.match(ui,/const exportFile=async/);
   assert.match(routes,/router\.get\('\/transactions\/export',requirePermission\(PERMISSIONS\.COMPANY_FINANCES_VIEW\),finance\.exportTransactions\)/);
   assert.match(controller,/entry\.kind!==prev\.kind/);
 });

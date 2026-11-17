@@ -41,6 +41,6 @@ test('finance results and CSV export both use selected from/to and prevent inval
   assert.match(source,/queryKey:\['company-finances',from,to,page\]/)
   assert.match(source,/enabled:!!user&&Boolean\(from&&to\)&&from<=to/)
   assert.match(source,/new URLSearchParams\(\{from,to,page:String\(page\)\}\)/)
-  assert.match(source,/new URLSearchParams\(\{from,to\}\)/)
+  assert.match(source,/new URLSearchParams\(\{from,to:exportTo\}\)/)
 })
 

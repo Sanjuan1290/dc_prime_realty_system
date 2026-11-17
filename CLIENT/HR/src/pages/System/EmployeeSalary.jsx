@@ -12,7 +12,6 @@ import FundReleaseReceiptModal from '../../components/System/employeeSalaryCompo
 import SalaryHistoryModal from '../../components/System/employeeSalaryComponents/SalaryHistoryModal'
 import PayrollSettingsModal from '../../components/System/employeeSalaryComponents/PayrollSettingsModal'
 import FinanceSalaryExport from '../../components/System/employeeSalaryComponents/FinanceSalaryExport'
-import PayrollSummaryExportModal from '../../components/System/employeeSalaryComponents/PayrollSummaryExportModal'
 import {
   getManilaMonth,
   money,
@@ -33,7 +32,6 @@ const EmployeeSalary = () => {
   const canFinalize = HR_FEATURE_FLAGS.writesEnabled && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_FINALIZE)
   const canRelease = HR_FEATURE_FLAGS.payrollRelease && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RELEASE)
   const canPrintReceipt = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RECEIPT_PRINT)
-  const canExportReceipt = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RECEIPT_EXPORT)
   const canViewPayrollHistory = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_HISTORY_VIEW)
   const canManagePayrollSettings = HR_FEATURE_FLAGS.writesEnabled && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_SETTINGS_MANAGE)
   const canExportPayrollSummary = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_SUMMARY_EXPORT)
@@ -45,7 +43,7 @@ const EmployeeSalary = () => {
   const [search, setSearch] = useState('')
   const [showGenerate, setShowGenerate] = useState(false)
   const [showPayrollSettings, setShowPayrollSettings] = useState(false)
-  const [showPayrollSummaryExport, setShowPayrollSummaryExport] = useState(false)
+  const [showFinanceExport, setShowFinanceExport] = useState(false)
   const [selectedPayrollId, setSelectedPayrollId] = useState(null)
   const [selectedPayrollTab, setSelectedPayrollTab] = useState('salary')
   const [selectedReceiptPayrollId, setSelectedReceiptPayrollId] = useState(null)
@@ -117,12 +115,11 @@ const EmployeeSalary = () => {
 
   return (
     <main className="flex flex-col gap-6">
-      {canExportPayrollSummary && <FinanceSalaryExport/>}
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader title="Employee Salary" description="Review employee pay, deductions, and allowances for each pay period." icon={FiDollarSign} />
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => { periodQuery.refetch(); registerQuery.refetch() }} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><FiRefreshCw className={registerQuery.isFetching || periodQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
-          {canExportPayrollSummary ? <button type="button" onClick={() => setShowPayrollSummaryExport(true)} disabled={!period} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"><FiDownload />Export Summary</button> : null}
+          {canExportPayrollSummary ? <button type="button" onClick={() => setShowFinanceExport(true)} disabled={!period} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"><FiDownload />Export to Finance (CSV)</button> : null}
           {canManagePayrollSettings ? <button type="button" onClick={() => setShowPayrollSettings(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50"><FiSettings />Payroll Settings</button> : null}
           {canGenerate ? <button type="button" onClick={() => setShowGenerate(true)} disabled={!period} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50"><FiPlus />Create Payroll Draft</button> : null}
         </div>
@@ -153,7 +150,7 @@ const EmployeeSalary = () => {
 
         <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
           <div><span className="font-black text-slate-900">{period?.periodLabel || 'Resolving payroll period...'}</span><span className="ml-2 font-semibold text-slate-500">{rows.length} payroll record(s)</span>{period?.scheduledReleaseDate ? <span className="ml-3 rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">Scheduled payday: {period.scheduledReleaseDate}</span> : null}</div>
-          <p className="text-xs font-semibold text-slate-500">Draft receipt = Preview only. Official Print / Export becomes available after Finalization.</p>
+          <p className="text-xs font-semibold text-slate-500">Draft receipt = Preview only. Official printing becomes available after Finalization.</p>
         </div>
 
         <div className="overflow-x-auto">
@@ -194,13 +191,13 @@ const EmployeeSalary = () => {
         <ActionPanelButton icon={FiFileText} title="Preview Receipt" description="View the pay acknowledgment" tone="blue" onClick={() => { setSelectedReceiptPayrollId(actionsPayroll.employee_payroll_id); setActionsPayroll(null) }} />
         {canViewPayrollHistory ? <ActionPanelButton icon={FiClock} title="Salary History" description="See previous pay periods" tone="slate" onClick={() => { setHistoryEmployee({ employee_id: actionsPayroll.employee_id, employee_code: actionsPayroll.employee_code, full_name: actionsPayroll.employee_name_snapshot }); setActionsPayroll(null) }} /> : null}
       </ActionPanelModal> : null}
-      {signedPayroll ? <SignedSalaryReceiptsModal payrollId={signedPayroll.employee_payroll_id} employeeName={signedPayroll.employee_name_snapshot} canUpload={false} canPrint={canPrintReceipt} canExport={canExportReceipt} onClose={() => setSignedPayroll(null)} /> : null}
-      {showPayrollSummaryExport ? <PayrollSummaryExportModal month={month} periodType={periodType} periodLabel={period?.periodLabel} onClose={() => setShowPayrollSummaryExport(false)} /> : null}
+      {signedPayroll ? <SignedSalaryReceiptsModal payrollId={signedPayroll.employee_payroll_id} employeeName={signedPayroll.employee_name_snapshot} canUpload={false} canPrint={canPrintReceipt} canExport={false} onClose={() => setSignedPayroll(null)} /> : null}
+      {showFinanceExport ? <FinanceSalaryExport period={period} onClose={() => setShowFinanceExport(false)} /> : null}
       {showPayrollSettings ? <PayrollSettingsModal onClose={() => setShowPayrollSettings(false)} onSaved={(result) => { setAlert({ type: 'success', message: result?.message || 'Payroll Settings updated.' }); registerQuery.refetch() }} /> : null}
       {showGenerate ? <GeneratePayrollModal month={month} periodType={periodType} periodLabel={period?.periodLabel} scheduledReleaseDate={period?.scheduledReleaseDate} onClose={() => setShowGenerate(false)} onGenerated={handleGenerated} /> : null}
-      {selectedPayrollId ? <SalaryDetailModal canManagePayrollSettings={canManagePayrollSettings} payrollId={selectedPayrollId} initialTab={selectedPayrollTab} canRecalculate={canRecalculate} canFinalize={canFinalize} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={canExportReceipt} onClose={() => setSelectedPayrollId(null)} onUpdated={() => registerQuery.refetch()} /> : null}
-      {selectedReceiptPayrollId ? <FundReleaseReceiptModal payrollId={selectedReceiptPayrollId} canPrint={canPrintReceipt} canExport={canExportReceipt} onClose={() => setSelectedReceiptPayrollId(null)} /> : null}
-      {historyEmployee ? <SalaryHistoryModal employee={historyEmployee} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={canExportReceipt} onClose={() => setHistoryEmployee(null)} /> : null}
+      {selectedPayrollId ? <SalaryDetailModal canManagePayrollSettings={canManagePayrollSettings} payrollId={selectedPayrollId} initialTab={selectedPayrollTab} canRecalculate={canRecalculate} canFinalize={canFinalize} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={false} onClose={() => setSelectedPayrollId(null)} onUpdated={() => registerQuery.refetch()} /> : null}
+      {selectedReceiptPayrollId ? <FundReleaseReceiptModal payrollId={selectedReceiptPayrollId} canPrint={canPrintReceipt} canExport={false} onClose={() => setSelectedReceiptPayrollId(null)} /> : null}
+      {historyEmployee ? <SalaryHistoryModal employee={historyEmployee} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={false} onClose={() => setHistoryEmployee(null)} /> : null}
     </main>
   )
 }

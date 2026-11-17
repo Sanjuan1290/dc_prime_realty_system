@@ -1,10 +1,33 @@
-import {useState} from 'react'
+import {useEffect,useRef,useState} from 'react'
+import {FiDownload,FiLoader,FiShield,FiX} from 'react-icons/fi'
 import {requestApiBlob} from '../../../utils/apiClient'
-export default function FinanceSalaryExport(){
-  const [from,setFrom]=useState(''),[to,setTo]=useState(''),[format,setFormat]=useState('zip'),[busy,setBusy]=useState(false),[message,setMessage]=useState(null)
-  const submit=async e=>{e.preventDefault();setBusy(true);setMessage(null);try{
-    const {blob}=await requestApiBlob('/employee-payroll/finance-export?'+new URLSearchParams({from,to,format}));
-    const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`hr-salary-finance-${from}-${to}.${format}`;link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);setMessage({ok:true,text:'Export downloaded. Open Finance → Imports to preview and confirm these payments.'});
-  }catch(error){setMessage({ok:false,text:error.message})}finally{setBusy(false)}}
-  return <details className="rounded-xl border border-blue-200 bg-blue-50 p-4"><summary className="cursor-pointer font-bold text-blue-900">Export salary payments to Finance</summary><p className="my-3 text-sm text-slate-600">Exports released cash payments by actual release date. Drafts and unpaid payroll are excluded. Finance detects payments previously imported from HR or Company Finances.</p><form onSubmit={submit} className="flex flex-wrap items-end gap-3"><label className="text-sm">Released from<input required type="date" value={from} onChange={e=>setFrom(e.target.value)} className="block rounded border bg-white p-2"/></label><label className="text-sm">Released to<input required min={from} type="date" value={to} onChange={e=>setTo(e.target.value)} className="block rounded border bg-white p-2"/></label><label className="text-sm">Format<select aria-label="Format" value={format} onChange={e=>setFormat(e.target.value)} className="block rounded border bg-white p-2"><option value="zip">Finance transfer ZIP</option><option value="xlsx">Finance transfer Excel</option></select></label><button disabled={busy} className="rounded-lg bg-blue-700 px-4 py-2 font-bold text-white disabled:opacity-50">{busy?'Preparing…':'Download Finance export'}</button></form>{message&&<p role={message.ok?'status':'alert'} className={`mt-3 text-sm ${message.ok?'text-green-800':'text-red-700'}`}>{message.text}</p>}</details>
+import '../../Shared/actionPanelMotion.css'
+const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
+export default function FinanceSalaryExport({period,onClose}){
+  const currentDate=today(),dialog=useRef(null),closed=useRef(false)
+  const [from,setFrom]=useState(period?.periodStart&&period.periodStart<currentDate?period.periodStart:currentDate)
+  const [to,setTo]=useState(period?.periodEnd&&period.periodEnd<currentDate?period.periodEnd:currentDate)
+  const [busy,setBusy]=useState(false),[message,setMessage]=useState(null)
+  useEffect(()=>{
+    const previous=document.activeElement;dialog.current?.showModal();closed.current=false
+    return()=>{closed.current=true;dialog.current?.close();previous?.focus?.()}
+  },[])
+  const submit=async e=>{
+    e.preventDefault();if(busy)return;setBusy(true);setMessage(null)
+    try{
+      const {blob}=await requestApiBlob('/employee-payroll/finance-export?'+new URLSearchParams({from,to,format:'csv'}))
+      const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`hr-salary-finance-${from}-${to}.csv`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)
+      if(!closed.current)setMessage({ok:true,text:'Finance CSV downloaded. Upload this original file in Finance → Imports. Edited files will be rejected.'})
+    }catch(error){if(!closed.current)setMessage({ok:false,text:error.message})}finally{if(!closed.current)setBusy(false)}
+  }
+  return <dialog ref={dialog} aria-labelledby="finance-salary-export-title" onCancel={e=>{e.preventDefault();if(!busy)onClose()}} className="dc-action-panel--in m-auto w-[calc(100%_-_2rem)] max-w-xl rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl backdrop:bg-slate-950/60">
+    <form onSubmit={submit} aria-busy={busy}>
+      <header className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 p-5"><div><p className="text-[11px] font-bold uppercase tracking-wide text-blue-700">HR &amp; Payroll</p><h2 id="finance-salary-export-title" className="mt-1 text-[20px] font-black text-slate-950">Export to Finance (CSV)</h2></div><button type="button" aria-label="Close Finance export" disabled={busy} onClick={onClose} className="flex h-[44px] w-[44px] items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50"><FiX/></button></header>
+      <div className="space-y-5 p-5"><p className="text-[14px] leading-[22px] text-slate-600">Export released salary payments by their actual release date. Drafts and unpaid payroll are excluded. Up to 500 payments per file.</p>
+        <div className="grid gap-4 sm:grid-cols-2"><label className="grid gap-2 text-[14px] font-bold text-slate-700">Released from<input required type="date" max={to||currentDate} value={from} disabled={busy} onChange={e=>setFrom(e.target.value)} className="h-[44px] w-full rounded-xl border border-slate-300 px-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"/></label><label className="grid gap-2 text-[14px] font-bold text-slate-700">Released to<input required type="date" min={from} max={currentDate} value={to} disabled={busy} onChange={e=>setTo(e.target.value)} className="h-[44px] w-full rounded-xl border border-slate-300 px-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"/></label></div>
+        <div className="flex gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-[14px] leading-[22px] text-blue-900"><FiShield className="mt-1 shrink-0"/><p>Upload the original CSV without editing it. Finance checks the file and skips payments already imported from HR or Company Finances.</p></div>
+        {message&&<p role={message.ok?'status':'alert'} className={`rounded-xl border p-3 text-[14px] leading-[22px] ${message.ok?'border-emerald-200 bg-emerald-50 text-emerald-800':'border-red-200 bg-red-50 text-red-700'}`}>{message.text}</p>}
+      </div><footer className="flex flex-wrap justify-end gap-3 border-t border-slate-200 p-4"><button type="button" disabled={busy} onClick={onClose} className="h-[44px] rounded-xl border border-slate-300 px-4 text-[14px] font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">Close</button><button type="submit" disabled={busy} className="inline-flex h-[44px] items-center gap-2 rounded-xl bg-blue-700 px-4 text-[14px] font-bold text-white transition hover:bg-blue-800 disabled:opacity-50">{busy?<FiLoader className="animate-spin"/>:<FiDownload/>}{busy?'Preparing CSV…':'Download Finance CSV'}</button></footer>
+    </form>
+  </dialog>
 }

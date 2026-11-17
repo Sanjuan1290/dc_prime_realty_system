@@ -30,7 +30,7 @@ test('confirmation totals retain centavos beyond floating-point precision',()=>{
   assert.equal(financeMoney('-0.01'),'-₱0.01');
 });
 test('an upgraded database can start without DDL privileges',async()=>{
-  const metadata=[{TABLE_NAME:'finance_import_batches',COLUMN_NAME:'status',COLUMN_TYPE:"enum('preview','committed','rejected','undone')"},...['undone_by','undone_at','undo_reason','undo_result_json'].map(COLUMN_NAME=>({TABLE_NAME:'finance_import_batches',COLUMN_NAME})),{TABLE_NAME:'finance_import_items',COLUMN_NAME:'decision',COLUMN_TYPE:"enum('new','restore','duplicate','conflict','unmapped','imported')"},{TABLE_NAME:'finance_categories',COLUMN_NAME:'name',CHARACTER_MAXIMUM_LENGTH:200},{TABLE_NAME:'finance_import_mutex',COLUMN_NAME:'id'}];
+  const metadata=[{TABLE_NAME:'finance_import_batches',COLUMN_NAME:'file_format',COLUMN_TYPE:"enum('zip','xlsx','csv')"},{TABLE_NAME:'finance_import_batches',COLUMN_NAME:'status',COLUMN_TYPE:"enum('preview','committed','rejected','undone')"},...['undone_by','undone_at','undo_reason','undo_result_json'].map(COLUMN_NAME=>({TABLE_NAME:'finance_import_batches',COLUMN_NAME})),{TABLE_NAME:'finance_import_items',COLUMN_NAME:'decision',COLUMN_TYPE:"enum('new','restore','duplicate','conflict','unmapped','imported')"},{TABLE_NAME:'finance_categories',COLUMN_NAME:'name',CHARACTER_MAXIMUM_LENGTH:200},{TABLE_NAME:'finance_import_mutex',COLUMN_NAME:'id'}];
   await ensureFinanceSchema({execute:async sql=>{
     if(sql.includes('information_schema.TABLES'))return [[{TABLE_NAME:'finance_password_resets'}]];
     if(sql.startsWith('SELECT COLUMN_NAME'))return [[...['must_change_password','temporary_password_expires_at','invitation_sent_at'].map(COLUMN_NAME=>({COLUMN_NAME}))]];

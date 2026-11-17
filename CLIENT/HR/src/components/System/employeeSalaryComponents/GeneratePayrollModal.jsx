@@ -7,6 +7,8 @@ import { useFetch, useFetchPost } from '../../../utils/useFetch'
 // Present payroll checks as actions staff can take, not internal validation codes.
 const explainIssue = (issue) => {
   switch (issue?.code) {
+    case 'EMPLOYEE_HIRED_AFTER_PERIOD':
+      return issue.message
     case 'NEW_HIRE_PRORATION_NOT_APPROVED':
       return 'First pay needs approval because this employee started during the pay period. Ask an authorized manager to enable partial first pay in Payroll Settings.'
     case 'NEW_HIRE_COMPENSATION_DATE_MISMATCH':
@@ -33,7 +35,7 @@ const explainWarning = (warning) => {
     const rates = extraPay[1].replace(/Regular OT/g, 'Regular Overtime').replace(/Rest Day OT/g, 'Rest Day Overtime').replace(/Night Differential/g, 'Night Shift Extra Pay')
     return `Missing pay rate: ${rates}. Add the approved rate in Payroll Settings or these extra hours will be ₱0.00 in the draft.`
   }
-  if (text.startsWith('No rest-day assignment was found')) return 'Rest days are not set. Check the employee’s work schedule.'
+  if (text.startsWith('No rest-day assignment was found')) return text
   if (text.startsWith('No Time In/Out entries were found')) return 'No attendance was recorded. Missing workdays may be counted as absences.'
   if (text.includes('have Time In but no Time Out')) return 'Some attendance records have no Time Out. Check Attendance before creating payroll.'
   if (text.startsWith('Approved new-hire workday proration applies')) return 'First pay will include scheduled workdays on or after the hire date.'
@@ -55,6 +57,8 @@ const GeneratePayrollModal = ({ month, periodType, periodLabel, scheduledRelease
   const selected = useMemo(() => employeeId === 'all' ? null : employees.find((item) => Number(item.employee_id) === Number(employeeId)), [employees, employeeId])
   const included = employeeId === 'all' ? employees : selected ? [selected] : []
   const notReady = included.filter((item) => item.payroll_readiness?.can_generate === false)
+  const ineligible = notReady.filter((item) => item.payroll_readiness?.eligible === false)
+  const needsChanges = notReady.length - ineligible.length
   const ready = included.length - notReady.length
   const needsReview = included.filter((employee) => employee.payroll_readiness?.issues?.length || employee.payroll_readiness?.warnings?.length)
 
@@ -78,10 +82,10 @@ const GeneratePayrollModal = ({ month, periodType, periodLabel, scheduledRelease
   })
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-5">
+    <div role="dialog" aria-modal="true" aria-labelledby="create-payroll-title" className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-5">
       <div className="flex max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
         <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div className="flex items-center gap-2"><FiDollarSign className="text-blue-600" /><h2 className="text-xl font-black text-slate-950">Create Payroll Draft</h2></div>
+          <div className="flex items-center gap-2"><FiDollarSign className="text-blue-600" /><h2 id="create-payroll-title" className="text-xl font-black text-slate-950">Create Payroll Draft</h2></div>
           <button type="button" onClick={onClose} disabled={mutation.isPending} aria-label="Close Create Payroll Draft" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"><FiX /></button>
         </header>
 
@@ -111,7 +115,7 @@ const GeneratePayrollModal = ({ month, periodType, periodLabel, scheduledRelease
             <span className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-800"><FiUsers />Choose Employees</span>
             <select value={employeeId} onChange={(event) => { setEmployeeId(event.target.value); setLastResult(null) }} disabled={employeesQuery.isLoading || mutation.isPending} className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800">
               <option value="all">All Active Employees</option>
-              {employees.map((employee) => <option key={employee.employee_id} value={employee.employee_id}>{employee.employee_code} · {employee.full_name}{employee.payroll_readiness && !employee.payroll_readiness.can_generate ? ' · Needs changes' : ''}</option>)}
+              {employees.map((employee) => <option key={employee.employee_id} value={employee.employee_id}>{employee.employee_code} · {employee.full_name}{employee.payroll_readiness?.eligible === false ? ' · Outside pay period' : employee.payroll_readiness && !employee.payroll_readiness.can_generate ? ' · Needs changes' : ''}</option>)}
             </select>
           </label>
 
@@ -119,7 +123,7 @@ const GeneratePayrollModal = ({ month, periodType, periodLabel, scheduledRelease
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-black text-slate-900">Payroll Check</h3>
               <span className={`rounded-full px-3 py-1 text-xs font-bold ${notReady.length ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-800'}`}>
-                {employeesQuery.isLoading ? 'Checking...' : `${ready} ready · ${notReady.length} need changes`}
+                {employeesQuery.isLoading ? 'Checking...' : `${ready} ready${needsChanges ? ` · ${needsChanges} need changes` : ''}${ineligible.length ? ` · ${ineligible.length} outside pay period` : ''}`}
               </span>
             </div>
             {!employeesQuery.isLoading && !employeesQuery.isError && !included.length ? <p className="mt-3 text-sm text-slate-600">No employees found for this pay period.</p> : null}
@@ -131,7 +135,7 @@ const GeneratePayrollModal = ({ month, periodType, periodLabel, scheduledRelease
               return (
                 <div key={employee.employee_id} className="rounded-xl border border-amber-200 bg-amber-50 p-3">
                   <p className="flex items-center gap-2 text-sm font-bold text-slate-950"><FiAlertTriangle className="shrink-0 text-amber-600" />{employee.full_name} · {employee.employee_code}</p>
-                  {issues.length ? <div className="mt-2 space-y-2">{issues.map((issue, index) => <p key={`${issue.code}-${index}`} className="text-sm font-medium text-rose-900"><strong>Fix:</strong> {explainIssue(issue)}</p>)}</div> : null}
+                  {issues.length ? <div className="mt-2 space-y-2">{issues.map((issue, index) => <p key={`${issue.code}-${index}`} className="text-sm font-medium text-rose-900"><strong>{employee.payroll_readiness?.eligible === false ? 'Outside pay period:' : 'Fix:'}</strong> {explainIssue(issue)}</p>)}</div> : null}
                   {warnings.length ? <div className="mt-2 space-y-2">{warnings.map((warning, index) => <p key={index} className="text-sm text-amber-900"><strong>Check:</strong> {explainWarning(warning)}</p>)}</div> : null}
                 </div>
               )

@@ -3,6 +3,7 @@
  * Each source contributes at most once to this view; historical cancelled sales need review.
  */
 const fail = (message, code = 'FINANCE_INVALID', statusCode = 400) => Object.assign(new Error(message), {code, statusCode});
+export const financeReconciliationThrough = (end, today = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())) => end > today ? today : end;
 export const moneyAmount = (value) => {
   if (typeof value !== 'string' && typeof value !== 'number') throw fail('Enter a valid amount.');
   const text = String(value).trim();
@@ -221,7 +222,7 @@ export const loadFinanceSummary = async (connection, {from,to,page=1,allTransact
     const [sync] = await connection.query('SELECT reconciled_through_date,reconciled_at,cash_advances_to_review FROM finance_hr_sync_state WHERE id=1');
     hrSync = sync[0] || null;
     const through = String(hrSync?.reconciled_through_date || '').slice(0,10);
-    if (!through || through < end) warnings.push('HR salary transfer is not reconciled through this report date. Salary expenses may be incomplete.');
+    if (!through || through < financeReconciliationThrough(end)) warnings.push('HR salary transfer is not reconciled through this report date. Salary expenses may be incomplete.');
     if (hrSync?.cash_advances_to_review == null) warnings.push('HR cash-advance status is unavailable; manual reconciliation required.');
     else if (Number(hrSync.cash_advances_to_review)>0) warnings.push('Employee cash advances require payment-date reconciliation.');
   }

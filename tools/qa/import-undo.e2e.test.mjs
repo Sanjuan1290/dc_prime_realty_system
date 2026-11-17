@@ -6,7 +6,8 @@ import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {canonicalCsv,revision,sha256,summarize} from '../../SERVER/FINANCE/src/importContract.js';
-import {buildFinanceTransferZip} from '../../SERVER/HR/services/salaryFinanceExport.service.js';
+import {buildSignedFinanceCsv} from '../../SERVER/HR/services/financeTransferCsv.js';
+process.env.FINANCE_TRANSFER_SIGNING_SECRET='qa-csv-signing-key-only-'.repeat(3);
 const require=createRequire(new URL('../../SERVER/FINANCE/package.json',import.meta.url)),mysql=require('mysql2/promise');
 const pool=mysql.createPool({host:'127.0.0.1',port:13307,user:'qa_finance',password:'qa-isolated-only-password',database:'dc_prime_finance_db',dateStrings:true});
 const [[server]]=await pool.execute('SELECT @@port AS port,@@datadir AS datadir');
@@ -23,7 +24,7 @@ const finance=(path,options)=>request('/finance'+path,options);
 async function fixture(suffix,{category=`Automatic import ${run}`,kind='expense',amount='123.45',id=`manual:${run+suffix}`}={}){
   const row={schema_version:'1.0',source_system:'realty',source_transaction_id:id,source_version:'1',transaction_date:'2026-10-21',recorded_at:'2026-10-21 09:00:00',transaction_type:kind,category,description:'QA import undo '+suffix,amount,currency:'PHP',status:'posted',reference_id:'',source_type:'manual'};row.source_revision_sha256=revision(row);
   const csv=canonicalCsv([row]),manifest={schema_version:'1.0',source_system:'realty',export_id:randomUUID(),generated_at:'2026-10-31T00:00:00Z',currency:'PHP',period:{from:'2026-10-01',to:'2026-10-31'},filters:{kind:'all',source:'all',category:'all'},status_scope:'posted_only',salary_source:'legacy',warnings:[],reconciled:true,snapshot:summarize([row]),context:{},transactions_sha256:sha256(csv),checksum_algorithm:'sha256',data_file:'transactions.csv'};
-  const buffer=await buildFinanceTransferZip({rows:[row],csv,manifest});return {body:{filename:`qa-undo-${run}-${suffix}.zip`,base64:buffer.toString('base64')},row,manifest};
+  const buffer=await buildSignedFinanceCsv({rows:[row],csv,manifest});return {body:{filename:`qa-undo-${run}-${suffix}.csv`,base64:buffer.toString('base64')},row,manifest};
 }
 const preview=async file=>{const result=await finance('/imports/preview',{body:file.body});ok(result,201);return result.data};
 const commit=async batch=>{const result=await finance(`/imports/${batch.batch_id}/commit`,{body:{}});ok(result);return result.data};
@@ -94,7 +95,7 @@ test('long and inactive source categories import automatically; changed source v
 test('partially overlapping files undo only payments no longer included by another active import',async()=>{
   const before=(await finance('/dashboard?from=2026-10-01&to=2026-10-31')).data.closing_balance;
   const parts=await Promise.all([fixture(10,{amount:'1.11'}),fixture(11,{amount:'2.22'}),fixture(12,{amount:'3.33'})]);
-  const bundle=async(indexes,name)=>{const rows=indexes.map(index=>parts[index].row),csv=canonicalCsv(rows),manifest={...parts[0].manifest,export_id:randomUUID(),snapshot:summarize(rows),transactions_sha256:sha256(csv)};return {body:{filename:name+'.zip',base64:(await buildFinanceTransferZip({rows,csv,manifest})).toString('base64')}}};
+  const bundle=async(indexes,name)=>{const rows=indexes.map(index=>parts[index].row),csv=canonicalCsv(rows),manifest={...parts[0].manifest,export_id:randomUUID(),snapshot:summarize(rows),transactions_sha256:sha256(csv)};return {body:{filename:name+'.csv',base64:(await buildSignedFinanceCsv({rows,csv,manifest})).toString('base64')}}};
   const a=await preview(await bundle([0,1],'overlap-a-'+run)),bFile=await bundle([1,2],'overlap-b-'+run);await commit(a);const b=await preview(bFile);assert.equal(b.counts.new,1);assert.equal(b.counts.duplicate,1);await commit(b);
   const proofA=await review(a.batch_id);assert.equal(proofA.impact.removed,1);assert.equal(proofA.impact.kept,1);assert.equal(proofA.impact.money_out_removed,'1.11');ok(await undo(a.batch_id,proofA));
   const proofB=await review(b.batch_id);assert.equal(proofB.impact.removed,2);assert.equal(proofB.impact.money_out_removed,'5.55');ok(await undo(b.batch_id,proofB));
