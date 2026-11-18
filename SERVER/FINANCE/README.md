@@ -18,6 +18,16 @@ Admins supply the name, email and role. An account receives a cryptographically 
 
 HR salary events and Company Finances transfers use signed CSV only. ZIP, Excel, unsigned or edited files are rejected. Both producers preserve the same verified, exact-centavo source rows. HR payroll has its own source namespace; repeated salary events exported by either application are recognized. Older external HR salaries labelled Realty are recognized only through a committed import receipt proving their origin. Historical Realty payroll remains distinct.
 
+### Required CSV signing configuration
+
+Set `FINANCE_TRANSFER_SIGNING_SECRET` to the **same dedicated random value** on the SYSTEM, HR, and Finance backend services. It must be between 32 and 512 characters. This is separate from login keys and HR salary-delivery tokens. Keep the value out of frontend variables and source control.
+
+Missing this variable causes `Finance CSV verification is not configured. Please contact your administrator.` A different value on Finance causes signature verification to reject otherwise valid exports. Signature checks remain mandatory.
+
+For Render deployments, set this variable in each backend service's environment, then restart or redeploy those services. Local Git-ignored `.env` files are not deployed with the repository; rebuilding the Pages frontend does not configure the backend key. Reuse the existing shared key when one is already in use so previously exported files remain verifiable.
+
+From a local checkout with all three backend `.env` files configured, run `node tools/qa/check-finance-csv-config.mjs` from the repository root. This read-only check verifies matching keys and passes synthetic exports through the real Finance CSV parser without exposing keys or accessing any database. It checks local settings, not the deployed services.
+
 New manual income and expenses are recorded here. The main system retains historical manual entries but refuses new ones. Salary undo exports include a separate reversal, with new identities for later releases. Import the preceding event first or include the complete sequence in one CSV. Finance blocks removal of an earlier payment while a later salary event remains active; undo later imports first. [Verification and deployment notes](../../QA_REPORTS/2026-11-18-payroll-undo-and-connected-fixes.md).
 
 Administrators upload a file, review it and confirm. No category mapping is required. Import keeps the category names and income/expense types from the file, reuses matching Finance categories and creates missing ones during commit. Inactive categories are reactivated with an audit event. Preview changes neither balances nor categories. Old mapping records remain as historical data; the mapping endpoints and controls are removed.

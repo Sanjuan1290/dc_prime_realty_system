@@ -40,6 +40,10 @@ Keep Render's deployment health check on `/api/v1/health`. It confirms that the 
 
 These startup changes need a Render SYSTEM backend redeployment. No database migration or dependency upgrade is required.
 
+## Finance CSV exports
+
+Company Finances and HR exports require the same `FINANCE_TRANSFER_SIGNING_SECRET` on the SYSTEM, HR, and Finance backend services. Missing this variable produces the CSV verification configuration error. Set it on all three services and restart or redeploy each one. The key must be private, dedicated to these transfers, and at least 32 characters. See [Finance CSV signing setup](../FINANCE/README.md#required-csv-signing-configuration). Local `.env` files are ignored by Git and do not configure Render automatically.
+
 ## Diagnose a failed database check
 
 The startup log intentionally omits passwords, connection strings and raw driver errors. Use the error code to guide the next check:

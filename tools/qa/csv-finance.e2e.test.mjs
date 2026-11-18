@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {resolve} from 'node:path';
 import {writeFileSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
 import {parseUpload} from '../../SERVER/FINANCE/src/importFile.js';
 import {canonicalCsv,sha256,revision,summarize} from '../../SERVER/FINANCE/src/importContract.js';
 const require=createRequire(new URL('../../SERVER/FINANCE/package.json',import.meta.url)),mysql=require('mysql2/promise');
@@ -11,8 +12,8 @@ const pool=mysql.createPool({host:'127.0.0.1',port:13307,user:'qa_finance',passw
 const systemDb=mysql.createPool({host:'127.0.0.1',port:13307,user:'qa_system',password:'qa-isolated-only-password',database:'dc_prime_realty_system_db',dateStrings:true});
 const base='http://127.0.0.1:4179',secret='qa-csv-signing-key-only-'.repeat(3),cookies={},password='Synthetic-QA-only-2026!',run=Date.now();
 const prefix={system:'/api/v1',hr:'/hr-api/api/v1',finance:'/finance-api/api/v1'};
-async function request(app,path,body,session=cookies[app]){
- const response=await fetch(base+prefix[app]+path,{method:body?'POST':'GET',headers:{origin:base,'x-requested-with':'dcprime-finance',...(session?{cookie:session}:{}),...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+async function request(app,path,body,session=cookies[app],method=body?'POST':'GET'){
+ const response=await fetch(base+prefix[app]+path,{method,headers:{origin:base,'x-requested-with':'dcprime-finance',...(session?{cookie:session}:{}),...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
  const bytes=Buffer.from(await response.arrayBuffer());let data;try{data=JSON.parse(bytes.toString())}catch{data=null}
  return {status:response.status,data,bytes,headers:response.headers};
 }
@@ -78,4 +79,30 @@ test('A verified CSV imports once; old preview formats must be replaced while ol
  const proof=await request('finance',`/finance/imports/${companyBatch.batch_id}/undo-preview`);ok(proof);
  ok(await request('finance',`/finance/imports/${companyBatch.batch_id}/undo`,{review_token:proof.data.review_token,reason:'Synthetic CSV compatibility check'}));
  const restore=await upload(companyFile);ok(restore,201);assert.equal(restore.data.counts.restore,1);ok(await commit(restore.data));
+});
+
+test('Main-system property payments export and import all three cash collections with exact cents',async()=>{
+ const name='CSV Property '+randomUUID(),code='C'+randomUUID().slice(0,5).toUpperCase();
+ ok(await request('system','/projects/lot-projects',{name,location:'Synthetic Cavite',locationCode:code,cadastralLots:['QA-CSV']}),201);
+ const [[project]]=await systemDb.execute('SELECT * FROM lot_projects WHERE lot_project_name=?',[name]);
+ ok(await request('system',`/projects/lot-projects/${project.lot_project_slug}/listings`,{unitNumber:'1',unitCode:code+'-1',installmentPricePerSqm:2200,cashPricePerSqm:2000,lotAreaSqm:1200,legalMiscRate:10,reservationFee:50000,status:'available'}),201);
+ const [[listing]]=await systemDb.execute('SELECT * FROM lot_project_listings WHERE lot_project_id=?',[project.lot_project_id]);
+ const [profile]=await systemDb.execute(`INSERT INTO lot_project_client_profiles(lot_project_id,lot_project_listing_id,buyer_full_name,soa_reservation_fee,soa_reservation_fee_applied_to_downpayment,soa_starting_date,soa_first_due_date,soa_downpayment_percentage,soa_downpayment_terms,soa_monthly_terms,soa_penalty_calculation_method,soa_annual_interest_rate,soa_interest_rate_overridden,soa_selected_tcp,soa_selected_lmf_amount) VALUES(?,?,'Synthetic CSV Buyer',50000,1,'2026-11-16','2026-11-16',20,3,24,'none',11.5,1,2904000,264000)`,[project.lot_project_id,listing.lot_project_listing_id]);
+ const [account]=await systemDb.execute(`INSERT INTO lot_project_accounts(account_reference,lot_project_id,lot_project_listing_id,lot_project_client_profile_id,unit_id_snapshot) VALUES(?,?,?,?,'QA-CSV')`,['QA-'+randomUUID(),project.lot_project_id,listing.lot_project_listing_id,profile.insertId]);
+ await systemDb.execute("UPDATE lot_project_listings SET current_account_id=?,lot_project_listing_status='sold' WHERE lot_project_listing_id=?",[account.insertId,listing.lot_project_listing_id]);
+ const endpoint=`/projects/lot-projects/${project.lot_project_slug}/listings/${listing.lot_project_listing_id}`;
+ ok(await request('system',endpoint+'/soa-terms',{firstDueDate:'2026-12-01'},undefined,'PUT'));
+ const [schedules]=await systemDb.execute('SELECT * FROM lot_project_payment_schedules WHERE lot_project_account_id=? ORDER BY due_date,lot_project_payment_schedule_id',[account.insertId]);
+ const ids=[];
+ for(const [index,amount] of [50000,176933.33,176933.33].entries()){
+  const row=index===0?schedules.find(r=>/reservation/i.test(r.description)):schedules.filter(r=>/downpayment/i.test(r.description))[index-1];
+  const paid=await request('system',endpoint+'/payments',{amount,paymentType:index===0?'Reservation':'Downpayment',soaRowId:row.lot_project_payment_schedule_id,paymentDate:'2026-11-18',method:'Cash',requestKey:randomUUID()});ok(paid,201);ids.push(paid.data.payment_id);
+ }
+ const exported=await request('system','/company-finances/transactions/export?from=2026-11-18&to=2026-11-18&format=csv&profile=transfer&source=property&page=99');ok(exported);
+ const parsed=await parseUpload({format:'csv',buffer:exported.bytes},{secret});assert.equal(parsed.rows.length,3);assert.equal(parsed.totals.money_in,'403866.66');assert.equal(parsed.totals.money_out,'0.00');
+ assert.deepEqual(new Set(parsed.rows.map(r=>r.source_transaction_id)),new Set(ids.map(id=>'property:'+id)));
+ assert.ok(parsed.rows.every(r=>r.source_system==='realty'&&r.source_type==='property'));
+ const preview=await upload(exported.bytes,'property-payments.csv');ok(preview,201);assert.equal(preview.data.counts.new,3);
+ const imported=await commit(preview.data);ok(imported);assert.equal(imported.data.result.imported,3);assert.equal(imported.data.result.imported_money_in,'403866.66');
+ writeFileSync('QA_REPORTS/.runtime/property-finance-verified.csv',exported.bytes);
 });
