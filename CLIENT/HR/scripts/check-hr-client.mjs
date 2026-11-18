@@ -12,7 +12,7 @@ function scan(dir){for(const ent of fs.readdirSync(dir,{withFileTypes:true})){
 scan(src)
 const errors=[]
 // Permit these pure utilities; imports from other applications remain forbidden.
-const approvedSharedFiles=new Set(['upstreamAvailability.js','apiFailure.js','apiReadiness.js'].map(file=>path.resolve(root,'../shared',file)))
+const approvedSharedFiles=new Set(['upstreamAvailability.js','apiFailure.js','apiReadiness.js','auditDetails.js','AuditEventDetails.jsx','AuditEventDetails.css'].map(file=>path.resolve(root,'../shared',file)))
 files.push(...approvedSharedFiles)
 const imports=/\b(?:import|export)\s+(?:[\s\S]*?\s+from\s*)?['"](\.[^'"]+)['"]|import\(\s*['"](\.[^'"]+)['"]\s*\)/g
 for(const file of files){const rel=path.relative(src,file);const body=fs.readFileSync(file,'utf8')

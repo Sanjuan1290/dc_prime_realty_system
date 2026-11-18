@@ -26,7 +26,7 @@ Set production secrets in provider settings, never in VITE variables or Git. Ret
 ## Live HR and Finance operations
 
 - HR employee/attendance editing, payroll generation, finalization and release use existing role permissions. HR_READ_ONLY=true explicitly pauses writes; VITE_HR_READ_ONLY=true optionally matches that state in the frontend.
-- Payroll exports include released cash payments only, by actual release date. HR and Company Finances produce compatible ZIP/Excel transfer files. Finance handles file categories automatically and uses a preview plus atomic commit; repeated payments are skipped. Imports can be undone with an audit trail and restored by uploading the file again. Changed fingerprints require review.
+- Payroll exports include immutable released cash and authorized undo reversals, by cash date. HR and Company Finances produce compatible signed CSV files. Finance handles file categories automatically and uses a preview plus atomic commit; repeated events are skipped. Imports can be undone with an audit trail and restored by uploading the file again. Salary event dependencies and changed fingerprints require review. New manual income/expenses are recorded in Finance.
 - Company Finances retains actual balance/source consistency warnings. Exporting to Finance is enabled when those checks pass, without deployment approval flags. The historical salary-source setting remains explicit to preserve financial history.
 - Finance invitations email a random temporary password, expire after 24 hours, and require password replacement before any Finance data is available. Configure Resend on the Finance service.
 - HR audit history is available to HR administrators and payroll managers. Signed receipt uploads still require a separate secured-storage implementation; finalized receipt print/export is available to permissioned users.
@@ -39,4 +39,4 @@ For verification without loading private .env files, use **node tools/qa/check-p
 
 The fresh-start schemas under DATABASES/FRESH_START are for new empty databases, not upgrades of existing live databases. The invitation columns, import undo support and new HR permissions have additive startup upgrades and separately reviewable SQL migrations. Existing business data and passwords are preserved.
 
-See [implementation and release evidence](QA_REPORTS/2026-11-16-pdf-features-live-operation.md) for the current change's tests and publication status. Historical batch documents describe earlier states and are not active deployment gates.
+See [current implementation and test evidence](QA_REPORTS/2026-11-18-payroll-undo-and-connected-fixes.md) for payroll undo, release, audit, document and export changes and their publication status. Historical batch documents describe earlier states and are not active deployment gates.

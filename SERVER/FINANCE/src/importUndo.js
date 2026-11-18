@@ -13,12 +13,22 @@ export async function lockImports(conn){
   if(!lock)throw problem('IMPORT_NOT_READY','Imports are initializing. Please try again shortly.',503);
 }
 async function selectImpact(conn,batch,{lock=false}={}){
-  const [rows]=await conn.execute(`SELECT t.id,t.status,t.kind,t.amount,t.source_system,t.source_revision_sha256,
+  const [rows]=await conn.execute(`SELECT t.id,t.status,t.kind,t.amount,t.source_system,t.source_transaction_id,t.source_revision_sha256,
+    (t.source_system='hr' OR EXISTS(SELECT 1 FROM finance_import_items provenance JOIN finance_import_batches pb ON pb.id=provenance.batch_id WHERE provenance.transaction_id=t.id AND pb.status IN ('committed','undone') AND JSON_UNQUOTE(JSON_EXTRACT(pb.manifest_json,'$.salary_source'))='external')) AS external_salary,
     (SELECT COUNT(DISTINCT b.id) FROM finance_import_items other_item JOIN finance_import_batches b ON b.id=other_item.batch_id
       WHERE other_item.transaction_id=t.id AND b.status='committed' AND b.id<>?) AS other_imports
     FROM finance_transactions t WHERE t.id IN (
       SELECT transaction_id FROM finance_import_items WHERE batch_id=? AND transaction_id IS NOT NULL)
     ORDER BY t.id${lock?' FOR UPDATE':''}`,[batch.id,batch.id]);
+  const removing=new Set(rows.filter(row=>row.status==='posted'&&!Number(row.other_imports)).map(row=>String(row.id)));
+  for(const row of rows){
+    if(!removing.has(String(row.id))||!row.external_salary)continue;
+    const identity=/^salary:([1-9]\d*)(?::([1-9]\d*))?$/.exec(row.source_transaction_id);
+    if(!identity)continue;
+    const next='salary:'+identity[1]+':'+(Number(identity[2]||1)+1);
+    const [[later]]=await conn.execute("SELECT id FROM finance_transactions WHERE source_system='hr' AND source_transaction_id=? AND status='posted'",[next]);
+    if(later&&!removing.has(String(later.id)))throw problem('SALARY_DEPENDENT_IMPORT','Undo the later salary reversal or release import first. Its preceding payment must remain until then.',409);
+  }
   return {rows,preview:summarizeUndo(batch,rows)};
 }
 export async function previewUndoImport(id,pool=getPool()){

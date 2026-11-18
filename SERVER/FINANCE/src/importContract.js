@@ -85,9 +85,12 @@ export function validateSnapshot({rows,manifest,rawCsv=null},today=dateInManila(
     const pos=i+2;
     if(!row||COLUMNS.some(k=>typeof row[k]!=='string'))fail('INVALID_ROW',`Row ${pos} contains a non-text or missing field.`);
     if(row.schema_version!=='1.0'||!['realty','hr'].includes(row.source_system)||row.source_version!=='1'||row.currency!=='PHP'||row.status!=='posted')fail('INVALID_ROW',`Row ${pos} has an unsupported source, version, currency or status.`);
-    if((manifest.source_system==='hr'&&row.source_system!=='hr')||(row.source_system==='hr'&&(manifest.salary_source!=='external'||row.source_type!=='salary'||row.transaction_type!=='expense'||row.category!=='Salary')))fail('INVALID_ROW',`Row ${pos} has an unsupported HR payment.`);
+    const salaryVersion=/^salary:([1-9]\d*):([1-9]\d*)$/.exec(row.source_transaction_id);
+    if(salaryVersion&&(!Number.isSafeInteger(Number(salaryVersion[2]))||Number(salaryVersion[2])<2||Number(salaryVersion[2])>100000))fail('INVALID_ROW',`Row ${pos} has an invalid salary event version.`);
+    const salaryReversal=salaryVersion&&Number(salaryVersion[2])>=2&&Number(salaryVersion[2])%2===0;
+    if((manifest.source_system==='hr'&&row.source_system!=='hr')||(row.source_system==='hr'&&(manifest.salary_source!=='external'||row.source_type!=='salary'||row.transaction_type!==(salaryReversal?'income':'expense')||row.category!=='Salary'||(salaryVersion&&Number(salaryVersion[2])<2))))fail('INVALID_ROW',`Row ${pos} has an unsupported HR payment.`);
     if(!SOURCES.includes(row.source_type)||!['income','expense'].includes(row.transaction_type))fail('INVALID_ROW',`Row ${pos} has an unsupported transaction type.`);
-    if(!/^(property|salary|manual|commission|network|refund):[1-9]\d*$/.test(row.source_transaction_id)||ids.has(row.source_system+row.source_transaction_id))fail('DUPLICATE_SOURCE_ID',`Row ${pos} has a missing or repeated source identity.`);
+    if((!/^(property|salary|manual|commission|network|refund):[1-9]\d*$/.test(row.source_transaction_id)&&!(row.source_system==='hr'&&salaryVersion))||ids.has(row.source_system+row.source_transaction_id))fail('DUPLICATE_SOURCE_ID',`Row ${pos} has a missing or repeated source identity.`);
     ids.add(row.source_system+row.source_transaction_id);
     const typePrefix={manual:'manual',property:'property',salary:'salary',commission:'commission',commission_archive:'commission',network_payout:'network',refund:'refund'}[row.source_type];
     if(row.source_transaction_id.split(':')[0]!==typePrefix)fail('INVALID_ROW',`Row ${pos} has mismatched source identity.`);

@@ -31,7 +31,9 @@ test.before(async()=>{
 test.after(()=>Promise.all([pool.end(),systemDb.end()]));
 test('Company Finances exports a signed CSV, including all filtered records and exact cents',async()=>{
  const category=await request('system','/company-finances/categories',{kind:'income',name:'CSV QA '+run});ok(category);
- ok(await request('system','/company-finances/transactions',{kind:'income',amount:'100.01',transaction_date:'2026-10-25',category_id:category.data.data.id,description:'CSV QA source payment'}));
+ const blocked=await request('system','/company-finances/transactions',{kind:'income',amount:'100.01',transaction_date:'2026-10-25',category_id:category.data.data.id,description:'CSV QA source payment'});ok(blocked,409);assert.equal(blocked.data.code,'MANUAL_ENTRIES_MOVED');
+ // A pre-existing manual entry must remain exportable after new entry moves to Finance.
+ await systemDb.execute("INSERT INTO company_finance_transactions(kind,amount,transaction_date,category_id,description,created_by_user_id) VALUES('income','100.01','2026-10-25',?,'CSV QA historical payment',1)",[category.data.data.id]);
  const result=await request('system','/company-finances/transactions/export?'+new URLSearchParams({from:'2026-10-01',to:'2026-10-31',format:'csv',profile:'transfer',source:'manual',kind:'income',category:'CSV QA '+run,page:'99'}));ok(result);
  assert.match(result.headers.get('content-type'),/^text\/csv/);assert.match(result.headers.get('content-disposition'),/\.csv"$/);
  companyFile=result.bytes;companyData=await parseUpload({format:'csv',buffer:companyFile},{secret});assert.equal(companyData.rows.length,1);assert.equal(companyData.totals.money_in,'100.01');

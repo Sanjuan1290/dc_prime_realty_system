@@ -83,7 +83,7 @@ export const ensureEmployeePayrollSchema = async (connection) => {
 
 // Payroll helpers were lost during the standalone HR extraction. They operate
 // only on the HR connection supplied by the caller and never change schema.
-const ensurePeriodRow = async (connection, period) => {
+const ensurePeriodRow = async (connection, period, employeeId) => {
   await connection.query(`
     INSERT INTO employee_payroll_periods (period_label, period_start, period_end, period_type, scheduled_release_date, payroll_status)
     VALUES (?, ?, ?, ?, ?, 'draft')
@@ -101,6 +101,12 @@ const ensurePeriodRow = async (connection, period) => {
   const row = rows[0];
   if (!row) throw payrollError('Unable to create the payroll period.', 'PAYROLL_PERIOD_CREATE_FAILED', 500);
   if (row.payroll_status !== 'draft') {
+    // An individually verified undo may reopen this employee's Draft without
+    // unlocking any other employee or changing the shared period's status.
+    const [[reopened]]=await connection.query(`SELECT p.employee_payroll_id FROM employee_payrolls p
+      WHERE p.employee_payroll_period_id=? AND p.employee_id=? AND p.payroll_status='draft'
+      AND EXISTS(SELECT 1 FROM hr_payroll_undo_history h WHERE h.payroll_id=p.employee_payroll_id) LIMIT 1`,[row.employee_payroll_period_id,employeeId]);
+    if(reopened)return row;
     throw payrollError('This payroll period is no longer Draft and cannot generate or recalculate Draft payroll.', 'PAYROLL_PERIOD_NOT_DRAFT', 409);
   }
   return row;
@@ -303,7 +309,7 @@ export const calculateAndStoreDraftPayroll = async (connection, {
     firstHalfDay: payrollSettings.first_half_payday,
     secondHalfDay: payrollSettings.second_half_payday,
   });
-  const periodRow = await ensurePeriodRow(connection, normalizedPeriod);
+  const periodRow = await ensurePeriodRow(connection, normalizedPeriod, employeeId);
   const hireDate = dateOnly(employee.hire_date);
   if (hireDate > normalizedPeriod.periodStart && hireDate <= normalizedPeriod.periodEnd
       && payrollSettings.new_hire_proration_rule !== 'scheduled_workdays') {

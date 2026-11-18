@@ -5,7 +5,7 @@ import {buildSalaryFinanceSnapshot} from '../../HR/services/salaryFinanceExport.
 import {buildFinanceExportSnapshot} from '../../SYSTEM/services/companyFinanceExport.service.js';
 import {validateSnapshot,canonicalCsv,sha256,summarize} from '../src/importContract.js';
 import {parseUpload} from '../src/importFile.js';
-const event={source_system:'hr',event_type:'salary.cash_released.v1',source_payroll_id:'42',cash_date:'2026-01-15',recorded_at:'2026-01-15T01:02:03.456Z',amount:'12345.67'};
+const event={source_event_version:1,direction:'out',source_system:'hr',event_type:'salary.cash_released.v1',source_payroll_id:'42',cash_date:'2026-01-15',recorded_at:'2026-01-15T01:02:03.456Z',amount:'12345.67'};
 const payroll={employee_payroll_id:42,released_date:event.cash_date,net_fund_release:event.amount,payload_json:JSON.stringify(event)};
 const snapshot=()=>buildSalaryFinanceSnapshot({payrolls:[payroll],from:'2026-01-01',to:'2026-01-31'});
 test('HR CSV passes the real Finance parser with the same signing secret',async()=>{

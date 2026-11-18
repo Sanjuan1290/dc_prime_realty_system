@@ -98,7 +98,11 @@ export async function getDashboard(query={}) {
 }
 export async function listAudit(query={},pool=getPool()) {
   const page=Number(query.page??1);if(!Number.isSafeInteger(page)||page<1||page>100000)throw problem('INVALID_PAGE','Invalid page.');
-  const [rows]=await pool.execute(`SELECT id,actor_user_id,action,entity_type,entity_id,metadata_json,created_at FROM finance_audit_logs ORDER BY id DESC LIMIT 50 OFFSET ${(page-1)*50}`);
-  return {items:rows,page};
+  const [rows]=await pool.execute(`SELECT a.id,a.actor_user_id,u.display_name AS actor_name,a.action,a.entity_type,a.entity_id,a.metadata_json,
+    UNIX_TIMESTAMP(a.created_at) AS recorded_epoch
+    FROM finance_audit_logs a LEFT JOIN finance_users u ON u.id=a.actor_user_id ORDER BY a.id DESC LIMIT 50 OFFSET ${(page-1)*50}`);
+  const redact=(value,key='')=>/password|token|secret|cookie|signature|bank|pin|account.?number|otp|verification.?code/i.test(key)?'[REDACTED]':Array.isArray(value)?value.map(v=>redact(v)):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,redact(v,k)])):value;
+  const clock=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+  return {items:rows.map(({recorded_epoch,...row})=>{let details=row.metadata_json;try{if(typeof details==='string')details=JSON.parse(details)}catch{details={description:'Details unavailable.'}}return {...row,created_at:clock.format(new Date(Number(recorded_epoch)*1000)),metadata_json:redact(details)}}),page};
 }
 

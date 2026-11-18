@@ -18,7 +18,6 @@ export default function CompanyFinances(){
   const queryClient = useQueryClient()
   const {data:userData} = useCurrentUser()
   const user = userData?.user
-  const canRecord=hasPermission(user,PERMISSIONS.COMPANY_FINANCES_RECORD)
   const canEdit=hasPermission(user,PERMISSIONS.COMPANY_FINANCES_EDIT)
   const canCategories=hasPermission(user,PERMISSIONS.COMPANY_FINANCES_CATEGORIES)
   const [dateRange,setDateRange]=useState('this_month')
@@ -48,8 +47,7 @@ export default function CompanyFinances(){
   const refresh=()=>{queryClient.invalidateQueries({queryKey:['company-finances']});queryClient.invalidateQueries({queryKey:['company-finance-categories']})}
   const mutation=useMutation({mutationFn:({path,body,method})=>method==='PUT'?useFetchPut(path,body,{confirmationHandled:'compact'}):useFetchPost(path,body,{confirmationHandled:'compact'}),onSuccess:()=>{setError('');setFormMode(null);setVoidId(null);refresh()},onError:e=>setError(e.message||'Unable to save. Please check your entries.')})
   const changeEntry=(prop,value)=>setEntry(old=>({...old,[prop]:value}))
-  const newEntry=(kind)=>{setEntry({kind,amount:'',transaction_date:today(),category_id:'',description:'',notes:''});setError('');setFormMode('new')}
-  const saveEntry=(e)=>{e.preventDefault();mutation.mutate({path:formMode==='edit'?`/company-finances/transactions/${entry.id}`:'/company-finances/transactions',body:entry,method:formMode==='edit'?'PUT':'POST'})}
+  const saveEntry=(e)=>{e.preventDefault();mutation.mutate({path:`/company-finances/transactions/${entry.id}`,body:entry,method:'PUT'})}
   const editing=(record)=>{const matched=list.find(c=>c.name===record.category&&c.kind===record.kind);setEntry({id:Number(record.reference.split(':')[1]),kind:record.kind,amount:String(record.amount),transaction_date:record.txn_date,category_id:matched?.id||'',description:record.title,notes:record.notes||''});setFormMode('edit');setError('')}
   const handleCategory=(e)=>{e.preventDefault();mutation.mutate({path:'/company-finances/categories',body:{name:categoryName,kind:categoryKind}});setCategoryName('')}
   const exportFile=async()=>{
@@ -137,7 +135,7 @@ export default function CompanyFinances(){
         <p className="mt-1 text-sm text-slate-600">The balance starts at ₱0.00. Recorded collections and income add money; paid expenses subtract it.</p>
         <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <div><span className="text-slate-500">Property Collections</span><p className="font-bold">{php(data.sources?.property_collections)}</p></div>
-          <div><span className="text-slate-500">Salary Paid</span><p className="font-bold">{php(data.sources?.salary_paid)}</p></div>
+          <div><span className="text-slate-500">Salary Paid (net of reversals)</span><p className="font-bold">{php(data.sources?.salary_paid)}</p></div>
           <div><span className="text-slate-500">Commissions & Network</span><p className="font-bold">{php(Number(data.sources?.commissions_paid||0)+Number(data.sources?.network_payouts||0))}</p></div>
           <div><span className="text-slate-500">Other Income</span><p className="font-bold">{php(data.sources?.other_income)}</p></div>
         </div>
@@ -148,7 +146,7 @@ export default function CompanyFinances(){
         <label className="grid gap-1"><span className="text-xs font-semibold text-slate-600">Export source</span><select aria-label="Export source" value={exportSource} onChange={e=>setExportSource(e.target.value)} className={field}>{['all','manual','property','salary','commission','commission_archive','network_payout','refund'].map(s=><option key={s} value={s}>{s==='all'?'All sources':s.replaceAll('_',' ')}</option>)}</select></label>
         <label className="grid gap-1"><span className="text-xs font-semibold text-slate-600">Export category</span><select aria-label="Export category" value={exportCategory} onChange={e=>setExportCategory(e.target.value)} className={field}>{exportCategories.map(c=><option key={c} value={c}>{c==='all'?'All categories':c}</option>)}</select></label>
       </div>:null}
-      <div className="flex flex-wrap items-center gap-2">{canRecord?<><button onClick={()=>newEntry('income')} className={`${btn} bg-emerald-600 text-white`}><FiPlus/> Add Income</button><button onClick={()=>newEntry('expense')} className={`${btn} bg-blue-600 text-white`}><FiPlus/> Add Expense</button></>:null}<div className="flex-1"/>{tab==='transactions'?<>
+      <div className="flex flex-wrap items-center gap-2"><a href="/finance" className={`${btn} border border-blue-200 bg-blue-50 text-blue-800`}>Record income or expense in Finance</a><div className="flex-1"/>{tab==='transactions'?<>
         <button onClick={exportFile} disabled={exporting || !data.total_records || !data.transfer_export_ready} className={`${btn} border border-slate-300 bg-white text-slate-700`} title="Upload this file in Finance → Imports. Maximum 500 payments per file."><FiDownload/> {exporting?'Preparing CSV…':'Export to Finance (CSV)'}</button>
       </>:null}{['transactions','categories'].map(t=><button key={t} onClick={()=>{setTab(t);setError('')}} className={`${btn} ${tab===t?'bg-slate-900 text-white':'bg-slate-100 text-slate-600'}`}>{t==='transactions'?'Transactions':'Categories'}</button>)}</div>
       {tab==='transactions' && !data.balance_verified?<p className="mt-2 text-xs font-semibold text-amber-700">Finance transfer files are unavailable while reconciliation warnings remain.</p>:null}

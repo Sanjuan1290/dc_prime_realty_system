@@ -74,7 +74,7 @@ const FundReleaseReceipt = ({ receipt }) => {
       `}</style>
       {!receipt.official ? (
         <div className="mb-5 border-2 border-dashed border-black px-4 py-2 text-center text-[12px] font-black uppercase tracking-[0.18em]">
-          Preview Only — Draft Payroll — Not Official
+          {receipt.undo_reason ? 'Historical Receipt — Payroll Undone — Not Valid for Payment' : 'Preview Only — Draft Payroll — Not Official'}
         </div>
       ) : null}
 

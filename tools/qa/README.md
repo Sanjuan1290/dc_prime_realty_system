@@ -7,7 +7,7 @@ node tools/qa/check-project.mjs
 node tools/qa/check-project.mjs --build
 ```
 
-The unit runner uses dummy credentials and a closed local database port. The build runner uses existing dependencies, produces combined local bundles in `CLIENT/dist`, and keeps HR editing and kiosk mode disabled. Neither command deploys anything.
+The unit runner uses dummy credentials and a closed local database port. The build runner uses existing dependencies, produces combined local bundles in `CLIENT/dist`, and enables HR editing and kiosk mode for local QA. Neither command deploys anything.
 
 API/browser checks require the disposable database from `setup-local-db.mjs` and the real service adapter from `serve-local.mjs`. On Windows, initialize a separate MySQL data directory under `QA_REPORTS/.runtime/mysql`, then run it on **loopback port 13307** using `--no-defaults`, `--bind-address=127.0.0.1` and `--mysqlx=OFF`. Do not point this harness at an existing database. Setup validates both the server port and exact data directory before creating the empty schemas and synthetic accounts. `--reset` recreates only those schemas on that verified disposable instance.
 
@@ -54,10 +54,16 @@ From `SERVER/SYSTEM`, `npm run check:db` is a separate read-only diagnostic usin
 After creating the guarded disposable database, building and starting the adapter:
 
 1. Run `node --test tools/qa/api.e2e.test.mjs` and `node --test tools/qa/attendance.e2e.test.mjs` to create synthetic employee, attendance, finalized/released payroll and cash fixtures.
-2. Run `node --test tools/qa/pdf-features.e2e.test.mjs` for invitations, temporary-password restrictions/expiry, redacted audits, HR and Company Finances ZIP/Excel imports, and old external salary deduplication and automatic categories. Email is captured in memory; nothing is sent to a real inbox.
+2. Run `node --test tools/qa/pdf-features.e2e.test.mjs` for invitations, temporary-password restrictions/expiry, redacted audits, HR and Company Finances signed CSV imports, and old external salary deduplication and automatic categories. Email is captured in memory; nothing is sent to a real inbox.
 3. Run `node tools/qa/pdf-features-browser.mjs` for real invitation setup, audit access, salary downloads and Finance layouts. The preceding test creates its single-use synthetic invitation.
 4. Run `node tools/qa/finance-attendance-browser.mjs` for financial mutations/reconciliation, viewer permissions, live attendance controls, the kiosk and Excel downloads.
 
 Run **node --test tools/qa/import-undo.e2e.test.mjs** for no-mapping imports, category creation/reactivation, undo/restoration, overlapping files, concurrent commits/undos, stale reviews and reconciliation. Run **node tools/qa/import-undo-browser.mjs** for the actual import/undo UI, cancellation, exact balance changes, failure alerts, keyboard focus, mobile layouts and reduced motion. Both use the same guarded local fixtures; no real accounts or emails are used.
 
 The local adapter intentionally omits the obsolete staging/write-approval flags, proving that the actual business workflows operate with the new live defaults. Private `.env` files remain excluded. Test evidence and the synthetic invitation file are ignored by Git.
+
+## Payroll undo and connected PDF 4 checks
+
+From fresh guarded fixtures, run `node tools/qa/run-pdf3-api-checks.mjs`, then `node --test tools/qa/pdf4-workflows.e2e.test.mjs`, then `node tools/qa/pdf4-browser.mjs`. The API suite creates synthetic salary/attendance records and checks verified undo, release, old receipts, stale/expired/replayed codes, closed periods, cash-event completeness, signed exports, reversal dependencies, exact balances, duplicate imports and undo/restoration. The browser suite runs real components and the production audit screens at desktop and mobile widths. Only email delivery is replaced by in-memory capture.
+
+The new API suite expects a fresh dataset before a complete repeat. Existing CSV, import-undo, review/document and Finance/attendance browser scripts provide connected regressions. Normal login throttling remains enabled; restart only the local QA adapter between large sign-in batches when needed. See [the current verification report](../../QA_REPORTS/2026-11-18-payroll-undo-and-connected-fixes.md) for all results and deployment limits.

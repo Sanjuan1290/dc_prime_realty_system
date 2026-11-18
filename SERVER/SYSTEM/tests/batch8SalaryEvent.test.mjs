@@ -19,7 +19,8 @@ const memoryPool = () => {
     release(){},
     async query(sql,args){
       if (sql.includes('SELECT event_id, source_payroll_id, payload_sha256')) return [[...events.values()].filter(e => e.event_id===args[0] || (e.source_payroll_id===args[1] && e.version===args[2]))];
-      if (sql.includes('INSERT INTO finance_external_salary_event_inbox')) { this.pendingEvents.push([args[0],{event_id:args[0],source_payroll_id:args[1],payload_sha256:args[2],version:1}]);return [{affectedRows:1}] }
+      if (sql.includes('SELECT payload_json FROM finance_external_salary_event_inbox')) return [[...events.values()].filter(e=>e.source_payroll_id===args[0]&&e.version===args[1])];
+      if (sql.includes('INSERT INTO finance_external_salary_event_inbox')) { this.pendingEvents.push([args[0],{event_id:args[0],source_payroll_id:args[1],payload_sha256:args[4],version:args[2],payload_json:args[5]}]);return [{affectedRows:1}] }
       if (sql.includes('INSERT INTO finance_external_salary_entries')) { this.pendingEntries.push([args[0],args[3]]);return [{affectedRows:1}] }
       throw Error('unexpected SQL '+sql);
     }
@@ -65,4 +66,19 @@ test('salary totals and report balance stay consistent with one source',()=>{
   const summary=computeCashSummary({openingBalance:0,startDate:'2026-10-01',from:'2026-10-01',to:'2026-10-27',activities:rows});
   assert.equal(summary.available_balance,43250.01);
   assert.equal(summarizeCashSources({transactions:summary.transactions}).salary_paid,6749.99);
+});
+test('salary reversal and re-release require ordered predecessors and preserve immutable history',async()=>{
+  const pool=memoryPool(),release=event();
+  const reversal=event(randomUUID(),{event_type:'salary.cash_reversed.v1',source_event_version:2,cash_date:'2026-10-28',direction:'in',reference:'HR-PAYROLL-12-REVERSAL-2',display_label:'Salary reversal #12 (event 2)'});
+  await assert.rejects(recordSalaryEvent(pool,reversal),{code:'SALARY_EVENT_PREDECESSOR_REQUIRED'});
+  await recordSalaryEvent(pool,release);
+  await assert.rejects(recordSalaryEvent(pool,{...reversal,amount:'1.00'}),{code:'SALARY_EVENT_REVERSAL_MISMATCH'});
+  assert.equal((await recordSalaryEvent(pool,reversal)).status,'recorded');
+  assert.equal((await recordSalaryEvent(pool,reversal)).status,'already_processed');
+  const second=event(randomUUID(),{source_event_version:3,cash_date:'2026-10-29',reference:'HR-PAYROLL-12-RELEASE-3',display_label:'Salary payment #12 (release 3)'});
+  assert.equal((await recordSalaryEvent(pool,second)).status,'recorded');assert.equal(pool.events.size,3);assert.equal(pool.entries.size,1);
+});
+test('salary source summary nets reversals without counting them as unrelated income',()=>{
+  const transactions=[{source:'salary',kind:'expense',amount:'6749.99'},{source:'salary',kind:'income',amount:'6749.99'},{source:'salary',kind:'expense',amount:'6800.01'}];
+  const totals=summarizeCashSources({transactions});assert.equal(totals.salary_paid,6800.01);assert.equal(totals.salary_reversals,6749.99);assert.equal(totals.other_income,0);
 });

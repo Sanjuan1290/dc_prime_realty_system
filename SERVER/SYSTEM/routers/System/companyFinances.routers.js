@@ -9,7 +9,7 @@ router.get('/transactions/export',requirePermission(PERMISSIONS.COMPANY_FINANCES
 router.get('/categories',requirePermission(PERMISSIONS.COMPANY_FINANCES_VIEW),finance.categories);
 router.post('/categories',requirePermission(PERMISSIONS.COMPANY_FINANCES_CATEGORIES),finance.createCategory);
 router.put('/categories/:id',requirePermission(PERMISSIONS.COMPANY_FINANCES_CATEGORIES),finance.updateCategory);
-router.post('/transactions',requirePermission(PERMISSIONS.COMPANY_FINANCES_RECORD),finance.createTransaction);
+router.post('/transactions',requirePermission(PERMISSIONS.COMPANY_FINANCES_RECORD),(_req,res)=>res.status(409).json({success:false,code:'MANUAL_ENTRIES_MOVED',message:'Record new income and expenses in Finance. Existing Company Finances entries remain available for review and correction.'}));
 router.put('/transactions/:id',requirePermission(PERMISSIONS.COMPANY_FINANCES_EDIT),finance.updateTransaction);
 router.post('/transactions/:id/void',requirePermission(PERMISSIONS.COMPANY_FINANCES_EDIT),finance.voidTransaction);
 export default router;

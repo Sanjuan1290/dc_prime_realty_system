@@ -29,8 +29,8 @@ const Employees = () => {
   const canCreateEmploymentChange = HR_FEATURE_FLAGS.writesEnabled && hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYMENT_CHANGE_CREATE)
   const canViewEmploymentHistory = hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYMENT_HISTORY_VIEW)
   const canViewPayrollHistory = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_HISTORY_VIEW)
-  const canRelease = false // Batch 8: salary event transfer pending
-  const canPrintReceipt = false // Batch 9: protected receipt route pending
+  const canRelease = HR_FEATURE_FLAGS.payrollRelease && hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RELEASE)
+  const canPrintReceipt = hasPermission(currentUserData?.user, 'employee_salary.receipt.print')
   const canExportReceipt = false // Batch 9: protected receipt route pending
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')

@@ -47,7 +47,15 @@ const SALARY_SQL_EXTERNAL = `
     SELECT CONCAT('salary:',e.source_payroll_id), DATE_FORMAT(e.cash_date,'%Y-%m-%d'), e.kind,
       e.amount, CONCAT('Salary payment #',e.source_payroll_id), 'Salary', 'salary', NULL,
       DATE_FORMAT(e.recorded_at,'%Y-%m-%d %H:%i:%s')
-    FROM finance_external_salary_entries e`;
+    FROM finance_external_salary_entries e
+    UNION ALL
+    SELECT CONCAT('salary:',i.source_payroll_id,':',i.source_event_version),
+      JSON_UNQUOTE(JSON_EXTRACT(i.payload_json,'$.cash_date')),
+      IF(i.event_type='salary.cash_reversed.v1','income','expense'),
+      CAST(JSON_UNQUOTE(JSON_EXTRACT(i.payload_json,'$.amount')) AS DECIMAL(14,2)),
+      JSON_UNQUOTE(JSON_EXTRACT(i.payload_json,'$.display_label')), 'Salary', 'salary', NULL,
+      DATE_FORMAT(CONVERT_TZ(STR_TO_DATE(LEFT(JSON_UNQUOTE(JSON_EXTRACT(i.payload_json,'$.recorded_at')),19),'%Y-%m-%dT%H:%i:%s'),'+00:00','+08:00'),'%Y-%m-%d %H:%i:%s')
+    FROM finance_external_salary_event_inbox i WHERE i.source_event_version>1`;
 /** Old source remains authoritative until reconciliation and an explicit config cutover. */
 export const FINANCE_SALARY_SOURCE = process.env.FINANCE_SALARY_SOURCE === 'external' ? 'external' : 'legacy';
 export const financeActivitySqlFor = (source) => {
@@ -127,7 +135,7 @@ export const summarizeSourceExclusions = ({rows, start, from, to, includePropert
       money_in:total(before.filter(row=>row.kind==='income')),
       money_out:total(before.filter(row=>row.kind==='expense')),
       property_collections:total(before.filter(row=>row.source==='property')),
-      salary_paid:total(before.filter(row=>row.source==='salary')),
+      salary_paid:pesos(before.filter(row=>row.source==='salary').reduce((sum,row)=>sum+(row.kind==='income'?-1:1)*cents(row.amount),0)),
       commissions_paid:total(before.filter(row=>['commission','commission_archive','network_payout'].includes(row.source))),
     },
     property_excluded_by_setting:total(excludedProperty),
@@ -139,8 +147,9 @@ export const summarizeCashSources = ({transactions}) => {
   const total=(filter)=>pesos(transactions.filter(filter).reduce((sum,row)=>sum+cents(row.amount),0));
   return {
     property_collections: total(r=>r.source==='property'),
-    other_income: total(r=>r.kind==='income'&&r.source!=='property'),
-    salary_paid: total(r=>r.source==='salary'),
+    other_income: total(r=>r.kind==='income'&&!['property','salary'].includes(r.source)),
+    salary_paid: pesos(transactions.filter(r=>r.source==='salary').reduce((sum,row)=>sum+(row.kind==='income'?-1:1)*cents(row.amount),0)),
+    salary_reversals: total(r=>r.source==='salary'&&r.kind==='income'),
     commissions_paid: total(r=>r.source==='commission'||r.source==='commission_archive'),
     network_payouts: total(r=>r.source==='network_payout'),
     refunds_paid: total(r=>r.source==='refund'),

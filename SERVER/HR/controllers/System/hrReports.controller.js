@@ -20,14 +20,21 @@ export async function exportSalaryFinance(req,res,next){
     const {from,to}=range(req.query),format=req.query.format||'csv';
     if(format!=='csv')throw Object.assign(new Error('Only Export to Finance CSV is available.'),{statusCode:400});
     conn=await db.getConnection();await conn.beginTransaction();
+    const [[missing]]=await conn.query(`SELECT COUNT(*) AS n FROM employee_payrolls p
+      WHERE p.payroll_status='released' AND p.net_fund_release>0 AND p.released_date BETWEEN ? AND ?
+      AND NOT EXISTS(SELECT 1 FROM hr_outbox_events o WHERE o.aggregate_type='employee_payroll' AND o.aggregate_id=CAST(p.employee_payroll_id AS CHAR)
+        AND o.event_type='salary.cash_released.v1'
+        AND JSON_UNQUOTE(JSON_EXTRACT(o.payload_json,'$.cash_date'))=DATE_FORMAT(p.released_date,'%Y-%m-%d')
+        AND CAST(JSON_UNQUOTE(JSON_EXTRACT(o.payload_json,'$.amount')) AS DECIMAL(14,2))=p.net_fund_release
+        AND NOT EXISTS(SELECT 1 FROM hr_outbox_events later WHERE later.aggregate_type=o.aggregate_type AND later.aggregate_id=o.aggregate_id AND later.event_revision>o.event_revision AND later.event_type IN ('salary.cash_released.v1','salary.cash_reversed.v1')))`,[from,to]);
+    if(Number(missing.n))throw Object.assign(new Error('A released payment has no matching immutable salary event. Reconcile its history before exporting.'),{code:'SALARY_EVENT_REQUIRED',statusCode:409});
     // The release event is immutable and shared with Realty. Re-exporting either
     // route therefore yields the same Finance source identity and fingerprint.
-    const [rows]=await conn.query(`SELECT p.employee_payroll_id,p.net_fund_release,p.released_date,o.payload_json
-      FROM employee_payrolls p LEFT JOIN hr_outbox_events o ON o.aggregate_id=CAST(p.employee_payroll_id AS CHAR)
-      AND o.event_type='salary.cash_released.v1' AND o.aggregate_type='employee_payroll' AND o.event_revision=1
-      WHERE p.payroll_status='released' AND p.net_fund_release>0 AND p.released_date BETWEEN ? AND ?
-      ORDER BY p.employee_payroll_id LIMIT 501`,[from,to]);
-    const snapshot=buildSalaryFinanceSnapshot({payrolls:rows,from,to});
+    const [rows]=await conn.query(`SELECT payload_json FROM hr_outbox_events
+      WHERE aggregate_type='employee_payroll' AND event_type IN ('salary.cash_released.v1','salary.cash_reversed.v1')
+      AND JSON_UNQUOTE(JSON_EXTRACT(payload_json,'$.cash_date')) BETWEEN ? AND ?
+      ORDER BY aggregate_id,event_revision LIMIT 501`,[from,to]);
+    const snapshot=buildSalaryFinanceSnapshot({events:rows,from,to});
     const content=buildSignedFinanceCsv(snapshot);
     await writeAuditLog(conn,req,{action:'payroll.finance_export',module:'Payroll',entityType:'finance_export',entityId:snapshot.manifest.export_id,title:'Salary export for Finance',metadata:{period:{from,to},...snapshot.manifest.snapshot}});
     await conn.commit();

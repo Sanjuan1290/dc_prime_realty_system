@@ -1,3 +1,4 @@
+import {createRequire} from 'node:module';
 // Only the verified disposable loopback database; email is captured in memory.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -89,7 +90,10 @@ test('Actual Company Finances CSV exports import through Finance without deploym
   const login=await fetch(base+'/api/v1/user/login',{method:'POST',headers:{origin:base,'content-type':'application/json'},body:JSON.stringify({email:'system@qa.invalid',password:'Synthetic-QA-only-2026!'})});assert.equal(login.status,200);const systemCookie=login.headers.get('set-cookie').split(';')[0];
   const system=async(path,body)=>fetch(base+'/api/v1/company-finances'+path,{method:body?'POST':'GET',headers:{cookie:systemCookie,origin:base,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
   const categoryResponse=await system('/categories',{kind:'expense',name:'QA Company Export '+Date.now()}),category=(await categoryResponse.json()).data;assert.equal(categoryResponse.status,200);
-  const entry=await system('/transactions',{kind:'expense',amount:'44.55',transaction_date:'2026-10-25',category_id:category.id,description:'Synthetic company export payment'});assert.equal(entry.status,200);
+  const entry=await system('/transactions',{kind:'expense',amount:'44.55',transaction_date:'2026-10-25',category_id:category.id,description:'Synthetic company export payment'});assert.equal(entry.status,409);
+  const mysql=createRequire(new URL('../../SERVER/HR/package.json',import.meta.url))('mysql2/promise');
+  const systemDb=await mysql.createConnection({host:'127.0.0.1',port:13307,user:'qa_system',password:'qa-isolated-only-password',database:'dc_prime_realty_system_db'});
+  try {await systemDb.execute("INSERT INTO company_finance_transactions(category_id,kind,amount,transaction_date,description,created_by_user_id) VALUES(?,'expense','44.55','2026-10-25','Synthetic historical company export payment',1)",[category.id])}finally{await systemDb.end()}
   for(const [format,extension] of [['csv','csv']]){
     const response=await system('/transactions/export?'+new URLSearchParams({from:'2026-10-01',to:'2026-10-31',profile:'transfer',format,category:category.name}));assert.equal(response.status,200,await response.clone().text());
     const buffer=Buffer.from(await response.arrayBuffer()),parsed=await parseUpload({format:extension,buffer});assert.equal(parsed.totals.money_out,'44.55');

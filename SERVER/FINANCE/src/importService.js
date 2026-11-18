@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {getPool,withTransaction} from './db.js';
-import {problem} from './domain.js';
+import {problem,phpCents} from './domain.js';
 import {audit} from './ledger.js';
 import {decodeUpload,parseUpload} from './importFile.js';
 import {categoryName,categoryKey,importDecision} from './importPolicy.js';
@@ -9,12 +9,12 @@ import {sha256} from './importContract.js';
 const invalid=(code,msg,status=400)=>{throw problem(code,msg,status);};
 const parseJson=v=>typeof v==='string'?JSON.parse(v):v;
 async function existingSource(conn,row){
-  const [exact]=await conn.execute('SELECT id,source_system,status,void_reason,category_id,source_revision_sha256 FROM finance_transactions WHERE source_system=? AND source_transaction_id=?',[row.source_system,row.source_transaction_id]);
+  const [exact]=await conn.execute('SELECT id,source_system,status,void_reason,category_id,source_revision_sha256,amount,kind FROM finance_transactions WHERE source_system=? AND source_transaction_id=?',[row.source_system,row.source_transaction_id]);
   if(row.source_system!=='hr'||row.source_type!=='salary')return exact[0];
   // Older Company Finances exports labelled external HR salary as Realty.
   // A completed or undone receipt must prove that provenance. Legacy Realty
   // payroll with a coincidentally equal numeric ID remains a different source.
-  const [legacy]=await conn.execute(`SELECT t.id,t.source_system,t.status,t.void_reason,t.category_id,t.source_revision_sha256 FROM finance_transactions t
+  const [legacy]=await conn.execute(`SELECT t.id,t.source_system,t.status,t.void_reason,t.category_id,t.source_revision_sha256,t.amount,t.kind FROM finance_transactions t
     WHERE t.source_system='realty' AND t.source_transaction_id=? AND EXISTS (
       SELECT 1 FROM finance_import_items i JOIN finance_import_batches b ON b.id=i.batch_id
       WHERE i.transaction_id=t.id AND b.status IN ('committed','undone')
@@ -30,6 +30,18 @@ async function categories(conn,{lock=false}={}){
   return map;
 }
 const counts=items=>Object.fromEntries(['new','restore','duplicate','conflict'].map(d=>[d,items.filter(x=>x.decision===d).length]));
+async function verifySalarySequence(conn,items){
+  for(const item of items){
+    const row=item.row||parseJson(item.source_row_json),identity=/^salary:([1-9]\d*):([1-9]\d*)$/.exec(row.source_transaction_id);
+    if(row.source_system!=='hr'||!identity)continue;
+    const version=Number(identity[2]),prior='salary:'+identity[1]+(version===2?'':':'+(version-1));
+    const included=items.find(entry=>{const other=entry.row||parseJson(entry.source_row_json);return other.source_system==='hr'&&other.source_transaction_id===prior&&['new','restore','duplicate','imported'].includes(entry.decision)});
+    const previous=included?(included.row||parseJson(included.source_row_json)):await existingSource(conn,{...row,source_transaction_id:prior});
+    if(!previous||(!included&&previous.status!=='posted'))invalid('SALARY_PREDECESSOR_REQUIRED','Import the preceding salary release or reversal first, or include the complete sequence in this CSV. No balances have changed.',409);
+    const previousKind=previous.transaction_type||previous.kind;
+    if((version%2===0&&(previousKind!=='expense'||phpCents(previous.amount)!==phpCents(row.amount)))||(version%2===1&&previousKind!=='income'))invalid('SALARY_REVERSAL_MISMATCH','A salary reversal must offset the preceding release exactly. Review the source history.',409);
+  }
+}
 export async function previewImport(body,actor,options={}){
   const file=decodeUpload(body||{}),data=await parseUpload(file,options);
   if(data.rows.length===0)invalid('EMPTY_TRANSFER','No financial rows to import.');
@@ -45,6 +57,7 @@ export async function previewImport(body,actor,options={}){
       const name=categoryName(row),category=matched?map.byId.get(String(matched.category_id)):map.get(categoryKey(row.transaction_type,name));
       items.push({row_number:i+2,source_system:matched?.source_system||row.source_system,source_transaction_id:row.source_transaction_id,source_revision_sha256:row.source_revision_sha256,source_category:row.category,kind:row.transaction_type,amount:row.amount,decision,category_name:category?.name||name,category_action:['duplicate','conflict'].includes(decision)?'unchanged':!category?'create':Number(category.is_active)!==1?'reactivate':'existing',category_id:category?String(category.id):null,existing_transaction_id:matched?.id?String(matched.id):null,row});
     }
+    await verifySalarySequence(conn,items);
     await conn.execute(`INSERT INTO finance_import_batches(id,source_system,export_id,file_name,file_sha256,file_format,source_from,source_to,source_generated_at,manifest_json,total_rows,selected_money_in,selected_money_out,created_by,created_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP())`,[id,data.manifest.source_system,String(data.manifest.export_id||''),file.filename,fileHash,file.format,data.manifest.period.from,data.manifest.period.to,data.manifest.generated_at,JSON.stringify(data.manifest),data.rows.length,data.totals.money_in,data.totals.money_out,actor.id]);
     for(const item of items)await conn.execute(`INSERT INTO finance_import_items(batch_id,\`row_number\`,source_system,source_transaction_id,source_revision_sha256,source_category,source_kind,category_id,decision,source_row_json)
@@ -76,6 +89,7 @@ export async function commitImport(batchId,actor){
     if(Number(fresh[0]?.fresh)!==1)invalid('PREVIEW_EXPIRED','Import preview expired. Upload and preview again.',409);
     const [items]=await conn.execute('SELECT * FROM finance_import_items WHERE batch_id=? ORDER BY `row_number` FOR UPDATE',[batchId]);
     if(items.length!==Number(batch.total_rows))invalid('PREVIEW_CHANGED','Preview row count changed.',409);
+    await verifySalarySequence(conn,items);
     const categoryMap=await categories(conn,{lock:true});
     const tally={imported:0,created:0,restored:0,duplicate:0};let addedIncome=0n,addedExpense=0n;
     for(const item of items){

@@ -279,6 +279,7 @@ export const requestApiBlob = async (
   const apiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_API_URL)
   const normalizedPath = normalizePath(path)
   const url = `${apiBaseUrl}${normalizedPath}`
+  const method = 'GET'
   let controller = null
   let timeoutId = null
 

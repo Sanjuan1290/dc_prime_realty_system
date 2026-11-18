@@ -239,6 +239,7 @@ export const buildFinalizedPayrollSnapshot = (payroll) => ({
 });
 
 export const getPayrollFinalizationReview = async (connection, payroll, today) => {
+  if(payroll.calculation_version==='undo-recalculation-required')throw payrollError('Recalculate this Draft after undo before finalizing it again.','PAYROLL_UNDO_RECALCULATION_REQUIRED',409);
   if (payroll.payroll_status !== 'draft') {
     throw payrollError('Only Draft payroll can proceed to Final Review.', 'EMPLOYEE_PAYROLL_NOT_DRAFT', 409);
   }

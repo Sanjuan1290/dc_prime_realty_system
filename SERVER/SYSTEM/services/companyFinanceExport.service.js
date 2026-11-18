@@ -50,7 +50,7 @@ export const asFinanceTransferRows = (transactions, {externalSalary=false}={}) =
   const seen=new Set();
   return transactions.map(tx=>{
     const reference=String(tx.reference ?? '');
-    if (!/^[a-z_]+:[1-9]\d*$/.test(reference) || seen.has(reference)) {
+    if ((!/^[a-z_]+:[1-9]\d*$/.test(reference)&&!(tx.source==='salary'&&/^salary:[1-9]\d*:(?:[2-9]|[1-9]\d+)$/.test(reference))) || seen.has(reference)) {
       throw BAD('Missing or repeated stable source transaction ID.', 'FINANCE_EXPORT_ID_CONFLICT',409);
     }
     seen.add(reference);

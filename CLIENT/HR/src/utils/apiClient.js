@@ -68,7 +68,8 @@ const fetchHr = async (path, options = {}, asBlob = false) => {
     if (options.confirmationHandled === 'technical' && !['/employees/employee-code-preview','/employees/barcode-preview','/attendance/scan'].includes(pathname) && !KIOSK_MUTATION_PATHS.has(pathname)) {
       throw new ApiError('Technical confirmation is unavailable for this HR action.', {code:'HR_CONFIRMATION_REQUIRED'})
     }
-    if (!KIOSK_MUTATION_PATHS.has(pathname) && options.confirmationHandled !== 'technical') {
+    const verifiedUndo = options.confirmationHandled === 'payroll-undo' && /^\/employee-payroll\/payrolls\/[1-9]\d*\/undo\/(request|confirm)$/.test(pathname)
+    if (!KIOSK_MUTATION_PATHS.has(pathname) && options.confirmationHandled !== 'technical' && !verifiedUndo) {
       if (typeof window === 'undefined' || !window.confirm('Confirm this HR change?')) {
         throw new ApiError('Changes cancelled.', {status:499,code:'REVIEW_CANCELLED'})
       }

@@ -41,19 +41,23 @@ export const summarizeExportRows = rows => {
   return {count:rows.length,money_in:money(income),money_out:money(expense),net_change:income>=expense?money(income-expense):`-${money(expense-income)}`};
 };
 
-export function buildSalaryFinanceSnapshot({payrolls,from,to,generatedAt=new Date().toISOString(),exportId=randomUUID()}){
+export function buildSalaryFinanceSnapshot({payrolls=[],events=null,from,to,generatedAt=new Date().toISOString(),exportId=randomUUID()}){
+  const immutableEvents=events!==null;
+  if(immutableEvents)payrolls=events;
   if(!payrolls.length)throw BAD('No released salary payments in this date range. Drafts and unpaid payroll are excluded.','EMPTY_EXPORT',409);
   if(payrolls.length>500)throw BAD('Choose a smaller date range: at most 500 payments per file.','EXPORT_TOO_LARGE',409);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)throw BAD('Choose a valid export date range.');
   const rows=payrolls.map(p=>{
     const event=typeof p.payload_json==='string'?JSON.parse(p.payload_json):p.payload_json;
-    if(!event||event.source_system!=='hr'||event.event_type!=='salary.cash_released.v1'||String(event.source_payroll_id)!==String(p.employee_payroll_id)||event.cash_date!==p.released_date||event.cash_date<from||event.cash_date>to||amountCents(event.amount)!==amountCents(p.net_fund_release)||Number.isNaN(Date.parse(event.recorded_at)))throw BAD('A released payment has no matching immutable salary event. Review its payroll record before exporting.','SALARY_EVENT_REQUIRED',409);
+    const reversal=event?.event_type==='salary.cash_reversed.v1',version=Number(event?.source_event_version);
+    if(immutableEvents&&(!event||event.schema_version!=='1.0'||event.currency!=='PHP'||!/^\d{4}-\d{2}-\d{2}$/.test(event.cash_date)||!/^[1-9]\d{0,17}$/.test(event.source_payroll_id)||!Number.isSafeInteger(event.source_event_version)||version>100000))throw BAD('An immutable salary event is invalid. Reconcile the salary history before exporting.','SALARY_EVENT_REQUIRED',409);
+    if(!event||event.source_system!=='hr'||!['salary.cash_released.v1','salary.cash_reversed.v1'].includes(event.event_type)||!Number.isSafeInteger(version)||version<1||Boolean(version%2===0)!==reversal||event.direction!==(reversal?'in':'out')||event.cash_date<from||event.cash_date>to||(!immutableEvents&&(String(event.source_payroll_id)!==String(p.employee_payroll_id)||event.cash_date!==p.released_date||amountCents(event.amount)!==amountCents(p.net_fund_release)))||Number.isNaN(Date.parse(event.recorded_at)))throw BAD('A released payment has no matching immutable salary event. Review its payroll record before exporting.','SALARY_EVENT_REQUIRED',409);
     const timestamp=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(event.recorded_at));
-    const row={schema_version:'1.0',source_system:'hr',source_transaction_id:'salary:'+event.source_payroll_id,source_version:'1',transaction_date:event.cash_date,recorded_at:timestamp,transaction_type:'expense',category:'Salary',description:'Salary payment #'+event.source_payroll_id,amount:money(amountCents(event.amount)),currency:'PHP',status:'posted',reference_id:'',source_type:'salary'};
+    const row={schema_version:'1.0',source_system:'hr',source_transaction_id:'salary:'+event.source_payroll_id+(version===1?'':':'+version),source_version:'1',transaction_date:event.cash_date,recorded_at:timestamp,transaction_type:reversal?'income':'expense',category:'Salary',description:event.display_label||'Salary payment #'+event.source_payroll_id,amount:money(amountCents(event.amount)),currency:'PHP',status:'posted',reference_id:'',source_type:'salary'};
     return {...row,source_revision_sha256:sourceRevisionHash(row)};
   });
   const csv=makeFinanceTransferCsv(rows),totals=summarizeExportRows(rows);
-  const manifest={schema_version:'1.0',source_system:'hr',export_id:exportId,generated_at:generatedAt,currency:'PHP',period:{from,to},filters:{kind:'expense',source:'salary',category:'all'},status_scope:'posted_only',salary_source:'external',warnings:[],reconciled:true,snapshot:{record_count:totals.count,money_in:totals.money_in,money_out:totals.money_out,net_change:totals.net_change},context:{unfiltered_period_income:totals.money_in,unfiltered_period_expense:totals.money_out,unfiltered_balance_as_of_to:totals.net_change},transactions_sha256:SHA(Buffer.from(csv,'utf8')),checksum_algorithm:'sha256',data_file:'transactions.csv'};
+  const manifest={schema_version:'1.0',source_system:'hr',export_id:exportId,generated_at:generatedAt,currency:'PHP',period:{from,to},filters:{kind:immutableEvents?'all':'expense',source:'salary',category:'all'},status_scope:'posted_only',salary_source:'external',warnings:[],reconciled:true,snapshot:{record_count:totals.count,money_in:totals.money_in,money_out:totals.money_out,net_change:totals.net_change},context:{unfiltered_period_income:totals.money_in,unfiltered_period_expense:totals.money_out,unfiltered_balance_as_of_to:totals.net_change},transactions_sha256:SHA(Buffer.from(csv,'utf8')),checksum_algorithm:'sha256',data_file:'transactions.csv'};
   return {rows,csv,manifest};
 }
 export const buildFinanceTransferZip = async(snapshot,{ZIP}={}) => {

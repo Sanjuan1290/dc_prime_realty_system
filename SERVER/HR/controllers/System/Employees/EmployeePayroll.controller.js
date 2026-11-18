@@ -28,6 +28,7 @@ import {
   getFinalizedAttendanceChangeStatus,
   getPayrollFinalizationReview,
 } from '../../../services/payrollFinalization.service.js';
+import {payrollUndoHistory} from '../../../services/payrollUndo.service.js';
 
 const getErrorMessage = (error) => error?.message || 'Payroll operation failed.';
 const numberId = (value) => {
@@ -148,6 +149,7 @@ export const getDraftPayroll = async (req, res) => {
     const payrollId = numberId(req.params.employeePayrollId);
     if (!payrollId) return res.status(400).json({ success: false, message: 'Select a valid employee payroll.' });
     const data = await getPayrollDraftById(connection, payrollId);
+    data.undo_history = await payrollUndoHistory(connection, payrollId);
     if (['finalized', 'corrected', 'released'].includes(String(data.payroll_status || '').toLowerCase())) {
       data.attendance_change = await getFinalizedAttendanceChangeStatus(connection, data, getManilaDateTime().date);
       data.correction_history = await listPayrollCorrections(connection, payrollId);
@@ -197,6 +199,7 @@ export const getHistoricalPayroll = async (req, res) => {
     const payrollId = numberId(req.params.employeePayrollId);
     if (!payrollId) return res.status(400).json({ success: false, message: 'Select a valid employee payroll.' });
     const data = await getPayrollDraftById(connection, payrollId);
+    data.undo_history = await payrollUndoHistory(connection, payrollId);
     if (['finalized', 'corrected', 'released'].includes(String(data.payroll_status || '').toLowerCase())) {
       data.correction_history = await listPayrollCorrections(connection, payrollId);
     }

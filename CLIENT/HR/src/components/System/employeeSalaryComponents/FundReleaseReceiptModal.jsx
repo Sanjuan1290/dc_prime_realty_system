@@ -6,12 +6,12 @@ import { useFetch } from '../../../utils/useFetch'
 import { downloadElementAsPdf, openElementInPdfPrintWindow, sanitizePdfFileName } from '../../../utils/pdfExportUtils'
 import FundReleaseReceipt from './FundReleaseReceipt'
 
-const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = false, historyMode = false, onClose }) => {
+const FundReleaseReceiptModal = ({ payrollId, undoId = null, canPrint = false, canExport = false, historyMode = false, onClose }) => {
   const contentRef = useRef(null)
   const [notice, setNotice] = useState(null)
   const query = useQuery({
-    queryKey: ['employee-salary-receipt', payrollId],
-    queryFn: () => useFetch(historyMode ? `/employee-payroll/history/payrolls/${payrollId}/receipt` : `/employee-payroll/drafts/${payrollId}/receipt`),
+    queryKey: ['employee-salary-receipt', payrollId, undoId],
+    queryFn: () => useFetch(undoId ? `/employee-payroll/payrolls/${payrollId}/undo-history/${undoId}/receipt` : historyMode ? `/employee-payroll/history/payrolls/${payrollId}/receipt` : `/employee-payroll/drafts/${payrollId}/receipt`),
     enabled: Boolean(payrollId),
   })
   const receipt = query.data?.data || null
@@ -58,6 +58,7 @@ const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = fals
         }
       `}</style>
       <div className="flex max-h-[97vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        {undoId ? <p role="status" className="border-b border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950">Historical receipt — this payroll approval was undone. Preview only.</p> : null}
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
           <div>
             <div className="flex items-center gap-2 text-blue-700"><FiFileText /><span className="text-xs font-black uppercase tracking-[0.16em]">Fund Release Receipt</span></div>
@@ -69,7 +70,7 @@ const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = fals
 
         {notice ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} /></div> : null}
         {query.isError ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type="error" message={query.error?.message || 'Unable to load the Fund Release Receipt.'} /></div> : null}
-        {receipt && !receipt.official ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type="warning" message={receipt.finalized_snapshot_missing ? 'This older salary record is missing the details needed for an official receipt. Contact an authorized payroll manager.' : 'This payroll is a Draft. You may print a watermarked PREVIEW ONLY copy for checking. Official receipt printing and PDF export require Finalization.'} /></div> : null}
+        {receipt && !receipt.official ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type="warning" message={receipt.undo_reason ? 'This saved receipt belongs to an undone payroll. It is retained for review and cannot be used as an active payment receipt.' : receipt.finalized_snapshot_missing ? 'This older salary record is missing the details needed for an official receipt. Contact an authorized payroll manager.' : 'This payroll is a Draft. You may print a watermarked PREVIEW ONLY copy for checking. Official receipt printing and PDF export require Finalization.'} /></div> : null}
         {receipt?.official && !canPrint && !canExport ? <div className="shrink-0 px-5 pt-4 sm:px-6"><StatusAlert type="info" message="You can preview this finalized receipt, but your account does not have Print Payroll Receipt or Export Payroll Receipt permission." /></div> : null}
 
         <div className="min-h-0 flex-1 overflow-auto bg-slate-200 p-5 sm:p-7">

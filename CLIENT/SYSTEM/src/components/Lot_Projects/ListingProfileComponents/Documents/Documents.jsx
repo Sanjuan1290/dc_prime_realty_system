@@ -16,18 +16,20 @@ import { getDocumentFiles, getDocumentImageUrl, isPdfLike, isProtectedDocumentFi
 import { getDocumentResponsiblePartyLabel, normalizeDocumentResponsibleParty } from '../../../../utils/documentRequirement'
 
 const statusStyles = {
+  Submitted: 'border-blue-200 bg-blue-50 text-blue-800',
   Approved: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   Missing: 'border-red-200 bg-red-50 text-red-700',
-  Rejected: 'border-red-200 bg-red-50 text-red-700',
+  Rejected: 'border-amber-200 bg-amber-50 text-amber-800',
 }
 
 const StatusPill = ({ value = 'Missing' }) => {
   const label = value === 'Rejected' ? 'Needs Resubmission' : value
-  const colored = ['Approved', 'Missing', 'Rejected'].includes(value)
+  const colored = Object.hasOwn(statusStyles, value)
   return <span className={colored ? `inline-flex rounded-full border px-3 py-1 text-xs font-bold ${statusStyles[value]}` : 'text-sm font-semibold text-slate-600'}>{label}</span>
 }
-const LibraryStatusPill = ({ value }) => <span className="text-sm text-slate-600">{String(value || 'active').toLowerCase() === 'active' ? 'Active' : 'Deactivated'}</span>
-const RequirementPill = ({ value }) => <span className="text-sm text-slate-600">{value || 'Optional'}</span>
+const MetadataPill = ({ children, tone }) => <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${tone}`}>{children}</span>
+const LibraryStatusPill = ({ value }) => String(value || 'active').toLowerCase() === 'active' ? <MetadataPill tone="border-emerald-200 bg-emerald-50 text-emerald-800">Active</MetadataPill> : <MetadataPill tone="border-slate-300 bg-slate-100 text-slate-700">Deactivated</MetadataPill>
+const RequirementPill = ({ value }) => <MetadataPill tone={value === 'Required' ? 'border-violet-200 bg-violet-50 text-violet-800' : 'border-slate-300 bg-slate-100 text-slate-700'}>{value || 'Optional'}</MetadataPill>
 const ResponsibilityPill = ({ value }) => <span className="text-sm text-slate-600">{getDocumentResponsiblePartyLabel(normalizeDocumentResponsibleParty(value))}</span>
 
 const DocumentActionsMenu = ({ children, name }) => {

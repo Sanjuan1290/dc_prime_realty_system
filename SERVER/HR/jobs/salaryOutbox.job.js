@@ -12,8 +12,9 @@ export const claimOutboxEvent = async pool => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [rows] = await connection.query(`SELECT event_id, payload_json, delivery_attempts FROM hr_outbox_events
-      WHERE event_type='salary.cash_released.v1'
+    const [rows] = await connection.query(`SELECT event_id, payload_json, delivery_attempts FROM hr_outbox_events o
+      WHERE event_type IN ('salary.cash_released.v1','salary.cash_reversed.v1')
+      AND NOT EXISTS(SELECT 1 FROM hr_outbox_events previous WHERE previous.aggregate_type=o.aggregate_type AND previous.aggregate_id=o.aggregate_id AND previous.event_revision<o.event_revision AND previous.event_type IN ('salary.cash_released.v1','salary.cash_reversed.v1') AND previous.delivery_state<>'delivered')
       AND (delivery_state='pending' OR
         (delivery_state='failed' AND (last_attempt_at IS NULL OR last_attempt_at < DATE_SUB(NOW(), INTERVAL 1 MINUTE))) OR
         (delivery_state='delivering' AND last_attempt_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE)))
