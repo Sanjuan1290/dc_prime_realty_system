@@ -42,10 +42,10 @@ const browser=await chromium.launch({headless:true,executablePath:'C:/Program Fi
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{const url=new URL(route.request().url());if(url.hostname!=='127.0.0.1')return route.abort();if(url.pathname.startsWith('/api/v1/')){mutations.push({method:route.request().method(),path:url.pathname});
 if(url.pathname.endsWith('/payments/preview')){
- const input=route.request().postDataJSON(),due=new URL(page.url()).searchParams.get('scenario')==='settlement-due',review=input.settlementReview||{},hasReason=Boolean(review.reason?.trim());
+ const input=route.request().postDataJSON(),scenario=new URL(page.url()).searchParams.get('scenario'),due=scenario==='settlement-due',separate=['pay-later','cash-later'].includes(scenario),review=input.settlementReview||{},hasReason=Boolean(review.reason?.trim());
  const reviewRequired=due&&(!hasReason||!['collectible','not_collectible'].includes(review.interest)||!['collectible','not_collectible'].includes(review.penalties));
- const interest=due?100:0,penalty=due?25:0,total=1000+(review.interest==='collectible'?interest:0)+(review.penalties==='collectible'?penalty:0);
- return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:true,paymentDate:input.paymentDate,fullPaymentAmount:total,fullSummary:{version:1,principalOutstanding:1000,interestOutstanding:interest,penaltyOutstanding:penalty,excludedFutureInterest:248.22,separateLmfOutstanding:0,lmfIncludedInPrincipal:true,collectibleInterest:review.interest==='collectible'?interest:0,collectiblePenalties:review.penalties==='collectible'?penalty:0,totalPayable:total,review:{interest:review.interest||'review',penalties:review.penalties||'review',reason:review.reason?.trim()||''},reviewRequired,reviewReasons:reviewRequired?['Review charge collectibility and record the applicable rule.']:[]}})});
+ const interest=due?100:0,penalty=due?25:0,lmf=separate?250:0,total=1000+lmf+(review.interest==='collectible'?interest:0)+(review.penalties==='collectible'?penalty:0);
+ return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:true,paymentDate:input.paymentDate,fullPaymentAmount:total,fullSummary:{version:1,principalOutstanding:1000,interestOutstanding:interest,penaltyOutstanding:penalty,excludedFutureInterest:248.22,separateLmfOutstanding:lmf,lmfIncludedInPrincipal:!separate,collectibleInterest:review.interest==='collectible'?interest:0,collectiblePenalties:review.penalties==='collectible'?penalty:0,totalPayable:total,review:{interest:review.interest||'review',penalties:review.penalties||'review',reason:review.reason?.trim()||''},reviewRequired,reviewReasons:reviewRequired?['Review charge collectibility and record the applicable rule.']:[]}})});
 }
 return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:true,data:[]})})}return route.continue()});
 async function check(name,action){try{await action();checks.push({name,status:'PASS'})}catch(error){checks.push({name,status:'FAIL',reason:error.message});await page.screenshot({path:resolve(out,'failure-'+checks.length+'.png')}).catch(()=>{})}console.log(JSON.stringify(checks.at(-1)))}
@@ -117,8 +117,16 @@ try{
     await page.getByText(/^Future scheduled interest excluded:/).waitFor();
     const amount=page.getByLabel(/^Amount/);await page.waitForFunction(()=>document.querySelector('input[type=number]')?.value==='1000.00');assert.equal(await amount.isDisabled(),true);assert.equal(await amount.inputValue(),'1000.00');
     await page.getByLabel(/^Payment Date/).fill('2026-11-17');await page.getByText('Settlement breakdown \u00b7 2026-11-17',{exact:true}).waitFor();
-    await page.getByText(/LMF is included in remaining principal; no extra amount is added/).waitFor();
+    await page.getByText('LMF: Included in remaining principal. No additional amount added.',{exact:true}).waitFor();
+    assert.equal(await page.getByText(/^Separate unpaid LMF:/).count(),0);
     await page.screenshot({path:resolve(out,'full-payment-breakdown.png')});await page.getByRole('button',{name:'Cancel',exact:true}).click();
+    for(const scenario of ['pay-later','cash-later']){
+      await open(scenario);await page.getByRole('button',{name:'Add Payment',exact:true}).click();await page.getByRole('button',{name:'Continue to Payment',exact:true}).click();await page.getByLabel(/^Payment Type/).selectOption('Full Payment');
+      const lmf=new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP',minimumFractionDigits:2}).format(250);
+      await page.getByText(`Separate unpaid LMF: ${lmf} · Added once to the payoff.`,{exact:true}).waitFor();
+      assert.equal(await page.getByText(/^LMF: Included in remaining principal/).count(),0);assert.equal(await page.getByLabel(/^Amount/).inputValue(),'1250.00');
+      await page.screenshot({path:resolve(out,`full-payment-${scenario}-lmf.png`)});await page.getByRole('button',{name:'Cancel',exact:true}).click();
+    }
   });
   await check('Charge decisions keep posting blocked until collectibility and basis are reviewed',async()=>{
     await open('settlement-due');await page.getByRole('button',{name:'Add Payment',exact:true}).click();await page.getByRole('button',{name:'Continue to Payment',exact:true}).click();await page.getByLabel(/^Payment Type/).selectOption('Full Payment');

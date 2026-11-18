@@ -729,7 +729,13 @@ const AddSOAPaymentModal = ({
           {isFullPayment ? (
             <div className="mb-5 space-y-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
               <p className="text-sm font-black text-blue-950">Settlement breakdown · {form.paymentDate}</p>
-              <p className="text-sm font-semibold text-blue-900">Separate unpaid LMF: {money(fullSummary?.separateLmfOutstanding)}{fullSummary?.lmfIncludedInPrincipal ? ' · LMF is included in remaining principal; no extra amount is added.' : ' · Added once to the payoff.'}</p>
+              {fullSummary?.version === 1 ? (
+                <p className="text-sm font-semibold text-blue-900">
+                  {fullSummary.lmfIncludedInPrincipal
+                    ? 'LMF: Included in remaining principal. No additional amount added.'
+                    : <>Separate unpaid LMF: {money(fullSummary.separateLmfOutstanding)} · Added once to the payoff.</>}
+                </p>
+              ) : null}
               <p className="text-sm font-black text-emerald-800">Future scheduled interest excluded: {money(fullSummary?.excludedFutureInterest)}</p>
               <p className="text-xs font-semibold text-blue-900">Collectible interest: {money(fullSummary?.collectibleInterest)} · Collectible penalties: {money(fullSummary?.collectiblePenalties)}. Adjustments are recorded separately from cash collected.</p>
               <p className="text-xs font-semibold text-blue-900">Already-due interest adjustment: {money(fullSummary?.excludedDueInterest)} · Penalty adjustment: {money(fullSummary?.excludedPenalties)}</p>
