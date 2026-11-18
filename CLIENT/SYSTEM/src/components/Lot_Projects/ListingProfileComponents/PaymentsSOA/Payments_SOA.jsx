@@ -874,6 +874,13 @@ const PaymentsSOA = ({
   const baseSellingPrice = cleanMoney(getListingValue(listing, ['baseSellingPrice', 'soa_selected_base_selling_price'], 0))
   const lmfAmount = cleanMoney(getListingValue(listing, ['lmfAmount', 'lmf_amount', 'soa_selected_lmf_amount'], 0))
   const tcpAmount = cleanMoney(getListingValue(listing, ['tcpAmount', 'tcp', 'soa_selected_tcp'], 0))
+  const lotAreaSqm = Number(getListingValue(listing, ['lotAreaSqm', 'area', 'lot_project_listing_area_sqm'], 0))
+  const selectedPricePerSqm = cleanMoney(getListingValue(listing, ['pricePerSqm', 'soa_selected_price_per_sqm', 'price_per_sqm'], 0))
+  const isCashPricing = String(getListingValue(listing, ['soaModeOfPayment', 'selectedPricingMode', 'modeOfPayment', 'soa_mode_of_payment'], 'installment')).trim().toLowerCase() === 'cash'
+  const pricingModeLabel = isCashPricing ? 'Cash' : 'Installment'
+  const lmfPaymentTreatment = String(getListingValue(listing, ['soaLegalMiscFeeMode', 'soa_legal_misc_fee_mode', 'legalMiscFeeMode'], 'include_in_monthly')).trim().toLowerCase() === 'separate_soa_row'
+    ? 'Pay later'
+    : isCashPricing ? 'Included in cash balance' : 'Included in monthly'
   const totalInterestAmount = useMemo(
     () => rows
       .filter((row) => String(row.status || '').trim().toLowerCase() !== 'cancelled')
@@ -1587,8 +1594,11 @@ const PaymentsSOA = ({
       </div>
 
       <div role="group" aria-label="Contract price breakdown" className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Base Selling Price" value={baseSellingPrice} />
-        <SummaryCard label="LMF Amount" value={lmfAmount} tone="amber" />
+        <SummaryCard label="Base Selling Price" value={baseSellingPrice} hint={<>
+          {lotAreaSqm > 0 && selectedPricePerSqm > 0 ? <span className="block">{new Intl.NumberFormat('en-PH', { maximumFractionDigits: 4 }).format(lotAreaSqm)} sqm × {money(selectedPricePerSqm)}/sqm</span> : null}
+          <span className="mt-1 block font-bold text-slate-700">{pricingModeLabel}</span>
+        </>} />
+        <SummaryCard label="LMF Amount" value={lmfAmount} tone="amber" hint={lmfPaymentTreatment} />
         <SummaryCard label="Total Interest Amount" value={totalInterestAmount} tone="blue" hint="Includes paid and unpaid SOA installments." />
         <SummaryCard label="TCP" value={tcpAmount} tone="emerald" hint="Total Contract Price" />
       </div>

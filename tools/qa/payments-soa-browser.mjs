@@ -21,7 +21,9 @@ const other={id:2,paymentId:2,type:'Downpayment',amount:10000,paymentDate:'2026-
 const payments=scenario==='none'?[]:scenario==='reservation'?[reservation]:[reservation,other];
 const listing={id:1,unit_id:'QA-1806',buyerName:'Synthetic QA Buyer',projectName:'QA Project',status:'Sold / Active',listing_status:'Sold / Active',rawStatus:'sold',canUsePayments:true,hasClientProfile:true,payment_count:payments.filter(p=>p.status==='Verified').length,soaFirstDueDate:'2026-11-16',soaStartingDate:'2026-11-16',soaDownpaymentPercentage:20,soaDownpaymentTerms:3,soaMonthlyTerms:24,soaDpDiscountPercentage:0,annualInterestRate:0,soaAnnualInterestRate:11.5,soaInterestRateOverridden:true,soaPenaltyRatePercent:0.05,soaPenaltyGraceDays:0,tcpNumeric:858000,balanceNumeric:808000};
 Object.assign(listing,{baseSellingPrice:780000,lmfAmount:78000,tcpAmount:858000,lot_project_listing_net_selling_price:999999,lot_project_listing_lmf_amount:99999,lot_project_listing_tcp:1099998});
-if(scenario==='cash')Object.assign(listing,{soaModeOfPayment:'cash',baseSellingPrice:740000,lmfAmount:74000,tcpAmount:814000});
+Object.assign(listing,{lotAreaSqm:120,pricePerSqm:6500,soaModeOfPayment:'installment',soaLegalMiscFeeMode:'include_in_monthly',installmentPricePerSqm:9999,cashPricePerSqm:999});
+if(['cash','cash-later'].includes(scenario))Object.assign(listing,{soaModeOfPayment:'cash',baseSellingPrice:740000,lmfAmount:74000,tcpAmount:814000,lotAreaSqm:100,pricePerSqm:7400});
+if(['pay-later','cash-later'].includes(scenario))listing.soaLegalMiscFeeMode='separate_soa_row';
 if(scenario==='waived')Object.assign(listing,{lmfAmount:0,tcpAmount:780000,soa_selected_lmf_amount:78000});
 const soaRows=['pricing','historical'].includes(scenario)?[
   {id:101,description:'1st Monthly',scheduleType:'monthly',interest:1234.56,dueAmount:10000,totalDue:10000,amountPaid:10000,paidInterestAmount:1234.56,status:'Paid'},
@@ -64,6 +66,22 @@ try{
       for(const [label,amount] of [['Base Selling Price',base],['LMF Amount',lmf],['TCP',tcp],['Total Interest Amount',interest]])await summary.getByText(label,{exact:true}).locator('..').getByText(currency(amount),{exact:true}).waitFor();
       if(scenario==='historical')assert.equal(await page.getByRole('button',{name:'Add Payment',exact:true}).count(),0);
     }
+  });
+  await check('Base price shows saved area, selected price and payment mode; LMF shows its saved payment arrangement',async()=>{
+    for(const [scenario,calculation,mode,lmf] of [
+      ['pricing','120 sqm × ₱6,500.00/sqm','Installment','Included in monthly'],
+      ['cash','100 sqm × ₱7,400.00/sqm','Cash','Included in cash balance'],
+      ['pay-later','120 sqm × ₱6,500.00/sqm','Installment','Pay later'],
+      ['cash-later','100 sqm × ₱7,400.00/sqm','Cash','Pay later'],
+      ['historical','120 sqm × ₱6,500.00/sqm','Installment','Included in monthly'],
+    ]){
+      await open(scenario);const summary=page.getByRole('group',{name:'Contract price breakdown',exact:true});
+      const base=summary.getByText('Base Selling Price',{exact:true}).locator('..'),fee=summary.getByText('LMF Amount',{exact:true}).locator('..');
+      await base.getByText(calculation,{exact:true}).waitFor();await base.getByText(mode,{exact:true}).waitFor();await fee.getByText(lmf,{exact:true}).waitFor();
+    }
+    await open('pricing');await page.screenshot({path:resolve(out,'contract-details-desktop.png')});
+    await page.setViewportSize({width:390,height:1000});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:resolve(out,'contract-details-mobile.png')});await page.setViewportSize({width:1440,height:1000});
+    assert.equal(mutations.filter(request=>request.method!=='GET').length,0);
   });
   await check('Void opens owner authorization without crashing the Payments tab or submitting a mutation',async()=>{
     await open();await page.getByRole('button',{name:'Void',exact:true}).first().click();await page.getByRole('heading',{name:'Void Payment',exact:true}).waitFor();await page.getByText('Super Admin Password *',{exact:true}).waitFor();assert.equal(await page.getByText('This tab could not be displayed',{exact:true}).count(),0);assert.equal(mutations.filter(r=>r.method!=='GET').length,0);await page.screenshot({path:resolve(out,'void-owner.png')});await page.getByRole('button',{name:'Cancel',exact:true}).click();
