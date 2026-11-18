@@ -6,6 +6,7 @@ import { normalizeDocumentResponsibleParty } from '../../../utils/documentRequir
 import { hydrateUserPermissions } from '../../../services/accessControl.service.js';
 import { getUserProjectAccess } from '../../../services/projectAccess.service.js';
 import { buildLatestScheduleAllocationTiming } from '../../../services/paymentTiming.service.js';
+import { calculateFullPaymentSettlement, readFullPaymentSettlement } from '../../../services/fullPaymentSettlement.service.js';
 
 export { db, jwt, bcrypt };
 
@@ -1796,6 +1797,31 @@ export const getListingPenaltySnapshots = async (
     reliefRows = rows;
   }
 
+  // Settlement penalty adjustments are dated reliefs, never cash. Keeping them
+  // with the payment makes editing or voiding the receipt reverse them too.
+  if (await columnExists(connection, 'lot_project_payments', 'lot_project_payment_settlement_json')) {
+    const [settlements] = await connection.query(
+      `SELECT lot_project_payment_id, lot_project_payment_date, lot_project_payment_settlement_json
+       FROM lot_project_payments WHERE lot_project_id = ? AND lot_project_listing_id = ?
+         AND lot_project_client_profile_id = ? AND lot_project_payment_status = 'Verified'
+         AND lot_project_payment_settlement_json IS NOT NULL
+         AND (? = 0 OR lot_project_payment_id <> ?)`,
+      [lotProjectId, listingId, clientProfile.lot_project_client_profile_id, Number(excludePaymentId || 0), Number(excludePaymentId || 0)]
+    );
+    for (const payment of settlements) {
+      const settlement = readFullPaymentSettlement(payment.lot_project_payment_settlement_json);
+      for (const row of settlement.rows) {
+        if (row.penaltyAdjustment <= 0) continue;
+        reliefRows.push({
+          penalty_relief_id: -Number(payment.lot_project_payment_id),
+          lot_project_payment_schedule_id: row.scheduleId, relief_type: 'partial_waiver',
+          relief_amount: row.penaltyAdjustment, effective_date: payment.lot_project_payment_date,
+          created_at: payment.lot_project_payment_date, status: 'active', reason: settlement.review.reason,
+        });
+      }
+    }
+  }
+
   const allocationsBySchedule = new Map();
   allocations.forEach((allocation) => {
     const key = Number(allocation.lot_project_payment_schedule_id);
@@ -2678,7 +2704,7 @@ const getPaymentBreakdownForRow = (row = {}, amountPaid = 0) => {
   return { penaltyPaid, interestPaid, principalPaid };
 };
 
-export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
+export const recomputeComputedSoaBalances = (rows = [], terms = {}, { preserveScheduledAmounts = false } = {}) => {
   const today = todayDateOnly();
   let runningBalance = roundMoneyValue(terms.principalTcp ?? terms.tcp ?? 0);
   let projectedMonthlyBalance = roundMoneyValue(terms.financedBalance || 0);
@@ -2750,7 +2776,7 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
       continue;
     }
 
-    if (scheduleType === 'monthly') {
+    if (scheduleType === 'monthly' && !preserveScheduledAmounts) {
       const remainingMonthlyRows = Math.max(monthlyRows.length - monthlyIndex, 1);
       const amortizedPayment = roundMoneyValue(Number(terms.monthlyAmortization || row.monthlyAmortizationAmount || row.dueAmount || 0));
       const scheduledBalance = roundMoneyValue(Math.max(projectedMonthlyBalance, 0));
@@ -3176,7 +3202,10 @@ export const getListingSoaRows = async (
       }));
     }
 
-    return recomputeComputedSoaBalances(sortedRows, terms);
+    // Stored schedules already include balloon repricing and settlement
+    // adjustments. Rebuilding their interest here would undo those adjustments
+    // in the UI even though the persisted cash and allocations are correct.
+    return recomputeComputedSoaBalances(sortedRows, terms, { preserveScheduledAmounts: true });
   }
 
   const computedRows = createComputedSoaRows(terms);
@@ -3383,6 +3412,7 @@ export const getNextCashReference = async (_connection, unitCode, paymentId) => 
 };
 
 export const mapPaymentRow = (row = {}) => ({
+  settlement: readFullPaymentSettlement(row.lot_project_payment_settlement_json),
   id: row.lot_project_payment_id,
   paymentId: row.lot_project_payment_id,
   storageCode: row.lot_project_payment_storage_code || null,
@@ -4199,6 +4229,40 @@ export const recomputeListingScheduleBalances = async (connection, listing, { as
   };
 };
 
+export const getFullPaymentSettlement = async (connection, listing, paymentDate, review = {}) => {
+  const [profiles] = await connection.query('SELECT * FROM lot_project_client_profiles WHERE lot_project_client_profile_id = ?', [listing.lot_project_client_profile_id]);
+  const profile = { ...listing, ...profiles[0] };
+  const rows = await getExistingSoaScheduleRows(connection, listing.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id, listing.lot_project_account_id);
+  const snapshots = await getListingPenaltySnapshots(connection, listing.lot_project_id, listing.lot_project_listing_id, profile, rows, paymentDate);
+  const quote = calculateFullPaymentSettlement({ rows, snapshots, paymentDate, review, legalMiscFeeMode: getComputedSoaTerms(profile, rows).legalMiscFeeMode });
+  const [laterPayments] = await connection.query(
+    `SELECT lot_project_payment_id FROM lot_project_payments WHERE lot_project_id = ? AND lot_project_listing_id = ?
+     AND lot_project_account_id = ? AND lot_project_payment_status = 'Verified' AND lot_project_payment_date > ? LIMIT 1`,
+    [listing.lot_project_id, listing.lot_project_listing_id, listing.lot_project_account_id, paymentDate]
+  );
+  if (laterPayments.length) quote.reviewReasons.push('Verified payments exist after this settlement date. Review payment chronology before settling.');
+  if (!(await columnExists(connection, 'lot_project_payments', 'lot_project_payment_settlement_json'))) quote.reviewReasons.push('Apply the Full Payment settlement database migration before posting.');
+  quote.reviewRequired = quote.reviewReasons.length > 0;
+  return quote;
+};
+
+export const restoreFullPaymentSettlement = async (connection, listing, payment) => {
+  const settlement = readFullPaymentSettlement(payment?.lot_project_payment_settlement_json);
+  if (!settlement) return;
+  const activeRows = await getExistingSoaScheduleRows(connection, listing.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id, listing.lot_project_account_id, { includeCancelled: true });
+  const activeIds = new Set(activeRows.map((row) => Number(row.lot_project_payment_schedule_id)));
+  for (const row of settlement.rows) {
+    if (row.interestAdjustment <= 0 || !activeIds.has(row.scheduleId)) continue;
+    await connection.query(
+      `UPDATE lot_project_payment_schedules s SET due_amount = ?, interest_amount = ?, principal_amount = ?, monthly_amortization_amount = ?
+       WHERE lot_project_payment_schedule_id = ? AND lot_project_id = ? AND lot_project_listing_id = ?
+         AND lot_project_client_profile_id = ? AND lot_project_account_id = ?`,
+      [row.originalDueAmount, row.originalInterestAmount, row.originalPrincipalAmount, row.originalMonthlyAmount,
+        row.scheduleId, listing.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id, listing.lot_project_account_id]
+    );
+  }
+};
+
 export const applyPaymentToSchedules = async (connection, listing, paymentId, preferredScheduleId, amount, paymentDate, referenceId, paymentType, { allowCrossTypeOverflow = false } = {}) => {
   if (!(await tableExists(connection, 'lot_project_payment_allocations'))) {
     throw new Error('lot_project_payment_allocations table does not exist. Run the payments SOA migration first.');
@@ -4251,6 +4315,29 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
 
   if (!scheduleRows.length) {
     throw new Error('No SOA schedule row is available for this listing.');
+  }
+
+  if (paymentType === 'full_payment') {
+    const [payments] = await connection.query('SELECT * FROM lot_project_payments WHERE lot_project_payment_id = ?', [paymentId]);
+    const settlement = readFullPaymentSettlement(payments[0]?.lot_project_payment_settlement_json);
+    // NULL means a historical receipt: preserve its original cash and schedule.
+    if (settlement) {
+      for (const adjustment of settlement.rows) {
+        const row = scheduleRows.find((item) => Number(item.lot_project_payment_schedule_id) === adjustment.scheduleId);
+        if (!row) throw Object.assign(new Error('Settlement schedule changed. Review the payment before replaying it.'), { statusCode: 409 });
+        if (adjustment.interestAdjustment <= 0) continue;
+        if (Math.abs(Number(row.due_amount) - adjustment.originalDueAmount) > 0.009 || Math.abs(Number(row.interest_amount) - adjustment.originalInterestAmount) > 0.009) {
+          throw Object.assign(new Error('Settlement interest changed. Review the payment before replaying it.'), { statusCode: 409 });
+        }
+        row.due_amount = roundMoneyValue(Number(row.due_amount) - adjustment.interestAdjustment);
+        row.interest_amount = roundMoneyValue(Number(row.interest_amount) - adjustment.interestAdjustment);
+        row.monthly_amortization_amount = row.due_amount;
+        await connection.query('UPDATE lot_project_payment_schedules SET due_amount = ?, interest_amount = ?, monthly_amortization_amount = ? WHERE lot_project_payment_schedule_id = ?',
+          [row.due_amount, row.interest_amount, row.monthly_amortization_amount, adjustment.scheduleId]);
+      }
+      const payable = getRemainingUnpaidScheduleBalance(scheduleRows, clientProfile);
+      if (Math.abs(payable - Number(amount)) > 0.009) throw Object.assign(new Error('The settlement payoff changed. Refresh and review the Full Payment quote.'), { statusCode: 409 });
+    }
   }
 
   const restrictedType = paymentTypeToStoredScheduleType(paymentType);
@@ -4400,6 +4487,15 @@ export const rebuildListingPaymentAllocationsChronologically = async (
   );
 
   const paymentIds = verifiedPayments.map((row) => Number(row.lot_project_payment_id || 0)).filter(Boolean);
+  // Restore adjustments from both verified and voided settlements before replay.
+  // This also handles the final receipt being voided, leaving no verified rows.
+  if (await columnExists(connection, 'lot_project_payments', 'lot_project_payment_settlement_json')) {
+    const [settlements] = await connection.query(
+      `SELECT * FROM lot_project_payments WHERE lot_project_id = ? AND lot_project_listing_id = ?
+       AND lot_project_client_profile_id = ? AND lot_project_account_id = ? AND lot_project_payment_settlement_json IS NOT NULL
+       ORDER BY lot_project_payment_date DESC, lot_project_payment_id DESC`, [projectId, listingId, profileId, accountId]);
+    for (const payment of settlements) await restoreFullPaymentSettlement(connection, listing, payment);
+  }
   if (paymentIds.length) {
     const placeholders = paymentIds.map(() => '?').join(', ');
     await connection.query(
@@ -4413,6 +4509,9 @@ export const rebuildListingPaymentAllocationsChronologically = async (
   if (await columnExists(connection, 'lot_project_payment_schedules', 'paid_interest_amount')) paidColumns.push('paid_interest_amount = 0');
   if (await columnExists(connection, 'lot_project_payment_schedules', 'paid_principal_amount')) paidColumns.push('paid_principal_amount = 0');
 
+  const replayRows = await getExistingSoaScheduleRows(connection, projectId, listingId, profileId, accountId, { includeCancelled: true });
+  const replayIds = replayRows.map((row) => Number(row.lot_project_payment_schedule_id));
+  if (!replayIds.length) return;
   await connection.query(
     `
       UPDATE lot_project_payment_schedules s
@@ -4425,13 +4524,9 @@ export const rebuildListingPaymentAllocationsChronologically = async (
             ELSE 'Unpaid'
           END
           ${paidColumns.length ? `, ${paidColumns.join(', ')}` : ''}
-      WHERE s.lot_project_id = ?
-        AND s.lot_project_listing_id = ?
-        AND (? = 0 OR s.lot_project_client_profile_id = ?)
-        AND (? = 0 OR s.lot_project_account_id = ?)
-        AND ${getLatestActiveScheduleGenerationPredicate('s')}
+      WHERE s.lot_project_payment_schedule_id IN (${replayIds.map(() => '?').join(', ')})
     `,
-    [projectId, listingId, profileId, profileId, accountId, accountId]
+    replayIds
   );
 
   const firstPaymentDate = verifiedPayments[0]?.lot_project_payment_date

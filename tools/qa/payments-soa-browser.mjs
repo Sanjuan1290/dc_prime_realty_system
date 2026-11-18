@@ -40,7 +40,14 @@ const server=await createServer({configFile:false,envDir:false,root:resolve(root
 await server.listen();
 const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'}),context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),checks=[],errors=[],mutations=[];page.setDefaultTimeout(15000);
 page.on('pageerror',error=>errors.push(error.message));
-await context.route('**/*',async route=>{const url=new URL(route.request().url());if(url.hostname!=='127.0.0.1')return route.abort();if(url.pathname.startsWith('/api/v1/')){mutations.push({method:route.request().method(),path:url.pathname});return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:true,data:[]})})}return route.continue()});
+await context.route('**/*',async route=>{const url=new URL(route.request().url());if(url.hostname!=='127.0.0.1')return route.abort();if(url.pathname.startsWith('/api/v1/')){mutations.push({method:route.request().method(),path:url.pathname});
+if(url.pathname.endsWith('/payments/preview')){
+ const input=route.request().postDataJSON(),due=new URL(page.url()).searchParams.get('scenario')==='settlement-due',review=input.settlementReview||{},hasReason=Boolean(review.reason?.trim());
+ const reviewRequired=due&&(!hasReason||!['collectible','not_collectible'].includes(review.interest)||!['collectible','not_collectible'].includes(review.penalties));
+ const interest=due?100:0,penalty=due?25:0,total=1000+(review.interest==='collectible'?interest:0)+(review.penalties==='collectible'?penalty:0);
+ return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:true,paymentDate:input.paymentDate,fullPaymentAmount:total,fullSummary:{version:1,principalOutstanding:1000,interestOutstanding:interest,penaltyOutstanding:penalty,excludedFutureInterest:248.22,separateLmfOutstanding:0,lmfIncludedInPrincipal:true,collectibleInterest:review.interest==='collectible'?interest:0,collectiblePenalties:review.penalties==='collectible'?penalty:0,totalPayable:total,review:{interest:review.interest||'review',penalties:review.penalties||'review',reason:review.reason?.trim()||''},reviewRequired,reviewReasons:reviewRequired?['Review charge collectibility and record the applicable rule.']:[]}})});
+}
+return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:true,data:[]})})}return route.continue()});
 async function check(name,action){try{await action();checks.push({name,status:'PASS'})}catch(error){checks.push({name,status:'FAIL',reason:error.message});await page.screenshot({path:resolve(out,'failure-'+checks.length+'.png')}).catch(()=>{})}console.log(JSON.stringify(checks.at(-1)))}
 async function open(scenario='reservation',role='super_admin'){await page.goto(`http://127.0.0.1:4187/?scenario=${scenario}&role=${role}`);await page.getByRole('heading',{name:'Payments & SOA',exact:true}).waitFor()}
 try{
@@ -100,6 +107,28 @@ try{
   });
   await check('Unit information shows the SOA rate and the protected listing form explains its separate default',async()=>{
     await page.goto('http://127.0.0.1:4187/?view=unit');await page.getByText('11.50%',{exact:true}).waitFor();await page.getByRole('button',{name:'Edit',exact:true}).click();await page.getByText("Listing default, locked after reservation/sale. This buyer's SOA rate is 11.50%.",{exact:true}).waitFor();await page.screenshot({path:resolve(out,'listing-default-and-soa-interest.png')});assert.equal(await page.getByLabel(/^Annual Interest Rate/).isDisabled(),true);
+  });
+  await check('Unpaid scheduled interest helper excludes paid interest and cancelled rows',async()=>{
+    await open('pricing');const expected=new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP',minimumFractionDigits:2}).format(4802.45);
+    await page.getByText('Includes '+expected+' in unpaid scheduled interest.',{exact:true}).waitFor();
+  });
+  await check('Full Payment shows the dated payoff and excluded interest without a gross-schedule fallback',async()=>{
+    await open('pricing');await page.getByRole('button',{name:'Add Payment',exact:true}).click();await page.getByRole('button',{name:'Continue to Payment',exact:true}).click();await page.getByLabel(/^Payment Type/).selectOption('Full Payment');
+    await page.getByText(/^Future scheduled interest excluded:/).waitFor();
+    const amount=page.getByLabel(/^Amount/);await page.waitForFunction(()=>document.querySelector('input[type=number]')?.value==='1000.00');assert.equal(await amount.isDisabled(),true);assert.equal(await amount.inputValue(),'1000.00');
+    await page.getByLabel(/^Payment Date/).fill('2026-11-17');await page.getByText('Settlement breakdown \u00b7 2026-11-17',{exact:true}).waitFor();
+    await page.getByText(/LMF is included in remaining principal; no extra amount is added/).waitFor();
+    await page.screenshot({path:resolve(out,'full-payment-breakdown.png')});await page.getByRole('button',{name:'Cancel',exact:true}).click();
+  });
+  await check('Charge decisions keep posting blocked until collectibility and basis are reviewed',async()=>{
+    await open('settlement-due');await page.getByRole('button',{name:'Add Payment',exact:true}).click();await page.getByRole('button',{name:'Continue to Payment',exact:true}).click();await page.getByLabel(/^Payment Type/).selectOption('Full Payment');
+    await page.getByLabel(/^Already-due interest treatment/).waitFor();
+    const submit=page.locator('form').getByRole('button',{name:'Add Payment',exact:true});assert.equal(await submit.isDisabled(),true);
+    await page.getByLabel(/^Already-due interest treatment/).selectOption('collectible');await page.getByLabel(/^Outstanding penalties treatment/).selectOption('not_collectible');
+    const basis=page.getByLabel(/^Applicable rule \/ approved basis/);await basis.pressSequentially('Approved synthetic account rules',{delay:10});assert.equal(await basis.inputValue(),'Approved synthetic account rules');assert.equal(await basis.evaluate(node=>node===document.activeElement),true);
+    await page.waitForFunction(()=>document.querySelector('form button[type=submit]')?.disabled===false&&document.querySelector('input[type=number]')?.value==='1100.00');
+    assert.equal(await page.getByLabel(/^Amount/).inputValue(),'1100.00');
+    await page.screenshot({path:resolve(out,'full-payment-charge-review.png')});await page.getByRole('button',{name:'Cancel',exact:true}).click();
   });
   assert.deepEqual(errors,[]);
 }finally{writeFileSync(resolve(out,'browser-results.json'),JSON.stringify({checks,errors,mutations},null,2));await browser.close();await server.close()}

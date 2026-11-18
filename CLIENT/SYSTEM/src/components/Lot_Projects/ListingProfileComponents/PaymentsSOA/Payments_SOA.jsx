@@ -20,6 +20,7 @@ import {useFetchPost, useFetchPut, getDoubleCheckNotice} from '../../../../utils
 import useCurrentUser from '../../../../utils/useCurrentUser'
 import { getSettingsAuthorizationLabel } from '../../../../utils/settingsAuthorizationRole'
 import AddSOAPaymentModal from './AddSOAPaymentModal'
+import { getUnpaidScheduledInterest } from './paymentAmountUtils'
 import PenaltyReliefModal from './PenaltyReliefModal'
 import PaymentProofModal from './PaymentProofModal'
 import { hasPermission, PERMISSIONS } from '../../../../config/permissions'
@@ -127,6 +128,7 @@ const normalizePayments = (payments = [], listing = {}) => {
   const projectName = getListingValue(listing, ['project_name', 'projectName'], '-')
 
   return payments.map((payment, index) => ({
+    settlement: payment.settlement || null,
     id: payment.id || payment.paymentId || index + 1,
     paymentId: payment.paymentId || payment.id,
     soaRowId: payment.soaRowId || payment.lot_project_payment_schedule_id || '',
@@ -1608,7 +1610,7 @@ const PaymentsSOA = ({
         <SummaryCard label="Total Payments Made" value={totalPaid} tone="emerald" />
         <SummaryCard label="Balloon Principal Reduction" value={balloonPrincipalReduction} tone="blue" />
         <SummaryCard label="Remaining Monthly Terms" value={remainingMonthlyTerms} isMoney={false} />
-        <SummaryCard label="Unpaid Scheduled Due" value={totalDue} tone="blue" />
+        <SummaryCard label="Unpaid Scheduled Due" value={totalDue} tone="blue" hint={`Includes ${money(getUnpaidScheduledInterest(rows))} in unpaid scheduled interest.`} />
         <SummaryCard label="Remaining Principal Balance" value={remainingBalance} tone="amber" />
       </div>
 

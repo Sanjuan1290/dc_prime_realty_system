@@ -17,13 +17,15 @@ export const getRowTotalDue = (row = {}) => {
 export const getRowUnpaidAmount = (row = {}) =>
   roundMoney(Math.max(getRowTotalDue(row) - Number(row.amountPaid || 0), 0))
 
-// Full Payment covers every unpaid SOA row, including any outstanding
-// interest and penalties already reflected in the current schedule.
-export const getFullPaymentAmount = (rows = [], reversedPaymentAmount = 0) =>
-  roundMoney(
-    rows.reduce((sum, row) => sum + getRowUnpaidAmount(row), 0) +
-      Math.max(cleanPaymentNumber(reversedPaymentAmount), 0)
-  )
+export const getUnpaidScheduledInterest = (rows = []) => roundMoney(rows.reduce((sum, row) => {
+  if (['cancelled', 'paid', 'advance', 'advance payment', 'paid early'].includes(String(row.status || row.schedule_status || '').toLowerCase())) return sum
+  const interest = Math.max(Number(row.interest ?? row.interestAmount ?? row.interest_amount ?? 0), 0)
+  const paidInterest = row.paidInterestAmount ?? row.paid_interest_amount
+  const paid = paidInterest == null
+    ? Math.min(Math.max(Number(row.amountPaid || 0) - Number(row.paidPenaltyAmount || 0), 0), interest)
+    : Number(paidInterest)
+  return sum + Math.max(interest - paid, 0)
+}, 0))
 
 export const formatPaymentAmountInput = (value) =>
   Number(value || 0) > 0 ? Number(value).toFixed(2) : ''

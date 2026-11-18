@@ -23,6 +23,7 @@ export const REVIEW_ACTIONS = Object.freeze({
   // Accounting
   'payment.create': { department: 'accounting', entityType: 'lot_project_payment', label: 'Payment entry', headApprovalBefore: false },
   'payment.create_with_penalty_waiver': { department: 'accounting', entityType: 'lot_project_penalty_schedule', label: 'Payment with penalty waiver', headApprovalBefore: true },
+  'payment.full_settlement_charge_review': { department: 'accounting', entityType: 'lot_project_listing', label: 'Full Payment charge collectibility review', headApprovalBefore: true },
   'payment.edit': { department: 'accounting', entityType: 'lot_project_payment', label: 'Payment correction', headApprovalBefore: true },
   'payment.void': { department: 'accounting', entityType: 'lot_project_payment', label: 'Payment void', headApprovalBefore: true },
   'payment.lmf_waiver': { department: 'accounting', entityType: 'lot_project_lmf_schedule', label: 'Legal / Misc Fee waiver', headApprovalBefore: true },

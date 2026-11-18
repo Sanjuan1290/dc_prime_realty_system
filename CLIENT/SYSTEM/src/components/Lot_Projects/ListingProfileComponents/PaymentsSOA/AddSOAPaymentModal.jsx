@@ -4,7 +4,6 @@ import StatusAlert from '../../../Shared/StatusAlert'
 import {
   cleanPaymentNumber,
   formatPaymentAmountInput,
-  getFullPaymentAmount,
   getRowTotalDue,
   getRowUnpaidAmount,
 } from './paymentAmountUtils'
@@ -190,6 +189,7 @@ const AddSOAPaymentModal = ({
   const projectName = getListingValue(listing, ['project_name', 'projectName'], 'Project')
 
   const [alert, setAlert] = useState(null)
+  const [settlementReview, setSettlementReview] = useState(initialPayment?.settlement?.review || { interest: 'review', penalties: 'review', reason: '' })
   const [form, setForm] = useState({
     soaRowId: String(initialPayment?.soaRowId || suggestedRow?.id || ''),
     paymentType: normalizePaymentType(
@@ -278,6 +278,7 @@ const AddSOAPaymentModal = ({
     const requestId = previewRequestRef.current + 1
     previewRequestRef.current = requestId
     let cancelled = false
+    setIsPreviewLoading(true)
 
     const timer = window.setTimeout(async () => {
       setIsPreviewLoading(true)
@@ -289,6 +290,7 @@ const AddSOAPaymentModal = ({
           paymentType: form.paymentType,
           paymentDate: form.paymentDate,
           excludePaymentId: isEdit ? Number(initialPayment?.paymentId || initialPayment?.id || 0) : 0,
+          settlementReview: form.paymentType === 'Full Payment' ? settlementReview : undefined,
         })
 
         if (cancelled || previewRequestRef.current !== requestId) return
@@ -331,12 +333,8 @@ const AddSOAPaymentModal = ({
     penaltyHandling,
     canWaivePenalty,
     requiresSoaRow,
+    settlementReview,
   ])
-
-  const fallbackFullPaymentAmount = useMemo(
-    () => getFullPaymentAmount(rows, isEdit ? initialPayment?.amount : 0),
-    [rows, isEdit, initialPayment?.amount]
-  )
 
   const fallbackBalloonPrincipalCapacity = useMemo(() => {
     const remainingMonthlyPrincipal = rows.reduce((sum, row) => {
@@ -358,8 +356,8 @@ const AddSOAPaymentModal = ({
     return Math.max(remainingMonthlyPrincipal + editingBalloonAmount, 0)
   }, [initialPayment, isEdit, rows])
 
-  const fullPaymentAmount = Number(paymentPreview?.fullPaymentAmount || fallbackFullPaymentAmount || 0)
-  const balloonPrincipalCapacity = Number(paymentPreview?.balloonPrincipalCapacity || fallbackBalloonPrincipalCapacity || 0)
+  const fullPaymentAmount = Number(paymentPreview?.fullPaymentAmount ?? 0)
+  const balloonPrincipalCapacity = Number(paymentPreview?.balloonPrincipalCapacity ?? fallbackBalloonPrincipalCapacity ?? 0)
   const previewRow = paymentPreview?.selectedRow || null
   const fullSummary = paymentPreview?.fullSummary || null
 
@@ -372,7 +370,7 @@ const AddSOAPaymentModal = ({
   }, [fullPaymentAmount, isBalloonPayment, isFullPayment, previewRow, selectedRow])
 
   const baseOutstanding = isFullPayment
-    ? Number(fullSummary?.principalOutstanding || Math.max(fullPaymentAmount - Number(fullSummary?.interestOutstanding || 0) - Number(fullSummary?.penaltyOutstanding || 0), 0))
+    ? Number(fullSummary?.principalOutstanding ?? 0)
     : isBalloonPayment
       ? balloonPrincipalCapacity
       : Number(previewRow?.principalOutstanding ?? Math.max(Number(selectedRow?.dueAmount || 0) - Number(selectedRow?.discountAmount || 0) - Number(selectedRow?.interest || 0), 0))
@@ -509,6 +507,11 @@ const AddSOAPaymentModal = ({
       ? fullPaymentAmount
       : cleanPaymentNumber(form.amount)
 
+    if (isFullPayment && (!fullSummary || fullSummary.version !== 1 || fullSummary.reviewRequired || paymentPreview.paymentDate !== form.paymentDate || ['interest', 'penalties', 'reason'].some((key) => String(fullSummary.review?.[key] || '').trim() !== String(settlementReview[key] || '').trim()))) {
+      setAlert({ type: 'error', message: fullSummary?.reviewReasons?.join(' ') || 'A reviewed payment-date settlement quote is required.' })
+      return
+    }
+
     if (requiresSoaRow && !form.soaRowId) {
       setAlert({ type: 'error', message: 'Select an SOA row for this payment.' })
       return
@@ -522,7 +525,7 @@ const AddSOAPaymentModal = ({
     if (isFullPayment && Math.abs(paymentAmount - fullPaymentAmount) > 0.009) {
       setAlert({
         type: 'error',
-        message: `Full Payment must equal the current unpaid SOA total of ${money(fullPaymentAmount)}.`,
+        message: `Full Payment must equal the payoff as of ${form.paymentDate}: ${money(fullPaymentAmount)}.`,
       })
       return
     }
@@ -605,6 +608,7 @@ const AddSOAPaymentModal = ({
         penaltyWaiverReason: isPenaltyWaivedForPayment ? penaltyWaiverReason.trim() : '',
         penaltyWaiverInternalNotes: isPenaltyWaivedForPayment ? penaltyWaiverInternalNotes.trim() : '',
         requestKey: isEdit ? undefined : requestKeyRef.current,
+        settlementReview: isFullPayment ? settlementReview : undefined,
       })
     } catch (error) {
       submitLockRef.current = false
@@ -664,7 +668,7 @@ const AddSOAPaymentModal = ({
                   </p>
                 ) : isFullPayment ? (
                   <p className="mt-1 text-xs font-semibold text-blue-700">
-                    Full Payment covers every unpaid SOA row. The Amount field is locked to{' '}
+                    Full Payment settles the account as of {form.paymentDate}, excluding future scheduled interest. The Amount field is locked to{' '}
                     <span className="font-black">{money(fullPaymentAmount)}</span>.
                   </p>
                 ) : selectedRow ? (
@@ -698,13 +702,13 @@ const AddSOAPaymentModal = ({
           <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs font-black uppercase text-slate-500">
-                {isFullPayment ? 'Base Outstanding' : isBalloonPayment ? 'Available Monthly Principal' : 'Base Outstanding'}
+                {isFullPayment ? 'Remaining Principal' : isBalloonPayment ? 'Available Monthly Principal' : 'Base Outstanding'}
               </p>
               <p className="mt-1 text-lg font-black text-slate-950">{money(baseOutstanding)}</p>
             </div>
 
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-xs font-black uppercase text-amber-700">Interest</p>
+              <p className="text-xs font-black uppercase text-amber-700">{isFullPayment ? 'Already-due Interest' : 'Interest'}</p>
               <p className="mt-1 text-lg font-black text-amber-900">{money(automaticInterest)}</p>
             </div>
 
@@ -721,6 +725,32 @@ const AddSOAPaymentModal = ({
               {isPenaltyWaivedForPayment ? <p className="mt-1 text-[11px] font-bold text-violet-700">Calculated penalty removed from this payment.</p> : null}
             </div>
           </div>
+
+          {isFullPayment ? (
+            <div className="mb-5 space-y-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+              <p className="text-sm font-black text-blue-950">Settlement breakdown · {form.paymentDate}</p>
+              <p className="text-sm font-semibold text-blue-900">Separate unpaid LMF: {money(fullSummary?.separateLmfOutstanding)}{fullSummary?.lmfIncludedInPrincipal ? ' · LMF is included in remaining principal; no extra amount is added.' : ' · Added once to the payoff.'}</p>
+              <p className="text-sm font-black text-emerald-800">Future scheduled interest excluded: {money(fullSummary?.excludedFutureInterest)}</p>
+              <p className="text-xs font-semibold text-blue-900">Collectible interest: {money(fullSummary?.collectibleInterest)} · Collectible penalties: {money(fullSummary?.collectiblePenalties)}. Adjustments are recorded separately from cash collected.</p>
+              <p className="text-xs font-semibold text-blue-900">Already-due interest adjustment: {money(fullSummary?.excludedDueInterest)} · Penalty adjustment: {money(fullSummary?.excludedPenalties)}</p>
+              {automaticInterest > 0.009 || automaticPenalty > 0.009 ? (
+                <>
+                  <p className="text-xs font-semibold text-amber-900">Review charge collectibility under the applicable account rules. Accounting authorization is required before posting these decisions.</p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {[["interest", "Already-due interest", automaticInterest], ["penalties", "Outstanding penalties", automaticPenalty]].filter(([, , value]) => value > 0.009).map(([key, label]) => (
+                      <SelectField key={key} label={`${label} treatment`} value={settlementReview[key]} onChange={(value) => setSettlementReview((current) => ({ ...current, [key]: value }))}>
+                        <option value="review">Needs review</option>
+                        <option value="collectible">Collectible — include in payoff</option>
+                        <option value="not_collectible">Not collectible — settlement adjustment</option>
+                      </SelectField>
+                    ))}
+                  </div>
+                  <Field label="Applicable rule / approved basis" value={settlementReview.reason} onChange={(value) => setSettlementReview((current) => ({ ...current, reason: value }))} placeholder="Record why each charge is collectible or excluded" required />
+                </>
+              ) : null}
+              {fullSummary?.reviewRequired ? <StatusAlert type="error" message={fullSummary.reviewReasons.join(' ')} /> : null}
+            </div>
+          ) : null}
 
           {canOfferPenaltyWaiver ? (
             <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
@@ -751,7 +781,7 @@ const AddSOAPaymentModal = ({
                 <span className="text-sm font-black text-slate-700">Apply To SOA Row</span>
                 <div className="flex min-h-11 items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm font-semibold text-slate-600">
                   {isFullPayment
-                    ? 'Not required. Full Payment is applied across every unpaid SOA row.'
+                    ? 'Not required. Full Payment settles the principal and collectible charges using the payment date.'
                     : 'Not required. Balloon payments go directly to principal.'}
                 </div>
                 <p className="text-xs font-semibold text-slate-500">
@@ -797,7 +827,7 @@ const AddSOAPaymentModal = ({
               placeholder="0.00"
               helper={
                 isFullPayment
-                  ? `Auto-filled from the complete unpaid SOA balance: ${money(fullPaymentAmount)}.`
+                  ? `Payoff as of ${form.paymentDate}: ${money(fullPaymentAmount)}. Future scheduled interest is excluded.`
                   : isBalloonPayment
                     ? `Direct principal reduction. Maximum available: ${money(balloonPrincipalCapacity)}. The regular monthly amount stays the same while the final monthly rows are removed.`
                     : isEdit
@@ -905,7 +935,7 @@ const AddSOAPaymentModal = ({
 
           <button
             type="submit"
-            disabled={isSaving || isPreviewLoading || alert?.type === 'loading'}
+            disabled={isSaving || isPreviewLoading || alert?.type === 'loading' || (isFullPayment && (!fullSummary || fullSummary.reviewRequired || fullPaymentAmount <= 0))}
             className="h-10 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
           >
             {isSaving || alert?.type === 'loading'

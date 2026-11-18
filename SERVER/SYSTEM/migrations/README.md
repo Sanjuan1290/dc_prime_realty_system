@@ -6,6 +6,16 @@ These files are historical schema/data migrations for existing D&C Prime Realty 
 
 Apply unapplied migrations in filename/date order. Always back up the database first and read each migration header before running it.
 
+## Full Payment settlements (2026-11-18)
+
+Apply `20261118_full_payment_settlements.sql` before deploying the Full Payment changes. The migration adds one nullable JSON column to payments and can be rerun safely. It does not change existing receipts or their allocations.
+
+New Full Payments save the dated payoff, Accounting charge decisions, authorization, and per-row interest/penalty adjustments in that column. Only actual cash goes into payment allocations. An edit or void reverses the stored adjustments before rebuilding payment history. Historical Full Payments with a NULL settlement record retain their original treatment during replay.
+
+Already-due interest and penalties require a recorded collectibility decision and an applicable rule or approved basis. Accounting Staff decisions use the existing Head approval workflow; the approved quote must still match when submitted. Missing due dates, later verified receipts, or a missing migration block settlement for review. These decisions are account-specific; the software does not infer legal collectibility from a configured interest or penalty rate.
+
+The local regression results and commands are in `QA_REPORTS/2026-11-18-full-payment-settlement.md` at the repository root.
+
 ## Important distinctions
 
 - `20260718_direct_agent_overrides.sql` is the original direct-agent commission migration.

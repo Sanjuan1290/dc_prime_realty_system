@@ -1,4 +1,5 @@
 import { capturePaymentSchedule } from '../../../services/paymentReviewSchedule.service.js';
+import { normalizeFullPaymentReview, readFullPaymentSettlement } from '../../../services/fullPaymentSettlement.service.js';
 import {locksSoaFirstDueDate,planSoaDueDateUpdates} from '../../../services/soaFirstDueDate.service.js';
 import { isOwnerAdministrator } from '../../../config/permissions.js';
 import bcrypt from 'bcrypt';
@@ -61,7 +62,8 @@ import {
   lockPaymentSchedulesForListing,
   normalizePaymentType,
   getPaymentTypeLabel,
-  getRemainingUnpaidScheduleBalance,
+  getFullPaymentSettlement,
+  restoreFullPaymentSettlement,
   getBalloonPrincipalCapacity,
   rebuildListingPaymentAllocationsChronologically,
   hasCrossTypePaymentAllocations,
@@ -359,6 +361,7 @@ const buildPaymentCorrectionPayload = ({ action, actor, listing, existingPayment
         penaltyHandling: cleanPaymentCorrectionValue(body.penaltyHandling || body.penalty_handling || 'apply').toLowerCase(),
         penaltyWaiverReason: cleanPaymentCorrectionValue(body.penaltyWaiverReason || body.penalty_waiver_reason),
         penaltyWaiverInternalNotes: toNullable(body.penaltyWaiverInternalNotes || body.penalty_waiver_internal_notes),
+        settlementReview: body.settlementReview || null,
       }
     : { status: 'Cancelled' };
 
@@ -672,59 +675,22 @@ const getPaymentByRequestKey = async (connection, requestKey) => {
       FROM lot_project_payments
       WHERE lot_project_payment_request_key = ?
       LIMIT 1
+      FOR UPDATE
     `,
     [requestKey]
   );
   return rows[0] || null;
 };
 
-const getExactFullPaymentAmount = async (connection, listing) => {
-  const [scheduleRows] = await connection.query(
-    `
-      SELECT s.*
-      FROM lot_project_payment_schedules s
-      WHERE s.lot_project_id = ?
-        AND s.lot_project_listing_id = ?
-        AND s.lot_project_client_profile_id = ?
-        AND ${getLatestActiveScheduleGenerationPredicate('s')}
-      ORDER BY
-        CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
-        due_date ASC,
-        lot_project_payment_schedule_id ASC
-    `,
-    [listing.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id]
-  );
-
-  const [profileRows] = await connection.query(
-    `
-      SELECT *
-      FROM lot_project_client_profiles
-      WHERE lot_project_client_profile_id = ?
-      LIMIT 1
-    `,
-    [listing.lot_project_client_profile_id]
-  );
-
-  return getRemainingUnpaidScheduleBalance(
-    scheduleRows,
-    { ...(listing || {}), ...(profileRows[0] || {}) }
-  );
-};
-
-const validateFullPaymentAmount = async (connection, listing, paymentType, amount) => {
-  if (paymentType !== 'full_payment') return;
-
-  const exactAmount = await getExactFullPaymentAmount(connection, listing);
-  if (exactAmount <= 0.009) {
-    throw createHttpError(400, 'This account has no remaining unpaid SOA balance.');
+const validateFullPaymentAmount = async (connection, listing, paymentType, amount, paymentDate, review) => {
+  if (paymentType !== 'full_payment') return null;
+  const quote = await getFullPaymentSettlement(connection, listing, paymentDate, review);
+  if (quote.reviewRequired) throw createHttpError(409, quote.reviewReasons.join(' '));
+  if (quote.totalPayable <= 0.009) throw createHttpError(400, 'This account has no payable settlement balance.');
+  if (Math.abs(Number(amount || 0) - quote.totalPayable) > 0.009) {
+    throw createHttpError(409, `Full Payment must equal the payoff as of ${paymentDate}: ${money(quote.totalPayable)}. Refresh the payment preview.`);
   }
-
-  if (Math.abs(Number(amount || 0) - exactAmount) > 0.009) {
-    throw createHttpError(
-      400,
-      `Full Payment amount must equal the current unpaid SOA balance of ${money(exactAmount)}.`
-    );
-  }
+  return quote;
 };
 
 const validateBalloonPaymentAmount = async (
@@ -763,6 +729,22 @@ const requirePenaltyManager = async (req) => {
 
 const ACCOUNTING_ADJUSTMENT_ENTITY = 'lot_project_penalty_schedule';
 const ACCOUNTING_LMF_ENTITY = 'lot_project_lmf_schedule';
+
+const authorizeSettlementReview = async (connection, { req, user, project, listing, settlement, amount, paymentMethod, paymentId = null }) => {
+  if (!settlement || (settlement.interestOutstanding <= 0.009 && settlement.penaltyOutstanding <= 0.009)) return { authorized: true };
+  const authorization = await authorizeAccountingAdjustment(connection, {
+    req, actor: user, project, listing, actionKey: 'payment.full_settlement_charge_review',
+    entityType: 'lot_project_listing', entityId: listing.lot_project_listing_id,
+    entityLabel: `Full Payment charge review · ${listing.lot_project_listing_unit_id}`,
+    payload: { settlement, amount, paymentMethod, paymentId }, reason: settlement.review.reason,
+  });
+  if (authorization.authorized) settlement.authorization = {
+    type: authorization.authorizationType, reviewedByUserId: user.id,
+    approvedByUserId: authorization.headPreApprovedByUserId || null,
+    approvalRequestId: authorization.approvalRequestId || null,
+  };
+  return authorization;
+};
 
 const authorizeAccountingAdjustment = async (connection, {
   req,
@@ -1276,6 +1258,7 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
 export const previewLotProjectListingPayment = async (req, res) => {
   const connection = await db.getConnection();
 
+  let previewTransaction = false;
   try {
     const slug = String(req.params.projectSlug || '').trim();
     const listingLookup = String(req.params.listingId || '').trim();
@@ -1294,7 +1277,11 @@ export const previewLotProjectListingPayment = async (req, res) => {
       : toNullableNumber(requestedScheduleId);
     const excludePaymentId = Number(req.body.excludePaymentId || req.body.paymentId || 0);
 
-    const listing = await getListingForPayment(connection, project, listingLookup);
+    if (paymentType === 'full_payment' || excludePaymentId) {
+      await connection.beginTransaction();
+      previewTransaction = true;
+    }
+    const listing = await getListingForPayment(connection, project, listingLookup, { forUpdate: previewTransaction });
     if (!listing) return res.status(404).json({ message: 'Listing not found.' });
     if (!listing.lot_project_client_profile_id) {
       return res.status(400).json({ message: 'This listing has no buyer profile yet.' });
@@ -1303,6 +1290,23 @@ export const previewLotProjectListingPayment = async (req, res) => {
     const linkedPenaltyWaiver = excludePaymentId
       ? await getPaymentLinkedPenaltyWaiver(connection, excludePaymentId)
       : null;
+
+    if (previewTransaction) {
+      await lockPaymentAccountForListing(connection, listing);
+      await lockPaymentSchedulesForListing(connection, listing);
+      if (excludePaymentId) {
+        const oldPayment = await getPaymentById(connection, project, listing, excludePaymentId, { forUpdate: true });
+        if (!oldPayment || oldPayment.lot_project_payment_status !== 'Verified') throw createHttpError(404, 'The payment being edited is not available.');
+        if (paymentType === 'full_payment' || oldPayment.lot_project_payment_settlement_json) {
+          if (linkedPenaltyWaiver) await cancelPaymentLinkedPenaltyWaiver(connection, linkedPenaltyWaiver);
+          await connection.query("UPDATE lot_project_payments SET lot_project_payment_status = 'Cancelled' WHERE lot_project_payment_id = ?", [excludePaymentId]);
+          await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: paymentDate });
+        }
+      }
+      await recomputeListingScheduleBalances(connection, listing, { asOfDate: paymentDate });
+      await refreshListingPenaltyCache(connection, listing, paymentDate);
+      await recomputeListingScheduleBalances(connection, listing, { asOfDate: paymentDate });
+    }
 
     const [profileRows] = await connection.query(
       `SELECT * FROM lot_project_client_profiles WHERE lot_project_client_profile_id = ? LIMIT 1`,
@@ -1359,12 +1363,15 @@ export const previewLotProjectListingPayment = async (req, res) => {
     const activeSummaries = scheduleRows
       .filter((row) => String(row.schedule_status || '').toLowerCase() !== 'cancelled')
       .map(summarizeRow);
-    const fullSummary = activeSummaries.reduce((summary, row) => ({
+    const scheduledSummary = activeSummaries.reduce((summary, row) => ({
       principalOutstanding: roundMoneyValue(summary.principalOutstanding + Number(row.principalOutstanding || 0)),
       interestOutstanding: roundMoneyValue(summary.interestOutstanding + Number(row.interestOutstanding || 0)),
       penaltyOutstanding: roundMoneyValue(summary.penaltyOutstanding + Number(row.penaltyOutstanding || 0)),
       totalPayable: roundMoneyValue(summary.totalPayable + Number(row.totalPayable || 0)),
     }), { principalOutstanding: 0, interestOutstanding: 0, penaltyOutstanding: 0, totalPayable: 0 });
+    const fullSummary = paymentType === 'full_payment'
+      ? await getFullPaymentSettlement(connection, listing, paymentDate, req.body.settlementReview)
+      : scheduledSummary;
     const fullPaymentAmount = fullSummary.totalPayable;
     const selectedRow = scheduleId
       ? activeSummaries.find((row) => Number(row.scheduleId) === Number(scheduleId)) || null
@@ -1398,6 +1405,7 @@ export const previewLotProjectListingPayment = async (req, res) => {
   } catch (error) {
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
+    if (previewTransaction) await connection.rollback();
     connection.release();
   }
 };
@@ -1473,6 +1481,8 @@ export const createLotProjectListingPayment = async (req, res) => {
         : false;
       let paymentPenaltyWaiverAmount = 0;
       let penaltyWaiverAuthorization = null;
+      let settlement = null;
+      let settlementAuthorization = null;
 
       const existingRequest = await getPaymentByRequestKey(connection, requestKey);
       if (existingRequest) {
@@ -1492,7 +1502,8 @@ export const createLotProjectListingPayment = async (req, res) => {
           plainDate(existingRequest.lot_project_payment_date) === paymentDate &&
           String(existingRequest.lot_project_payment_type || '') === paymentType &&
           String(existingRequest.lot_project_payment_method || '') === paymentMethod &&
-          Number(existingRequest.lot_project_payment_schedule_id || 0) === Number(scheduleId || 0) &&
+          (['full_payment', 'balloon'].includes(paymentType) || Number(existingRequest.lot_project_payment_schedule_id || 0) === Number(scheduleId || 0)) &&
+          (paymentType !== 'full_payment' || JSON.stringify(normalizeFullPaymentReview(readFullPaymentSettlement(existingRequest.lot_project_payment_settlement_json)?.review)) === JSON.stringify(normalizeFullPaymentReview(req.body.settlementReview))) &&
           existingPenaltyHandling === penaltyHandling;
 
         if (!samePaymentRequest) {
@@ -1520,7 +1531,9 @@ export const createLotProjectListingPayment = async (req, res) => {
         await recomputeListingScheduleBalances(connection, listing);
         await refreshListingPenaltyCache(connection, listing, paymentDate);
         await recomputeListingScheduleBalances(connection, listing);
-        await validateFullPaymentAmount(connection, listing, paymentType, amount);
+        settlement = await validateFullPaymentAmount(connection, listing, paymentType, amount, paymentDate, req.body.settlementReview);
+        settlementAuthorization = await authorizeSettlementReview(connection, { req, user, project, listing, settlement, amount, paymentMethod });
+        if (!settlementAuthorization.authorized) return { ...settlementAuthorization, approvalMessage: settlementAuthorization.message };
         await validateBalloonPaymentAmount(connection, listing, paymentType, amount);
         if (penaltyHandling === 'waive') {
           await assertPaymentPenaltyWaiverSchema(connection);
@@ -1612,6 +1625,12 @@ export const createLotProjectListingPayment = async (req, res) => {
         valueSql.push('?');
       }
 
+      if (settlement) {
+        paymentColumns.push('lot_project_payment_settlement_json');
+        paymentValues.push(JSON.stringify(settlement));
+        valueSql.push('?');
+      }
+
       const [paymentResult] = await connection.query(
         `
           INSERT INTO lot_project_payments (${paymentColumns.join(', ')})
@@ -1698,6 +1717,7 @@ export const createLotProjectListingPayment = async (req, res) => {
           penaltyHandling,
           penaltyWaiverAmount: paymentPenaltyWaiverAmount,
           paymentPenaltyReliefId,
+          settlement,
           penaltyWaiverReason: penaltyWaiverReason || null,
         },
       });
@@ -1711,19 +1731,19 @@ export const createLotProjectListingPayment = async (req, res) => {
         entityId: paymentId,
         entityLabel: `${referenceId || `Payment #${paymentId}`} — ${listing.lot_project_listing_unit_id}`,
         afterSnapshot: {
-          paymentId, referenceId, amount, paymentDate, paymentType, paymentMethod,
+          paymentId, referenceId, amount, paymentDate, paymentType, paymentMethod, settlement,
           bankName, accountNumber, scheduleId, listingId: listing.lot_project_listing_id,
           projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id,
           buyerName: listing.buyer_full_name || null,
         },
-        headPreApprovedByUserId: penaltyWaiverAuthorization?.headPreApprovedByUserId || null,
+        headPreApprovedByUserId: settlementAuthorization?.headPreApprovedByUserId || penaltyWaiverAuthorization?.headPreApprovedByUserId || null,
       });
-      if (penaltyWaiverAuthorization?.authorizationType === 'emergency_super_admin') {
+      if (penaltyWaiverAuthorization?.authorizationType === 'emergency_super_admin' || settlementAuthorization?.authorizationType === 'emergency_super_admin') {
         await notifySystemAdmins(connection, {
           reviewId: operationalReview.reviewId,
           type: 'super_admin_emergency_adjustment',
-          title: `Emergency Super Admin payment waiver · ${listing.lot_project_listing_unit_id}`,
-          message: 'A payment was recorded with a penalty waiver using owner break-glass access and is awaiting Auditor review.',
+          title: `Emergency Super Admin payment adjustment · ${listing.lot_project_listing_unit_id}`,
+          message: 'A payment adjustment was recorded using owner break-glass access and is awaiting Auditor review.',
         });
       }
 
@@ -1863,13 +1883,20 @@ export const updateLotProjectListingPayment = async (req, res) => {
         throw createHttpError(400, 'Reference ID is required for non-cash payments.');
       }
 
+      await connection.query('SAVEPOINT before_settlement_edit');
       // Remove the linked waiver from the live calculation first. The transaction
       // will either keep it cancelled (Apply Penalty) or reactivate/update it below (Waive Penalty).
       if (existingPaymentPenaltyWaiver) {
         await cancelPaymentLinkedPenaltyWaiver(connection, existingPaymentPenaltyWaiver);
       }
 
+      await restoreFullPaymentSettlement(connection, listing, existingPayment);
       await reversePaymentAllocations(connection, listing, paymentId);
+      if (paymentType === 'full_payment' || existingPayment.lot_project_payment_settlement_json) {
+        await connection.query("UPDATE lot_project_payments SET lot_project_payment_status = 'Cancelled' WHERE lot_project_payment_id = ?", [paymentId]);
+        if (hasSchedules) await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: paymentDate });
+      }
+      let settlement = null;
       let paymentPenaltyWaiverAmount = 0;
       if (hasSchedules) {
         const [profileRows] = await connection.query(`SELECT * FROM lot_project_client_profiles WHERE lot_project_client_profile_id = ? LIMIT 1`, [listing.lot_project_client_profile_id]);
@@ -1882,7 +1909,15 @@ export const updateLotProjectListingPayment = async (req, res) => {
         const targetSnapshot = scheduleId ? snapshots.get(Number(scheduleId)) : null;
         paymentPenaltyWaiverAmount = roundMoneyValue(targetSnapshot?.outstandingPenaltyAmount || 0);
         await refreshListingPenaltyCache(connection, listing, paymentDate);
-        await validateFullPaymentAmount(connection, listing, paymentType, amount);
+        settlement = await validateFullPaymentAmount(connection, listing, paymentType, amount, paymentDate, req.body.settlementReview);
+        // Verified-payment corrections already pass the governed authorization
+        // above; charge treatment must also carry a specific Accounting basis.
+        const chargeAuthorization = await authorizeSettlementReview(connection, { req, user, project, listing, settlement, amount, paymentMethod, paymentId });
+        if (!chargeAuthorization.authorized) {
+          await connection.query('ROLLBACK TO SAVEPOINT before_settlement_edit');
+          const pending = await authorizeSettlementReview(connection, { req, user, project, listing, settlement, amount, paymentMethod, paymentId });
+          return { ...pending, approvalMessage: pending.message };
+        }
         await validateBalloonPaymentAmount(connection, listing, paymentType, amount, paymentId);
         if (penaltyHandling === 'waive' && paymentPenaltyWaiverAmount <= 0.009) throw createHttpError(400, 'There is no calculated penalty to waive for this payment date.');
       }
@@ -1927,6 +1962,10 @@ export const updateLotProjectListingPayment = async (req, res) => {
 
       if (!Number(updateResult?.affectedRows || 0)) {
         throw createHttpError(409, 'Payment changed before it could be updated. Please refresh and try again.');
+      }
+
+      if (await columnExists(connection, 'lot_project_payments', 'lot_project_payment_settlement_json')) {
+        await connection.query('UPDATE lot_project_payments SET lot_project_payment_settlement_json = ? WHERE lot_project_payment_id = ?', [settlement ? JSON.stringify(settlement) : null, paymentId]);
       }
 
       let paymentPenaltyReliefId = Number(existingPaymentPenaltyWaiver?.penalty_relief_id || 0) || null;
@@ -1989,6 +2028,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
             paymentMethod,
             referenceId,
             scheduleId,
+            settlement,
           },
         },
       });
@@ -2002,6 +2042,8 @@ export const updateLotProjectListingPayment = async (req, res) => {
         penaltyWaivedAmount: penaltyHandling === 'waive' ? paymentPenaltyWaiverAmount : 0,
         paymentPenaltyReliefId, workflowReview };
     });
+
+    if (result.approvalRequired) return res.status(202).json({ success: false, approval_required: true, approval_request_id: result.approvalRequestId, request_number: result.requestNumber, message: result.approvalMessage });
 
     if (result.authorizationError) {
       return res.status(result.authorizationError.statusCode || 400).json({ message: result.authorizationError.message });
