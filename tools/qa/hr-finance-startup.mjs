@@ -12,6 +12,8 @@ async function listen(server){await new Promise((done,reject)=>{server.once('err
 async function freePort(){const server=createServer();const port=await listen(server);await new Promise(done=>server.close(done));return port}
 function settings(app,port,dbPort,timeout){return {...baseEnv,NODE_ENV:'test',PORT:String(port),TIDB_HOST:'127.0.0.1',TIDB_PORT:String(dbPort),TIDB_USERNAME:'synthetic_only',TIDB_PASSWORD:'synthetic-password-never-log',TIDB_DATABASE:app.database,TIDB_SSL:'false',TIDB_CONNECT_TIMEOUT_MS:'10000',DATABASE_STARTUP_TIMEOUT_MS:String(timeout),FINANCE_STAGING_ENABLED:'true',FINANCE_PRODUCTION_ENABLED:'false',FINANCE_ALLOWED_ORIGINS:'http://127.0.0.1:4179',HR_CORS_ORIGIN:'http://127.0.0.1:4179',HR_DB_HOST:'127.0.0.1',HR_DB_PORT:String(dbPort),HR_DB_USER:'synthetic_only',HR_DB_PASSWORD:'synthetic-password-never-log',HR_DB_NAME:'dc_prime_hr_db',HR_DB_TLS:'false',HR_DB_CONNECT_TIMEOUT_MS:'10000',HR_DB_STARTUP_TIMEOUT_MS:String(timeout),HR_STAGING_ONLY:'true',HR_ENABLE_WRITES:'false',HR_ENABLE_JOBS:'false',HR_ENABLE_SALARY_DELIVERY:'false',HR_JWT_SECRET:'synthetic-startup-check-only-secret'};}
 const checks=[];
+// Startup probes must never load a developer's real service email credentials.
+baseEnv.DOTENV_CONFIG_PATH=resolve(runtime,'empty.env');
 for(const app of apps){
   for(const kind of ['connection-stall','query-stall','healthy','production-healthy','production-tls-guard']){
     const sockets=new Set();let accepted=0;

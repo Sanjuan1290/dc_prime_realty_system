@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import {api} from './api.js';
 import {Dialog,Notice,Spinner} from './FinanceFeedback.jsx';
-import {financeDateTime,financeMoney,financeSourceLabel} from './financeFormat.js';
+import {financeMoney,financeSourceLabel} from './financeFormat.js';
 
 export default function FinanceTransactionDetails({id,onClose}){
   const [record,setRecord]=useState(null),[error,setError]=useState('');
@@ -23,7 +23,6 @@ export default function FinanceTransactionDetails({id,onClose}){
       <div><dt>Source</dt><dd>{financeSourceLabel(record.source_system)}</dd></div>
       {record.source_transaction_id&&<div><dt>Source reference</dt><dd>{record.source_transaction_id}</dd></div>}
       {record.original_import&&<>
-        <div><dt>Original import</dt><dd>{financeDateTime(record.original_import.committed_at)} · Philippine Time</dd></div>
         <div><dt>Import file</dt><dd>{record.original_import.file_name}</dd></div>
         {record.original_import.imported_by&&<div><dt>Imported by</dt><dd>{record.original_import.imported_by}</dd></div>}
       </>}

@@ -7,6 +7,7 @@ import {writeFileSync} from 'node:fs';
 Object.assign(process.env,{NODE_ENV:'test',HR_DB_HOST:'127.0.0.1',HR_DB_PORT:'13307',HR_DB_USER:'qa_hr',HR_DB_PASSWORD:'qa-isolated-only-password',HR_DB_NAME:'dc_prime_hr_db',HR_DB_TLS:'false',HR_JWT_SECRET:'qa-hr-only-secret-'.repeat(4)});
 const require=createRequire(new URL('../../SERVER/HR/package.json',import.meta.url)),mysql=require('mysql2/promise');
 const {requestPayrollUndo}=await import('../../SERVER/HR/services/payrollUndo.service.js');
+const {sendPayrollUndoEmail}=await import('../../SERVER/HR/services/payrollUndoEmail.js');
 const {db:hrDb}=await import('../../SERVER/HR/db/connect.js');
 const systemDb=mysql.createPool({host:'127.0.0.1',port:13307,user:'qa_system',password:'qa-isolated-only-password',database:'dc_prime_realty_system_db',dateStrings:true});
 const financeDb=mysql.createPool({host:'127.0.0.1',port:13307,user:'qa_finance',password:'qa-isolated-only-password',database:'dc_prime_finance_db',dateStrings:true});
@@ -66,8 +67,32 @@ test('undo requires the administrator role, permission and the current password'
   assert.equal((await details()).payroll_status,'finalized');
 });
 test('a missing email configuration fails without modifying payroll or creating an active code',async()=>{
-  const result=await api('hr',`/employee-payroll/payrolls/${payrollId}/undo/request`,{password,reason:'Synthetic email configuration test'});ok(result,503);assert.equal(result.data.code,'EMAIL_NOT_CONFIGURED');
+  const result=await api('hr',`/employee-payroll/payrolls/${payrollId}/undo/request`,{password,reason:'Synthetic email configuration test'});ok(result,503);assert.equal(result.data.code,'PAYROLL_UNDO_EMAIL_NOT_CONFIGURED');assert.doesNotMatch(result.data.message,/Password reset/);
   const [[active]]=await hrDb.query('SELECT COUNT(*) AS n FROM hr_payroll_undo_challenges WHERE payroll_id=? AND used_at IS NULL',[payrollId]);assert.equal(active.n,0);assert.equal((await details()).payroll_status,'finalized');
+});
+test('undo sends to a changed login email without needing a password-reset URL',async()=>{
+  const [[identity]]=await hrDb.query('SELECT login_email FROM hr_login_identities WHERE hr_user_id=1');
+  const [[user]]=await hrDb.query('SELECT email_snapshot FROM hr_users WHERE id=1');
+  const names=['RESEND_API_KEY','EMAIL_FROM','HR_PUBLIC_URL'],saved=names.map(name=>process.env[name]);
+  let sent;
+  try {
+    await hrDb.query('UPDATE hr_login_identities SET login_email=? WHERE hr_user_id=1',['changed-login@qa.invalid']);
+    await hrDb.query('UPDATE hr_users SET email_snapshot=? WHERE id=1',['changed-login@qa.invalid']);
+    process.env.RESEND_API_KEY='synthetic-only';process.env.EMAIL_FROM='HR <onboarding@resend.dev>';delete process.env.HR_PUBLIC_URL;
+    const requested=await requestPayrollUndo(payrollId,1,{password,reason:'Verify changed login email'},{mailer:(data,options)=>sendPayrollUndoEmail(data,{...options,send:async(url,request)=>{sent=JSON.parse(request.body);return {ok:true}}})});
+    assert.deepEqual(sent.to,['changed-login@qa.invalid']);assert.match(sent.text,/\d{6}/);assert.ok(requested.challenge_id);
+    assert.equal((await details()).payroll_status,'finalized');
+  } finally {
+    await hrDb.query('UPDATE hr_login_identities SET login_email=? WHERE hr_user_id=1',[identity.login_email]);
+    await hrDb.query('UPDATE hr_users SET email_snapshot=? WHERE id=1',[user.email_snapshot]);
+    names.forEach((name,index)=>{if(saved[index]===undefined)delete process.env[name];else process.env[name]=saved[index]});
+  }
+});
+test('provider restrictions reach the caller safely and invalidate the undelivered code',async()=>{
+  const before=await details();
+  await assert.rejects(requestPayrollUndo(payrollId,1,{password,reason:'Synthetic restricted sender'},{settings:{key:'synthetic-only',from:'onboarding@resend.dev'},mailer:(data,options)=>sendPayrollUndoEmail(data,{...options,send:async()=>({ok:false,status:403,json:async()=>({message:'You can only send testing emails to your own email address. PRIVATE_DETAIL'})})})}),error=>error.code==='PAYROLL_UNDO_TEST_SENDER_RESTRICTED'&&!/PRIVATE_DETAIL/.test(error.message));
+  const [[active]]=await hrDb.query('SELECT COUNT(*) AS n FROM hr_payroll_undo_challenges WHERE payroll_id=? AND used_at IS NULL',[payrollId]);
+  assert.equal(active.n,0);assert.equal((await details()).payroll_status,before.payroll_status);
 });
 test('one email code permits exactly one concurrent undo and preserves the original receipt',async()=>{
   const body=await codeFor();const [[stored]]=await hrDb.query('SELECT code_hash FROM hr_payroll_undo_challenges WHERE id=?',[body.challenge_id]);assert.equal(stored.code_hash.length,64);assert.notEqual(stored.code_hash,body.code);

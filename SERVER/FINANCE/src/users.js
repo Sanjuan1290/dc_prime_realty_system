@@ -75,3 +75,30 @@ export async function resendInvitation(id,actor,{mailer=sendInvitation,checkSett
   });
   return deliverInvitation(user,password,password_hash,actor,mailer);
 }
+
+export async function deletePendingInvitation(id,actor) {
+  if(!/^[1-9]\d{0,17}$/.test(String(id)))throw problem('INVALID_USER','Choose a valid account.');
+  return withTransaction(async conn=>{
+    // Use the same lock order as access changes. Recheck acceptance under the
+    // user lock also held by password setup/reset, so acceptance and deletion serialize.
+    const [administrators]=await conn.execute("SELECT id,must_change_password FROM finance_users WHERE role='admin' AND is_active=1 ORDER BY id FOR UPDATE");
+    if(!administrators.some(admin=>String(admin.id)===String(actor.id)&&!Number(admin.must_change_password))) {
+      throw problem('ADMIN_REQUIRED','An enabled Finance Admin must delete invitations.',403);
+    }
+    const [[user]]=await conn.execute('SELECT id,email,display_name,role,must_change_password FROM finance_users WHERE id=? FOR UPDATE',[id]);
+    if(!user)throw problem('NOT_FOUND','Finance account not found.',404);
+    if(!Number(user.must_change_password)||String(user.id)===String(actor.id)) {
+      throw problem('INVITATION_NOT_PENDING','Only invitations that have not been accepted can be deleted.',409);
+    }
+    const [[activity]]=await conn.execute(`SELECT
+      EXISTS(SELECT 1 FROM finance_transactions WHERE created_by=? OR voided_by=?) OR
+      EXISTS(SELECT 1 FROM finance_categories WHERE created_by=?) OR
+      EXISTS(SELECT 1 FROM finance_import_batches WHERE created_by=? OR committed_by=?) OR
+      EXISTS(SELECT 1 FROM finance_import_category_mappings WHERE approved_by=?) AS has_activity`,Array(6).fill(id));
+    if(Number(activity.has_activity))throw problem('INVITATION_IN_USE','This account has Finance records. Disable its access instead of deleting it.',409);
+    await audit(conn,actor.id,'user.invitation.deleted','user',user.id,{email:user.email,display_name:user.display_name,role:user.role});
+    // Sessions and password reset tokens are removed by their ON DELETE CASCADE.
+    await conn.execute('DELETE FROM finance_users WHERE id=?',[id]);
+    return {id:String(id),deleted:true};
+  });
+}

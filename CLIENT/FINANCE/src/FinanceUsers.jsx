@@ -20,7 +20,7 @@ export default function FinanceUsers({users,currentUserId,onChanged,onAccessChan
   const [form,setForm]=useState(blank),[busy,setBusy]=useState('');
   const [message,setMessage]=useState(null),[dialogError,setDialogError]=useState('');
   const [search,setSearch]=useState(''),[role,setRole]=useState(''),[status,setStatus]=useState('');
-  const [editing,setEditing]=useState(null);
+  const [editing,setEditing]=useState(null),[removing,setRemoving]=useState(null);
   const searchTerm=search.trim().toLowerCase();
   const shown=users.filter(user=>(!searchTerm||[user.display_name,user.email].some(value=>value.toLowerCase().includes(searchTerm)))&&
     (!role||role===user.role)&&(!status||status===statusOf(user)));
@@ -65,6 +65,21 @@ export default function FinanceUsers({users,currentUserId,onChanged,onAccessChan
       setBusy('');
     }
   };
+  const remove=async()=>{
+    setBusy('delete');
+    setDialogError('');
+    setMessage(null);
+    try {
+      await api('/finance/users/'+removing.id,{method:'DELETE'});
+      setRemoving(null);
+      setMessage({type:'success',text:'Invitation deleted.'});
+      await onChanged();
+    } catch(error) {
+      setDialogError(error.message);
+    } finally {
+      setBusy('');
+    }
+  };
   const updateForm=event=>setForm({...form,[event.target.name]:event.target.value});
 
   return <section className="panel">
@@ -102,11 +117,19 @@ export default function FinanceUsers({users,currentUserId,onChanged,onAccessChan
                 <span className="cell-secondary">Expires {financeDateTime(user.temporary_password_expires_at)}</span>}</td>
             <td><button type="button" className="text-btn" disabled={Boolean(busy)} onClick={()=>edit(user)}>Edit access</button>
               {['pending','expired'].includes(state)&&<button type="button" className="text-btn cell-secondary" disabled={Boolean(busy)} onClick={()=>send(user.id)}>
-                {busy==='resend-'+user.id?'Sending…':'Resend invitation'}</button>}</td>
+                {busy==='resend-'+user.id?'Sending…':'Resend invitation'}</button>}
+              {Number(user.must_change_password)!==0&&String(user.id)!==String(currentUserId)&&
+                <button type="button" className="text-btn danger cell-secondary" disabled={Boolean(busy)} onClick={()=>{setDialogError('');setRemoving(user)}}>Delete invitation</button>}</td>
           </tr>;
         })}
       </tbody>
     </table></div>
+    {removing&&<Dialog title="Delete Finance invitation?" description={removing.display_name} busy={busy==='delete'} danger onClose={()=>setRemoving(null)}>
+      <p>This removes the invitation for <strong>{removing.email}</strong>. Their temporary password will no longer work. You can invite them again later.</p>
+      {dialogError&&<Notice type="error">{dialogError}</Notice>}
+      <div className="action-row"><button type="button" className="btn" disabled={Boolean(busy)} onClick={()=>setRemoving(null)}>Cancel</button>
+        <button type="button" className="btn danger" disabled={Boolean(busy)} onClick={remove}>{busy==='delete'?'Deleting…':'Delete invitation'}</button></div>
+    </Dialog>}
     {editing&&<Dialog title="Edit Finance access" description={editing.name} busy={busy==='save'} onClose={()=>setEditing(null)}>
       <form className="entry-form" onSubmit={save}>
         {dialogError&&<Notice type="error">{dialogError}</Notice>}

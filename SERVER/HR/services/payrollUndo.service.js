@@ -6,7 +6,8 @@ import {buildFundReleaseReceipt} from './payrollReceipt.service.js';
 import {enqueueSalaryReversal} from './salaryOutbox.service.js';
 import {writeAuditLog} from '../controllers/System/auditLogs.controller.js';
 import {getManilaDateTime} from '../controllers/System/Employees/attendanceLite.shared.js';
-import {recoverySettings} from './passwordRecoveryCore.js';
+import {payrollUndoEmailSettings,payrollUndoEmailFailure,sendPayrollUndoEmail} from './payrollUndoEmail.js';
+export {sendPayrollUndoEmail} from './payrollUndoEmail.js';
 
 const problem=(message,code='PAYROLL_UNDO_INVALID',statusCode=409)=>Object.assign(new Error(message),{code,statusCode});
 const sha=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -40,10 +41,6 @@ function undoRequest(payroll,body) {
   }
   return {reason,cash_date};
 }
-export async function sendPayrollUndoEmail({email,code,payrollId,employee,reason},{settings,send=fetch}) {
-  const response=await send('https://api.resend.com/emails',{method:'POST',signal:AbortSignal.timeout(15000),headers:{Authorization:'Bearer '+settings.key,'Content-Type':'application/json','Idempotency-Key':randomUUID()},body:JSON.stringify({from:settings.from,to:[email],subject:'Confirm payroll undo — D&C Prime HR',text:`Your verification code is ${code}.\n\nUndo payroll #${payrollId} for ${employee}.\nReason: ${reason}\n\nThis code expires in 10 minutes and can be used once. If you did not request this, do not share the code. No payroll has been changed.`})});
-  if(!response.ok)throw problem('The verification email could not be delivered. Request a new code.','PAYROLL_UNDO_EMAIL_FAILED',503);
-}
 export async function requestPayrollUndo(payrollId,userId,body,{pool=db,mailer=sendPayrollUndoEmail,settings}={}) {
   payrollId=validId(payrollId);
   const connection=await pool.getConnection();let result,delivery;
@@ -62,7 +59,7 @@ export async function requestPayrollUndo(payrollId,userId,body,{pool=db,mailer=s
       throw problem('The administrator password is incorrect.','PAYROLL_UNDO_PASSWORD_INVALID',403);
     }
     const action=undoRequest(payroll,body),id=randomUUID(),code=String(randomInt(0,1000000)).padStart(6,'0');
-    const mailSettings=settings||recoverySettings('hr');
+    const mailSettings=settings||payrollUndoEmailSettings();
     await connection.query('UPDATE hr_payroll_undo_challenges SET used_at=UTC_TIMESTAMP() WHERE payroll_id=? AND user_id=? AND used_at IS NULL',[payrollId,userId]);
     await connection.query(`INSERT INTO hr_payroll_undo_challenges(id,payroll_id,user_id,code_hash,state_hash,identity_version,request_json,requested_at,expires_at)
       VALUES(?,?,?,?,?,?,?,UTC_TIMESTAMP(),DATE_ADD(UTC_TIMESTAMP(),INTERVAL 10 MINUTE))`,[id,payrollId,userId,codeHash(id,code),await state(connection,payroll,user),user.auth_version,JSON.stringify(action)]);
@@ -71,7 +68,7 @@ export async function requestPayrollUndo(payrollId,userId,body,{pool=db,mailer=s
     delivery={email:user.login_email,code,payrollId,employee:payroll.employee_name_snapshot,reason:action.reason,settings:mailSettings};
   }catch(error){await connection.rollback();throw error}finally{connection.release()}
   try { await mailer(delivery,{settings:delivery.settings}); }
-  catch(error){await pool.query('UPDATE hr_payroll_undo_challenges SET used_at=UTC_TIMESTAMP() WHERE id=?',[result.challenge_id]);throw problem('The verification email could not be delivered. Request a new code.','PAYROLL_UNDO_EMAIL_FAILED',503)}
+  catch(error){await pool.query('UPDATE hr_payroll_undo_challenges SET used_at=UTC_TIMESTAMP() WHERE id=?',[result.challenge_id]);throw payrollUndoEmailFailure(error)}
   return result;
 }
 export async function confirmPayrollUndo(payrollId,userId,body,{pool=db}={}) {

@@ -1,5 +1,5 @@
 import {useEffect, useId, useRef, useState} from 'react';
-import {FiArrowDownLeft, FiArrowUpRight, FiBarChart2, FiDownload, FiChevronDown, FiList, FiMinusCircle, FiPlusCircle} from 'react-icons/fi';
+import {FiArrowDownLeft, FiArrowUpRight, FiBarChart2, FiDownload, FiChevronDown, FiList, FiPlusCircle} from 'react-icons/fi';
 import {api} from './api.js';
 import FinanceDateFilter from './FinanceDateFilter.jsx';
 import {Notice, Spinner} from './FinanceFeedback.jsx';
@@ -9,7 +9,6 @@ import {financeBucketLabel, financeDayCount, financePeriodLabel, financePresetRa
 
 const defaults = range => ({ ...range });
 const summaries = [
-  ['Opening balance', 'opening_balance', FiMinusCircle],
   ['Money in', 'money_in', FiArrowDownLeft, 'income'],
   ['Money out', 'money_out', FiArrowUpRight, 'expense'],
   ['Net cash change', 'net_change', FiBarChart2],

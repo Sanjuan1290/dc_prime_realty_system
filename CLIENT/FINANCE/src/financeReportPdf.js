@@ -65,7 +65,7 @@ export async function downloadFinanceReport({report,summaries,categoryKind,categ
 
   doc.setTextColor(...muted);
   doc.text('Ledger totals include all posted transactions within the period.',margin,39);
-  const tileWidth=(contentWidth-4*3)/5;
+  const tileWidth=(contentWidth-(summaries.length-1)*3)/summaries.length;
   summaries.forEach(([label,key],index)=>{
     const x=margin+index*(tileWidth+3);
     doc.setDrawColor(...line);

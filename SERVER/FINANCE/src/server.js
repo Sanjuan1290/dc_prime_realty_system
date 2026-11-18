@@ -9,7 +9,7 @@ import {checkStartupDatabase,readStartupTimeout} from './serverStartup.js';
 import {problem,dateInManila} from './domain.js';
 import {login,requireUser,requireRole,publicUser,changePassword,requirePermanentPassword,COOKIE_NAME,sessionCookie,sessionHash,clearCookie} from './auth.js';
 import {getDashboard,listTransactions,getTransaction,postTransaction,voidTransaction,correctTransaction,listCategories,createCategory,setCategoryActive,deleteCategory,listAudit} from './ledger.js';
-import {listUsers,createUser,resendInvitation,updateUser} from './users.js';
+import {listUsers,createUser,resendInvitation,updateUser,deletePendingInvitation} from './users.js';
 import {getFinanceReport} from './reports.js';
 import {getFinanceReconciliation} from './reconciliation.js';
 import {previewImport,commitImport,listImportBatches,getImportDetails} from './importService.js';
@@ -84,6 +84,7 @@ app.get(`${prefix}/imports/:id/undo-preview`,requireRole('admin'),wrap(async(req
 app.post(`${prefix}/imports/:id/undo`,requireRole('admin'),wrap(async(req,res)=>res.json(await undoImport(req.params.id,req.body,req.financeUser))));
 app.get(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.json({users:await listUsers()})));
 app.patch(`${prefix}/users/:id`,requireRole('admin'),wrap(async(req,res)=>res.json(await updateUser(req.params.id,req.body,req.financeUser))));
+app.delete(`${prefix}/users/:id`,requireRole('admin'),wrap(async(req,res)=>res.json(await deletePendingInvitation(req.params.id,req.financeUser))));
 app.post(`${prefix}/users/:id/invitation`,requireRole('admin'),wrap(async(req,res)=>res.json(await resendInvitation(req.params.id,req.financeUser))));
 app.post(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.status(201).json(await createUser(req.body,req.financeUser))));
 app.use((req,res)=>res.status(404).json({error:{code:'NOT_FOUND',message:'Finance endpoint not found.'}}));

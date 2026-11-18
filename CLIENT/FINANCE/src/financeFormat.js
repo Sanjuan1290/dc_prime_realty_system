@@ -11,7 +11,7 @@ export const financeActions={
  'finance.import.preview':'File reviewed','finance.import.committed':'Import completed','finance.import.undone':'Import undone',
  'finance.import.payment_restored':'Payment restored','category.created_by_import':'Category created during import','category.reactivated_by_import':'Category reactivated during import',
  'category.created':'Category created','category.status_changed':'Category status changed','user.created':'User invited','user.invitation.sent':'Invitation sent','user.invitation.renewed':'Invitation renewed','user.password.changed':'Password changed',
- 'user.access_changed':'User access changed','category.deleted':'Category deleted',
+ 'user.access_changed':'User access changed','user.invitation.deleted':'Invitation deleted','category.deleted':'Category deleted',
  'user.password.reset':'Password reset completed'
 };
 export const financeActionLabel=action=>(financeActions[action]||String(action||'Activity').replaceAll(/[._]/g,' ').replace(/^./,letter=>letter.toUpperCase()));

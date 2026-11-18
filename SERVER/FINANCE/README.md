@@ -18,6 +18,8 @@ Failed invitation warnings distinguish test-sender restrictions, unverified doma
 
 Admins supply the name, email and role. An account receives a cryptographically random temporary password by email, valid for 24 hours. Only its salted scrypt hash is stored. Admins never receive it in an API response or audit record. New users must replace it before any Finance endpoint is available. A resend generates a new password and revokes previous sessions. Delivery failure keeps a visible pending invitation with a retry action. Existing users keep their current password.
 
+Admins can delete invitations that have not been accepted, including expired invitations. Deletion rechecks acceptance and administrator access under database locks, removes the invitation's sessions/reset tokens, and records who deleted it. Accepted accounts and accounts with Finance activity cannot be deleted. Disable their access instead. No schema migration is needed for invitation deletion.
+
 ## Imports and reports
 
 HR salary events and Company Finances transfers use signed CSV only. ZIP, Excel, unsigned or edited files are rejected. Both producers preserve the same verified, exact-centavo source rows. HR payroll has its own source namespace; repeated salary events exported by either application are recognized. Older external HR salaries labelled Realty are recognized only through a committed import receipt proving their origin. Historical Realty payroll remains distinct.
