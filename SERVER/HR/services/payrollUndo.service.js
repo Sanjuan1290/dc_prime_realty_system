@@ -35,9 +35,8 @@ function undoRequest(payroll,body) {
   if(reason.length<5||reason.length>1000)throw problem('Enter an undo reason of 5–1,000 characters.','PAYROLL_UNDO_REASON_REQUIRED',400);
   let cash_date=null;
   if(payroll.payroll_status==='released') {
-    if(body.cash_confirmed!==true)throw problem('Confirm that the release was recorded incorrectly or the funds were returned. An outstanding paid salary must use a separate adjustment.','PAYROLL_UNDO_CASH_CONFIRMATION',400);
     cash_date=body.cash_date;
-    if(typeof cash_date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(cash_date)||Number.isNaN(Date.parse(cash_date))||new Date(cash_date).toISOString().slice(0,10)!==cash_date||cash_date<payroll.released_date||cash_date>getManilaDateTime().date)throw problem('Choose a reversal date between the original release date and today.','PAYROLL_UNDO_DATE_INVALID',400);
+    if(typeof cash_date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(cash_date)||Number.isNaN(Date.parse(cash_date))||new Date(cash_date).toISOString().slice(0,10)!==cash_date||cash_date<payroll.released_date||cash_date>getManilaDateTime().date)throw problem('Choose an undo date between the payment date and today.','PAYROLL_UNDO_DATE_INVALID',400);
   }
   return {reason,cash_date};
 }
@@ -92,7 +91,7 @@ export async function confirmPayrollUndo(payrollId,userId,body,{pool=db}={}) {
       await connection.commit();
       throw problem('The password or email code is incorrect. Five failed attempts lock this code.','PAYROLL_UNDO_VERIFICATION_FAILED',403);
     }
-    const action=undoRequest(payroll,{...parse(challenge.request_json),cash_confirmed:true});
+    const action=undoRequest(payroll,parse(challenge.request_json));
     const receipt=buildFundReleaseReceipt(payroll,{today:getManilaDateTime().date});
     const reversal=payroll.payroll_status==='released'?await enqueueSalaryReversal(connection,payroll,action.cash_date):null;
     const [history]=await connection.query(`INSERT INTO hr_payroll_undo_history(payroll_id,actor_user_id,actor_name,previous_status,reason,cash_date,snapshot_json,receipt_json,reversal_event_id)

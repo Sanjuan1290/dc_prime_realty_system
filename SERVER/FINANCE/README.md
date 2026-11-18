@@ -12,6 +12,10 @@ FINANCE_READ_ONLY=true explicitly pauses business mutations. FINANCE_IMPORTS_REA
 
 Configure **RESEND_API_KEY**, **EMAIL_FROM** (verified sender), and **FINANCE_PUBLIC_URL=https://dc-prime-realty.pages.dev/finance** on this service. Server environment variables are isolated; email settings on the Realty service are not automatically available here.
 
+The `resend.dev` testing sender can send only to the email address registered with Resend. To invite other recipients, verify a sending domain in Resend and use an address on that domain as `EMAIL_FROM`. Changing the invite recipient does not verify a sender domain. See [Resend's documented errors](https://resend.com/docs/api-reference/errors).
+
+Failed invitation warnings distinguish test-sender restrictions, unverified domains, rejected email API keys, sending limits, and timeouts. The account remains pending and can be invited again after resolving the cause. Provider response bodies, keys, and temporary passwords are not returned in these warnings.
+
 Admins supply the name, email and role. An account receives a cryptographically random temporary password by email, valid for 24 hours. Only its salted scrypt hash is stored. Admins never receive it in an API response or audit record. New users must replace it before any Finance endpoint is available. A resend generates a new password and revokes previous sessions. Delivery failure keeps a visible pending invitation with a retry action. Existing users keep their current password.
 
 ## Imports and reports

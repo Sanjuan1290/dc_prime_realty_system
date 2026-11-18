@@ -3,7 +3,7 @@ import {getPool,withTransaction} from './db.js';
 import {hashPassword} from './passwords.js';
 import {audit} from './ledger.js';
 import {problem} from './domain.js';
-import {invitationSettings,sendInvitation} from './invitationEmail.js';
+import {invitationSettings,sendInvitation,invitationFailure} from './invitationEmail.js';
 export async function listUsers(){const [rows]=await getPool().execute('SELECT id,email,display_name,role,is_active,must_change_password,invitation_sent_at,temporary_password_expires_at,created_at FROM finance_users ORDER BY id');return rows;}
 const temporaryPassword=()=>randomBytes(24).toString('base64url');
 async function deliverInvitation(user,password,passwordHash,actor,mailer){
@@ -14,8 +14,9 @@ async function deliverInvitation(user,password,passwordHash,actor,mailer){
       await audit(conn,actor.id,'user.invitation.sent','user',user.id,{email:user.email});
     });
     return {...user,invitation_status:'sent'};
-  }catch{
-    return {...user,invitation_status:'failed',message:'The account is pending. Email delivery failed; check the email service, then resend the invitation.'};
+  }catch(error){
+    const failure=invitationFailure(error);
+    return {...user,invitation_status:'failed',invitation_error_code:failure.code,message:failure.message};
   }
 }
 export async function createUser(body,actor,{mailer=sendInvitation,checkSettings=invitationSettings}={}){

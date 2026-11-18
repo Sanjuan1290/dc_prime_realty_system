@@ -25,7 +25,7 @@ const details=async()=>ok(await api('hr',`/employee-payroll/drafts/${payrollId}`
 async function resetThrottle(){await hrDb.query('UPDATE hr_payroll_undo_challenges SET requested_at=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 20 MINUTE) WHERE user_id=1')}
 async function codeFor(extra={}){
   captured=null;
-  const result=await requestPayrollUndo(payrollId,1,{password,reason:'Synthetic authorized payroll correction',cash_confirmed:true,cash_date:'2026-11-17',...extra},{settings:{key:'not-used',from:'qa@invalid'},mailer:async data=>{captured=data}});
+  const result=await requestPayrollUndo(payrollId,1,{password,reason:'Synthetic authorized payroll correction',cash_date:'2026-11-17',...extra},{settings:{key:'not-used',from:'qa@invalid'},mailer:async data=>{captured=data}});
   assert.ok(captured?.code);return {challenge_id:result.challenge_id,password,code:captured.code};
 }
 const confirm=body=>api('hr',`/employee-payroll/payrolls/${payrollId}/undo/confirm`,body);
@@ -101,8 +101,8 @@ test('a code becomes stale when payroll is released; release retries create one 
   const [[count]]=await hrDb.query("SELECT COUNT(*) AS n FROM hr_outbox_events WHERE aggregate_id=? AND event_type='salary.cash_released.v1'",[String(payrollId)]);assert.equal(count.n,1);
   originalFile=await exported('2026-11-16');assert.equal(originalFile.rows.length,1);assert.equal(originalFile.rows[0].source_transaction_id,'salary:'+payrollId);
 });
-test('released payroll undo requires explicit cash confirmation and a valid reversal date',async()=>{
-  await assert.rejects(codeFor({cash_confirmed:false}),{code:'PAYROLL_UNDO_CASH_CONFIRMATION'});
+test('released payroll undo accepts a request without a checkbox and still validates the undo date',async()=>{
+  assert.ok((await codeFor()).challenge_id);
   await assert.rejects(codeFor({cash_date:'2026-11-15'}),{code:'PAYROLL_UNDO_DATE_INVALID'});
   await assert.rejects(codeFor({cash_date:'2026-02-30'}),{code:'PAYROLL_UNDO_DATE_INVALID'});
   await assert.rejects(codeFor({cash_date:'2099-01-01'}),{code:'PAYROLL_UNDO_DATE_INVALID'});
@@ -164,7 +164,7 @@ test('Finance undo/restoration respects salary event order and stale previews ro
   const restored=await commit(await exported('2026-11-16','2026-11-18'));assert.equal(restored.data.result.restored,3);assert.ok((await ledgerSalary()).every(row=>row.status==='posted'));
 });
 test('email delivery failure invalidates its challenge and preserves the released salary',async()=>{
-  await assert.rejects(requestPayrollUndo(payrollId,1,{password,reason:'Synthetic failed mail',cash_date:'2026-11-18',cash_confirmed:true},{settings:{key:'not-used',from:'qa@invalid'},mailer:async()=>{throw new Error('Synthetic mail failure')}}),{code:'PAYROLL_UNDO_EMAIL_FAILED'});
+  await assert.rejects(requestPayrollUndo(payrollId,1,{password,reason:'Synthetic failed mail',cash_date:'2026-11-18'},{settings:{key:'not-used',from:'qa@invalid'},mailer:async()=>{throw new Error('Synthetic mail failure')}}),{code:'PAYROLL_UNDO_EMAIL_FAILED'});
   assert.equal((await details()).payroll_status,'released');const [[row]]=await hrDb.query('SELECT used_at FROM hr_payroll_undo_challenges WHERE payroll_id=? ORDER BY requested_at DESC,id DESC LIMIT 1',[payrollId]);assert.ok(row.used_at);
 });
 test('database-backed verification throttling includes failed administrator passwords',async()=>{
