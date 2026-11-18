@@ -88,7 +88,7 @@ export async function downloadFinanceReport({report,summaries,categoryKind,categ
   ];
   doc.setTextColor(...muted);
   doc.setFontSize(9);
-  const filterLines=doc.splitTextToSize('Breakdown filters - '+applied.join(' | '),contentWidth);
+  const filterLines=doc.splitTextToSize('Report scope - '+applied.join(' | '),contentWidth);
   doc.text(filterLines,margin,70);
   const chartTop=76+(filterLines.length-1)*4;
   const half=(contentWidth-6)/2;
@@ -108,7 +108,7 @@ export async function downloadFinanceReport({report,summaries,categoryKind,categ
     return y+9;
   };
   const trendsEnd=Math.max(
-    place(images[0],'Money In and Out (filtered)',margin,chartTop,half),
+    place(images[0],'Money In and Out',margin,chartTop,half),
     place(images[1],'Running Cash Balance (whole ledger)',margin+half+6,chartTop,half),
   );
   if(images[0]){
@@ -124,7 +124,7 @@ export async function downloadFinanceReport({report,summaries,categoryKind,categ
   autoTable(doc,{
     startY,margin:{left:margin,right:margin,top:margin,bottom:15},theme:'striped',
     head:[['Category','Type','Transactions','Amount']],
-    body:rowData.length?rowData:[['No transactions match the breakdown filters.','','','']],
+    body:rowData.length?rowData:[['No transactions in the selected period.','','','']],
     styles:{font:fontFamily,fontSize:9,cellPadding:3,textColor:navy},
     headStyles:{fillColor:navy,textColor:[255,255,255]},
     columnStyles:{2:{halign:'right'},3:{halign:'right'}},

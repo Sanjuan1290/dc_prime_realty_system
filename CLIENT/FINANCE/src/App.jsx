@@ -2,6 +2,7 @@ import FinanceAudit from './FinanceAudit.jsx';
 import FinanceDashboard from './FinanceDashboard.jsx';
 import {financePresetRange, todayInManila as today} from './financePeriods.js';
 import FinanceReports from './FinanceReports.jsx';
+import FinanceTransactionFilters from './FinanceTransactionFilters.jsx';
 import FinanceTransactionDetails from './FinanceTransactionDetails.jsx';
 import {Dialog,Notice,Spinner} from './FinanceFeedback.jsx';
 import FinanceUsers from './FinanceUsers.jsx';
@@ -37,6 +38,7 @@ function EntryForm({categories,initial,onSubmit,onCancel,busy,correcting=false})
   </form>;
 }
 export default function App(){
+  const [source,setSource]=useState('all'),[categoryId,setCategoryId]=useState('');
   const [transactionId,setTransactionId]=useState(null);const[user,setUser]=useState(undefined),[tab,setTab]=useState('overview'),[range,setRange]=useState(defaultRange),[dashboardRange,setDashboardRange]=useState(()=>financePresetRange('month')),[dashboard,setDashboard]=useState(null),[transactions,setTransactions]=useState([]),[recentTransactions,setRecentTransactions]=useState([]),[count,setCount]=useState(0),[categories,setCategories]=useState([]),[users,setUsers]=useState([]),[page,setPage]=useState(1),[status,setStatus]=useState('posted'),[kind,setKind]=useState('all'),[error,setError]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[entry,setEntry]=useState(null),[prompt,setPrompt]=useState(null),[categoryInput,setCategoryInput]=useState({kind:'expense',name:''});
   const [sessionError,setSessionError]=useState(null),[notice,setNotice]=useState(''),[refreshKey,setRefreshKey]=useState(0);const requestVersion=useRef(0);
   const [resetToken,setResetToken]=useState(()=>new URLSearchParams(window.location.hash.slice(1)).get('reset-password')||'');
@@ -53,7 +55,7 @@ export default function App(){
     setLoading(true);
     setError('');
     try{
-      const query=new URLSearchParams(overview?{...dates,page_size:'5',status:'posted'}:{...dates,page:String(page),status,kind});
+      const query=new URLSearchParams(overview?{...dates,page_size:'5',status:'posted'}:{...dates,page:String(page),status,kind,source,category_id:categoryId});
       const [report,ledger,categoryList,financeUsers]=await Promise.all([
         overview?api('/finance/reports?'+new URLSearchParams(dates)):null,
         overview||tab==='transactions'?api('/finance/transactions?'+query):null,
@@ -79,7 +81,7 @@ export default function App(){
     }finally{
       if(version===requestVersion.current)setLoading(false);
     }
-  },[user,range,dashboardRange,page,status,kind,canAdmin,tab]);
+  },[user,range,dashboardRange,page,status,kind,source,categoryId,canAdmin,tab]);
   useEffect(()=>{api('/auth/me').then(r=>setUser(r.user)).catch(error=>{setSessionError(error.status===401?null:error);setUser(null);});},[]);
   useEffect(()=>{if(user)refresh();},[user,refresh]);
   const mutate=async(path,data,method='POST')=>{setBusy(true);setError('');setNotice('');try{await api(path,{method,data});setEntry(null);setPrompt(null);await refresh();setNotice(method==='DELETE'?'Category deleted.':path.endsWith('/void')?'Transaction voided. The original record remains in your history.':path.endsWith('/correct')?'Correction saved. The original and replacement remain in your history.':'Changes saved. Finance records are up to date.');return true;}catch(e){setError(e.message);return false;}finally{setBusy(false);}};
@@ -93,11 +95,14 @@ export default function App(){
   {loading&&(tab!=='overview'||dashboard)&&<div className="loading-bar" role="status"><Spinner label="Updating Finance…"/></div>}
   <ErrorNotice message={error} onDismiss={()=>setError('')}/>
   {notice&&<Notice type="success" title="Changes saved" onDismiss={()=>setNotice('')}>{notice}</Notice>}
-  {tab==='transactions'&&<div className="filters"><label>From<input type="date" value={range.from} max={range.to} onChange={e=>{setPage(1);setRange(p=>({...p,from:e.target.value}));}}/></label><label>To<input type="date" value={range.to} min={range.from} onChange={e=>{setPage(1);setRange(p=>({...p,to:e.target.value}));}}/></label><label>Type<select value={kind} onChange={e=>{setPage(1);setKind(e.target.value);}}><option value="all">All types</option><option value="income">Income</option><option value="expense">Expenses</option></select></label><label>Status<select value={status} onChange={e=>{setPage(1);setStatus(e.target.value);}}><option value="posted">Posted</option><option value="void">Voided</option><option value="all">All</option></select></label></div>}
+  {tab==='transactions'&&<FinanceTransactionFilters categories={categories} loading={loading}
+    filters={{...range,kind,status,source,category_id:categoryId}} onApply={next=>{
+      setPage(1);setRange({from:next.from,to:next.to});setKind(next.kind);setStatus(next.status);setSource(next.source);setCategoryId(next.category_id);
+    }}/>}
   {tab==='overview'&&<FinanceDashboard range={dashboardRange} onRangeChange={setDashboardRange}
     dashboard={dashboard} transactions={recentTransactions} loading={loading} onViewTransaction={setTransactionId}
     onOpenReports={()=>setTab('reports')} onOpenTransactions={()=>{
-      setRange({from:dashboardRange.from,to:dashboardRange.to});setPage(1);setKind('all');setStatus('posted');setTab('transactions');
+      setRange({from:dashboardRange.from,to:dashboardRange.to});setPage(1);setKind('all');setStatus('posted');setSource('all');setCategoryId('');setTab('transactions');
     }}/>}
   {tab==='transactions'&&<div className="panel"><div className="panel-heading"><h2>Transaction history</h2><span>{count} records</span></div><div className="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th>Status</th><th className="align-right">Amount</th>{canAdmin&&<th>Action</th>}</tr></thead><tbody>{transactions.length===0?<tr><td colSpan={canAdmin?7:6} className="empty">No transactions for these filters.</td></tr>:transactions.map(t=><tr key={t.id}><td>{t.transaction_date}</td><td><span className={'pill '+t.kind}>{t.kind}</span></td><td>{t.category_name}</td><td title={t.notes||''}><button type="button" className="text-btn" onClick={()=>setTransactionId(t.id)}>{t.description}</button></td><td><span className={'pill '+(t.status==='void'?'decision-duplicate':'decision-new')}>{t.status==='void'&&t.void_reason?.startsWith('Import undone:')?'Import undone':t.status}</span>{t.corrected_from_transaction_id?<span className="cell-secondary">Corrected</span>:null}</td><td className="align-right">{t.kind==='expense'?'-':'+'}{peso(t.amount)}</td>{canAdmin&&<td>{t.status==='posted'&&t.source_system==='manual'?<><button className="text-btn" onClick={()=>setPrompt({type:'void',id:t.id})}>Void</button> <button className="text-btn" onClick={()=>setEntry({...t,category_id:String(t.category_id),reason:'',mode:'correct',original_id:t.id})}>Correct</button></>:null}</td>}</tr>)}</tbody></table></div><div className="pagination"><button disabled={page===1} className="btn" onClick={()=>setPage(p=>p-1)}>Previous</button><span>Page {page} of {Math.max(1,Math.ceil(count/50))}</span><button disabled={page*50>=count} className="btn" onClick={()=>setPage(p=>p+1)}>Next</button></div></div>}
   {tab==='categories'&&<div className="panel"><h2>Income and expense categories</h2><p className="muted">Organize manual entries and imported payments. Imports use source categories automatically. Historical transactions stay available when a category is disabled.</p>{canAdmin&&<form className="inline-form" onSubmit={e=>{e.preventDefault();mutate('/finance/categories',categoryInput).then(ok=>{if(ok)setCategoryInput({kind:'expense',name:''});});}}><select aria-label="Category type" value={categoryInput.kind} onChange={e=>setCategoryInput(x=>({...x,kind:e.target.value}))}><option value="expense">Expense</option><option value="income">Income</option></select><input aria-label="Category name" placeholder="Category name" maxLength={90} required value={categoryInput.name} onChange={e=>setCategoryInput(x=>({...x,name:e.target.value}))}/><button className="btn primary" disabled={busy}>Add category</button></form>}<div className="category-list">{categories.map(c=><div className="category" key={c.id}><span className={'pill '+c.kind}>{c.kind}</span><strong>{c.name}</strong><small>{Number(c.is_active)?'Active':'Inactive'}</small>{canAdmin&&<button className="btn" disabled={busy} onClick={()=>mutate(`/finance/categories/${c.id}`,{is_active:!Number(c.is_active)},'PATCH')}>{Number(c.is_active)?'Disable':'Enable'}</button>}

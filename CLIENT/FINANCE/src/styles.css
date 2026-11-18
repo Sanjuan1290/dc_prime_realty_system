@@ -124,8 +124,8 @@ input,select,textarea{min-height:44px;border-color:#cbd7e4;border-radius:10px;pa
 .finance-dashboard-insights {grid-template-columns:minmax(0,1.55fr) minmax(0,1fr)}
 .finance-chart-panel {min-width:0;margin:0}
 .finance-chart-panel .finance-content-heading {margin-bottom:14px}
-.finance-chart-scroll {overflow-x:auto}
-.finance-plot {min-width:430px;width:100%;height:auto;display:block}
+.finance-chart-scroll {min-width:0;overflow:visible}
+.finance-plot {min-width:0;width:100%;height:auto;display:block}
 .chart-legend {display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0 9px;color:#344e68;font-size:12px}
 .chart-legend > span {display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap}
 .chart-legend span::before {content:'';width:9px;height:9px;border-radius:2px}
@@ -135,7 +135,7 @@ input,select,textarea{min-height:44px;border-color:#cbd7e4;border-radius:10px;pa
 .chart-type {display:grid;gap:4px;min-width:110px}
 .chart-type select {min-height:38px;padding:7px 9px;font-size:12px}
 .finance-category-plot {max-width:900px;margin:12px 0}
-.finance-category-plot .finance-plot {min-width:520px}
+.finance-category-plot .finance-plot {min-width:0}
 .finance-chart-empty {color:#506780}
 .finance-top-categories {list-style:none;padding:0;margin:14px 0 0;display:grid;gap:10px}
 .finance-category-total {display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;font-size:12px}
@@ -190,3 +190,83 @@ input,select,textarea{min-height:44px;border-color:#cbd7e4;border-radius:10px;pa
 .category .text-btn { justify-self: start; }
 @media(max-width:600px){ .finance-admin-filters label {width: 100%} }
 @media(prefers-reduced-motion:reduce){ .finance-report-results {animation:none} }
+
+/* Responsive transaction filters and chart interactions. */
+.finance-transaction-filters {margin:20px 0;padding:20px}
+.finance-filter-heading {display:flex;justify-content:space-between;gap:16px;margin-bottom:16px}
+.finance-filter-heading h2 {display:flex;align-items:center;gap:9px;margin:0;font-size:15px}
+.finance-filter-heading p {margin:5px 0 0;color:var(--muted);font-size:12px}
+.finance-transaction-fields {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.finance-transaction-fields label {font-size:12px;min-width:0}
+.finance-transaction-fields input,.finance-transaction-fields select {min-height:44px;width:100%;max-width:100%;font-size:13px}
+.finance-interactive-chart {position:relative;min-width:0;border-radius:8px;touch-action:pan-y}
+.finance-interactive-chart:focus-visible,.finance-top-categories>li:focus-visible {outline:3px solid #77acd9;outline-offset:4px}
+.finance-chart-tooltip {position:absolute;z-index:20;pointer-events:none;background:#fff;border:1px solid #c9d8e6;border-radius:10px;padding:11px 13px;box-shadow:0 8px 24px #122a4326;color:#173653;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.finance-chart-tooltip>strong {display:block;margin-bottom:7px}
+.finance-chart-tooltip dl {display:grid;gap:5px;margin:0}
+.finance-chart-tooltip dl>div {display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.finance-chart-tooltip dt {display:flex;align-items:center;gap:6px;font-weight:400;color:#506780}
+.finance-chart-tooltip dt span {width:8px;height:8px;flex:none;border-radius:2px}
+.finance-chart-tooltip dd {margin:0;font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.finance-top-categories>li {position:relative;border-radius:6px}
+.finance-category-hover-tip {display:none;position:absolute;right:0;top:100%;z-index:20;max-width:100%;border:1px solid #c9d8e6;border-radius:8px;padding:10px 12px;background:#fff;box-shadow:0 8px 24px #122a4326;font-size:12px;overflow-wrap:anywhere;pointer-events:none}
+.finance-top-categories>li:hover .finance-category-hover-tip,.finance-top-categories>li:focus .finance-category-hover-tip {display:block}
+
+/* Cash flow disclosure and a stacked table for small screens. */
+.finance-report-table {padding:0;overflow:hidden;min-width:0;margin:0}
+.finance-report-table>summary {display:flex;align-items:center;gap:12px;padding:20px;list-style:none;min-height:80px}
+.finance-report-table>summary::-webkit-details-marker {display:none}
+.finance-report-table>summary::marker {content:''}
+.finance-report-table>summary:hover {background:#f4f8fc}
+.finance-report-table[open]>summary {margin:0;border-bottom:1px solid var(--line);background:#f8fafd}
+.finance-table-icon {display:grid;place-items:center;flex:none;width:40px;height:40px;border:1px solid #d8e4ef;border-radius:11px;background:#edf4fa;color:#1d4267}
+.finance-table-icon svg {width:19px;height:19px}
+.finance-table-copy {min-width:0;flex:1;display:grid;gap:3px}
+.finance-table-copy strong {font-size:14px;color:#193b5c}
+.finance-table-copy small {font-size:12px;font-weight:400;color:var(--muted)}
+.finance-table-count {padding:4px 9px;border:1px solid var(--line);border-radius:20px;background:#fff;color:#506780;font-size:11px;font-weight:500;white-space:nowrap}
+.finance-table-chevron {flex:none;width:18px;height:18px;transition:transform .18s}
+.finance-report-table>summary:focus-visible {outline-offset:-4px}
+.finance-report-table[open] .finance-table-chevron {transform:rotate(180deg)}
+.finance-cash-table-body {padding:0 20px 20px}
+.finance-table-note {font-size:12px;color:var(--muted);margin:14px 0}
+.finance-cash-table tbody th {background:#fff;color:#334d67;font-size:12px;font-weight:500}
+.finance-cash-table tbody tr:nth-child(even),.finance-cash-table tbody tr:nth-child(even) th {background:#f8fafd}
+.finance-cash-table tbody tr:hover,.finance-cash-table tbody tr:hover th {background:#edf4fa}
+.finance-cash-table tfoot {background:#edf3f9;font-weight:700}
+.finance-cash-table tfoot th,.finance-cash-table tfoot td {border-top:2px solid #d5e1ed;border-bottom:0}
+.finance-cash-income {color:#14674f}
+.finance-cash-expense {color:#97521b}
+.finance-cash-balance {font-weight:600;color:#173e65}
+.finance-category-table tbody th {background:#fff;color:#334d67;font-size:12px;font-weight:500;white-space:normal;overflow-wrap:anywhere}
+.finance-analysis-table td:first-child {white-space:normal;overflow-wrap:anywhere}
+@media(min-width:1500px){.finance-transaction-fields{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(max-width:850px){
+  .sidebar {position:relative;height:auto;min-height:0;min-width:0;max-width:100%}
+  .sidebar nav {min-width:0;max-width:100%;overflow-x:auto}
+  .sidebar nav .nav-item {width:auto;flex:0 0 auto;white-space:nowrap}
+  .sidebar-bottom {border-top:0;padding-top:4px;gap:12px}
+  .topbar,.finance-content-heading,.top-actions {flex-wrap:wrap;min-width:0}
+}
+@media(max-width:600px){
+  .finance-transaction-filters {padding:14px}
+  .finance-transaction-fields {grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .finance-filter-actions {flex-wrap:wrap}
+  .finance-chart-panel {padding:15px}
+  .finance-report-table>summary {gap:9px;padding:15px}
+  .finance-table-copy strong {font-size:13px}
+  .finance-table-count {display:none}
+  .finance-cash-table-body {padding:0 13px 13px}
+  .finance-cash-table,.finance-category-table {white-space:normal}
+  :is(.finance-cash-table,.finance-category-table) thead {position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%)}
+  :is(.finance-cash-table,.finance-category-table) tbody,.finance-cash-table tfoot {display:block}
+  :is(.finance-cash-table,.finance-category-table) tr {display:block;padding:12px;border-bottom:1px solid var(--line)}
+  :is(.finance-cash-table,.finance-category-table) tr:last-child {border-bottom:0}
+  :is(.finance-cash-table,.finance-category-table) th[scope=row] {display:block;padding:0 0 8px;border:0;background:none!important;text-align:left;font-weight:700}
+  :is(.finance-cash-table,.finance-category-table) td {display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:5px 0;border:0;overflow-wrap:anywhere}
+  :is(.finance-cash-table,.finance-category-table) td::before {content:attr(data-label);text-align:left;color:#5c7084;font-size:12px;font-weight:400}
+  .finance-cash-table tfoot td {border:0}
+  .finance-cash-table tfoot tr {background:#edf3f9}
+  .finance-analysis-table th,.finance-analysis-table td {font-size:12px}
+}
+@media(max-width:359px){.finance-transaction-fields{grid-template-columns:minmax(0,1fr)}.finance-chart-panel{padding:12px}.main{padding:18px 12px}}

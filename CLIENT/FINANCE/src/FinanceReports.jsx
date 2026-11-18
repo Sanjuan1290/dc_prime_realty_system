@@ -1,13 +1,13 @@
 import {useEffect, useId, useRef, useState} from 'react';
-import {FiArrowDownLeft, FiArrowUpRight, FiBarChart2, FiDownload, FiFilter, FiMinusCircle, FiPlusCircle} from 'react-icons/fi';
+import {FiArrowDownLeft, FiArrowUpRight, FiBarChart2, FiDownload, FiChevronDown, FiList, FiMinusCircle, FiPlusCircle} from 'react-icons/fi';
 import {api} from './api.js';
 import FinanceDateFilter from './FinanceDateFilter.jsx';
 import {Notice, Spinner} from './FinanceFeedback.jsx';
-import {financeMoney, financeSourceLabel} from './financeFormat.js';
+import {financeMoney} from './financeFormat.js';
 import {FinanceCategoryChart, FinanceTrendChart} from './FinanceReportCharts.jsx';
 import {financeBucketLabel, financeDayCount, financePeriodLabel, financePresetRange} from './financePeriods.js';
 
-const defaults = range => ({ ...range, kind: 'all', source: 'all', category_id: '' });
+const defaults = range => ({ ...range });
 const summaries = [
   ['Opening balance', 'opening_balance', FiMinusCircle],
   ['Money in', 'money_in', FiArrowDownLeft, 'income'],
@@ -74,9 +74,6 @@ export default function FinanceReports({categories, refreshKey, initialRange}) {
   };
   const shownCategoryKind = categoryKind || (report?.filters.kind !== 'all' && report?.filters.kind) ||
     (report?.categories.some(row => row.kind === 'expense') ? 'expense' : 'income');
-  const hasBreakdownFilter = report && (
-    report.filters.kind !== 'all' || report.filters.source !== 'all' || Boolean(report.filters.category_id)
-  );
   const editingDisabled = pdfState === 'busy';
   const validDates = financeDayCount(form.from, form.to) > 0;
   const chartPageHasData = report?.period_count > 0;
@@ -89,48 +86,15 @@ export default function FinanceReports({categories, refreshKey, initialRange}) {
         if (validDates) apply({...form});
       }}>
         <FinanceDateFilter title="Report Date Filter" range={form} onChange={setForm} disabled={editingDisabled} />
-        <section className="panel finance-breakdown-filter" aria-label="Breakdown filters">
-          <div className="finance-date-copy">
-            <h2><FiFilter aria-hidden="true" />Breakdown filters</h2>
-            <p>Type, source, and category narrow the cash flow and category breakdown. Balance totals use the full ledger.</p>
-          </div>
-          <div className="finance-breakdown-fields">
-            <div className="finance-filter-field">
-              <label className="finance-filter-label" htmlFor={filterId + '-type'}>Type</label>
-              <select id={filterId + '-type'} value={form.kind} disabled={editingDisabled}
-                onChange={event => setForm({...form, kind: event.target.value, category_id: ''})}>
-                <option value="all">All types</option><option value="income">Income</option><option value="expense">Expense</option>
-              </select>
-            </div>
-            <div className="finance-filter-field">
-              <label className="finance-filter-label" htmlFor={filterId + '-source'}>Source</label>
-              <select id={filterId + '-source'} value={form.source} disabled={editingDisabled}
-                onChange={event => setForm({...form, source: event.target.value})}>
-                <option value="all">All sources</option>
-                {['manual', 'realty', 'hr'].map(source => <option key={source} value={source}>{financeSourceLabel(source)}</option>)}
-              </select>
-            </div>
-            <div className="finance-filter-field">
-              <label className="finance-filter-label" htmlFor={filterId + '-category'}>Category</label>
-              <select id={filterId + '-category'} value={form.category_id} disabled={editingDisabled}
-                onChange={event => setForm({...form, category_id: event.target.value})}>
-                <option value="">All categories</option>
-                {categories.filter(category => form.kind === 'all' || category.kind === form.kind).map(category => (
-                  <option key={category.id} value={category.id}>{category.name} · {category.kind}</option>
-                ))}
-              </select>
-            </div>
-          </div>
           <div className="finance-filter-actions">
             {hasDraft && <span className="finance-filter-pending">Changes pending</span>}
             <button className="btn" type="button" disabled={editingDisabled || loading} onClick={() => {
               const next = defaults(financePresetRange('month'));
               setForm(next);
               apply(next);
-            }}>Reset filters</button>
-            <button className="btn primary" disabled={editingDisabled || loading || !validDates}>Apply filters</button>
+            }}>Reset dates</button>
+            <button className="btn primary" disabled={editingDisabled || loading || !validDates}>Apply dates</button>
           </div>
-        </section>
       </form>
 
       {loading && <div className="finance-report-status" role="status"><Spinner label="Loading report…" /></div>}
@@ -159,13 +123,10 @@ export default function FinanceReports({categories, refreshKey, initialRange}) {
         {!chartPageHasData && <Notice type="info" title="No posted transactions in this period">
           Any opening balance carries forward to the end date.
         </Notice>}
-        {chartPageHasData && report.matched_count === 0 && <Notice type="info">
-          No posted transactions match the breakdown filters.
-        </Notice>}
         {chartPageHasData && <div className="finance-report-chart-grid">
           <section className="panel finance-chart-panel" ref={movementChart}>
             <div className="finance-card-heading"><h2>Money In and Out</h2><p>
-              {financeBucketLabel(report.bucket_size)} totals{hasBreakdownFilter ? ' for matching transactions' : ''}
+              {financeBucketLabel(report.bucket_size)} totals
             </p></div>
             <div className="chart-legend">
               <span className="chart-income">Money in <strong>{financeMoney(report.filtered_money_in)}</strong></span>
@@ -192,27 +153,36 @@ export default function FinanceReports({categories, refreshKey, initialRange}) {
           <div className="finance-category-plot finance-chart-scroll">
             <FinanceCategoryChart categories={report.categories} kind={shownCategoryKind} />
           </div>
-          <div className="table-wrap finance-analysis-table"><table aria-label="Matching categories">
+          <div className="table-wrap finance-analysis-table"><table className="finance-category-table" aria-label="Matching categories">
             <thead><tr><th>Category</th><th>Type</th><th className="align-right">Transactions</th><th className="align-right">Amount</th></tr></thead>
             <tbody>{report.categories.map(category => (
               <tr key={category.kind + '/' + category.id}>
-                <td>{category.name}</td><td><span className={'pill ' + category.kind}>{category.kind}</span></td>
-                <td className="align-right">{category.count}</td><td className="align-right">{financeMoney(category.amount)}</td>
+                <th scope="row">{category.name}</th><td data-label="Type"><span className={'pill ' + category.kind}>{category.kind}</span></td>
+                <td className="align-right" data-label="Transactions">{category.count}</td><td className="align-right" data-label="Amount">{financeMoney(category.amount)}</td>
               </tr>
             ))}</tbody>
           </table></div>
         </section>}
         {chartPageHasData && <details className="panel finance-report-table">
-          <summary>View cash flow data table</summary>
-          <div className="table-wrap finance-analysis-table"><table>
-            <thead><tr><th>Period</th><th className="align-right">Money in</th><th className="align-right">Money out</th><th className="align-right">Account balance</th></tr></thead>
+          <summary>
+            <span className="finance-table-icon"><FiList aria-hidden="true" /></span>
+            <span className="finance-table-copy"><strong>View cash flow data table</strong><small>{financeBucketLabel(report.bucket_size)} totals and closing balances</small></span>
+            <span className="finance-table-count">{report.series.length} periods</span>
+            <FiChevronDown className="finance-table-chevron" aria-hidden="true" />
+          </summary>
+          <div className="finance-cash-table-body">
+          <p className="finance-table-note">All amounts in Philippine pesos. Balances include the opening balance.</p>
+          <div className="table-wrap finance-analysis-table"><table className="finance-cash-table" aria-label="Cash flow data">
+            <thead><tr><th scope="col">Period</th><th scope="col" className="align-right">Money in</th><th scope="col" className="align-right">Money out</th><th scope="col" className="align-right">Closing balance</th></tr></thead>
             <tbody>{report.series.map(row => (
               <tr key={row.label}>
-                <td>{row.label}</td><td className="align-right">{financeMoney(row.income)}</td>
-                <td className="align-right">{financeMoney(row.expense)}</td><td className="align-right">{financeMoney(row.balance)}</td>
+                <th scope="row">{row.label}</th><td className="align-right finance-cash-income" data-label="Money in">{financeMoney(row.income)}</td>
+                <td className="align-right finance-cash-expense" data-label="Money out">{financeMoney(row.expense)}</td><td className="align-right finance-cash-balance" data-label="Closing balance">{financeMoney(row.balance)}</td>
               </tr>
             ))}</tbody>
+            <tfoot><tr><th scope="row">Period totals</th><td className="align-right finance-cash-income" data-label="Money in">{financeMoney(report.money_in)}</td><td className="align-right finance-cash-expense" data-label="Money out">{financeMoney(report.money_out)}</td><td className="align-right finance-cash-balance" data-label="Closing balance">{financeMoney(report.closing_balance)}</td></tr></tfoot>
           </table></div>
+          </div>
         </details>}
       </div>}
     </section>

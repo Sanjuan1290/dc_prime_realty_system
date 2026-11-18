@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useId, useState} from 'react';
 import {FiArrowDownLeft, FiArrowRight, FiArrowUpRight, FiBarChart2, FiDollarSign} from 'react-icons/fi';
 import FinanceDateFilter from './FinanceDateFilter.jsx';
 import {Notice, Spinner} from './FinanceFeedback.jsx';
@@ -22,6 +22,7 @@ export default function FinanceDashboard({
   range, onRangeChange, dashboard, transactions, loading, onOpenReports, onOpenTransactions, onViewTransaction,
 }) {
   const [draft, setDraft] = useState(range);
+  const categoriesId = useId();
   const hasDraft = draft.preset !== range.preset || draft.from !== range.from || draft.to !== range.to;
   const canApply = hasDraft && financeDayCount(draft.from, draft.to) > 0;
   const topCategories = dashboard?.categories.slice(0, 4) ?? [];
@@ -74,7 +75,7 @@ export default function FinanceDashboard({
               <section className="panel finance-chart-panel">
                 <div className="finance-card-heading"><h2>Top categories</h2><p>Largest totals in the selected period</p></div>
                 <ul className="finance-top-categories">
-                  {topCategories.map(category => <li key={category.kind + '/' + category.id}>
+                  {topCategories.map(category => <li key={category.kind + '/' + category.id} tabIndex={0} aria-describedby={`${categoriesId}-${category.kind}-${category.id}`}>
                     <div className="finance-category-total">
                       <span>{category.name}</span><strong>{financeMoney(category.amount)}</strong>
                     </div>
@@ -82,6 +83,7 @@ export default function FinanceDashboard({
                       <span style={{width: `${100 * Number(category.amount) / Number(topCategories[0].amount)}%`}} />
                     </div>
                     <span className="finance-category-kind">{category.kind === 'income' ? 'Income' : 'Expense'}</span>
+                    <span role="tooltip" id={`${categoriesId}-${category.kind}-${category.id}`} className="finance-category-hover-tip">{category.name} · {financeMoney(category.amount)} · {countFormat.format(category.count)} {category.count === 1 ? 'transaction' : 'transactions'}</span>
                   </li>)}
                 </ul>
               </section>

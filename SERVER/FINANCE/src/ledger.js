@@ -91,18 +91,20 @@ export async function correctTransaction(id,body,user) {
     return insertPosted(conn,t,user,String(row.id));
   });
 }
-export async function listTransactions(query={}) {
+export async function listTransactions(query={},pool=getPool()) {
   const {from,to}=validateRange(query), kind=query.kind||'all';
   if(!['all','income','expense'].includes(kind))throw problem('INVALID_KIND','Invalid type filter.');
   const status=query.status||'posted';if(!['posted','void','all'].includes(status))throw problem('INVALID_STATUS','Invalid status filter.');
+  const source=query.source||'all';if(!['all','manual','realty','hr'].includes(source))throw problem('INVALID_SOURCE','Invalid source filter.');
   const page=Number(query.page??1),pageSize=Number(query.page_size??50);
   if(!Number.isSafeInteger(page)||page<1||page>100000||!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>100)throw problem('INVALID_PAGE','Choose a valid page and size.');
   let where=' WHERE t.transaction_date BETWEEN ? AND ?';const values=[from,to];
   if(kind!=='all'){where+=' AND t.kind=?';values.push(kind);}
   if(status!=='all'){where+=' AND t.status=?';values.push(status);}
+  if(source!=='all'){where+=' AND t.source_system=?';values.push(source);}
   if(query.category_id){where+=' AND t.category_id=?';values.push(positiveId(query.category_id));}
-  const [count]=await getPool().execute('SELECT COUNT(*) AS total FROM finance_transactions t'+where,values);
-  const [rows]=await getPool().execute(`SELECT t.id,DATE_FORMAT(t.transaction_date,'%Y-%m-%d') AS transaction_date,t.kind,t.amount,t.description,t.notes,t.status,t.source_system,t.source_transaction_id,t.corrected_from_transaction_id,t.void_reason,t.created_at,c.name AS category_name,c.id AS category_id FROM finance_transactions t JOIN finance_categories c ON c.id=t.category_id ${where} ORDER BY t.transaction_date DESC,t.id DESC LIMIT ${pageSize} OFFSET ${(page-1)*pageSize}`,[...values]);
+  const [count]=await pool.execute('SELECT COUNT(*) AS total FROM finance_transactions t'+where,values);
+  const [rows]=await pool.execute(`SELECT t.id,DATE_FORMAT(t.transaction_date,'%Y-%m-%d') AS transaction_date,t.kind,t.amount,t.description,t.notes,t.status,t.source_system,t.source_transaction_id,t.corrected_from_transaction_id,t.void_reason,t.created_at,c.name AS category_name,c.id AS category_id FROM finance_transactions t JOIN finance_categories c ON c.id=t.category_id ${where} ORDER BY t.transaction_date DESC,t.id DESC LIMIT ${pageSize} OFFSET ${(page-1)*pageSize}`,[...values]);
   return {transactions:rows,total:Number(count[0].total),page,page_size:pageSize};
 }
 export async function getTransaction(id, {includeImport=false}={}) {
