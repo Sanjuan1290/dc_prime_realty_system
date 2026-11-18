@@ -20,10 +20,19 @@ const reservation={id:1,paymentId:1,type:'Reservation',amount:50000,paymentDate:
 const other={id:2,paymentId:2,type:'Downpayment',amount:10000,paymentDate:'2026-11-16',referenceId:'SYNTHETIC-QA-DP',status:scenario==='cancelled-dp'?'Cancelled':'Verified',method:'Cash'};
 const payments=scenario==='none'?[]:scenario==='reservation'?[reservation]:[reservation,other];
 const listing={id:1,unit_id:'QA-1806',buyerName:'Synthetic QA Buyer',projectName:'QA Project',status:'Sold / Active',listing_status:'Sold / Active',rawStatus:'sold',canUsePayments:true,hasClientProfile:true,payment_count:payments.filter(p=>p.status==='Verified').length,soaFirstDueDate:'2026-11-16',soaStartingDate:'2026-11-16',soaDownpaymentPercentage:20,soaDownpaymentTerms:3,soaMonthlyTerms:24,soaDpDiscountPercentage:0,annualInterestRate:0,soaAnnualInterestRate:11.5,soaInterestRateOverridden:true,soaPenaltyRatePercent:0.05,soaPenaltyGraceDays:0,tcpNumeric:858000,balanceNumeric:808000};
+Object.assign(listing,{baseSellingPrice:780000,lmfAmount:78000,tcpAmount:858000,lot_project_listing_net_selling_price:999999,lot_project_listing_lmf_amount:99999,lot_project_listing_tcp:1099998});
+if(scenario==='cash')Object.assign(listing,{soaModeOfPayment:'cash',baseSellingPrice:740000,lmfAmount:74000,tcpAmount:814000});
+if(scenario==='waived')Object.assign(listing,{lmfAmount:0,tcpAmount:780000,soa_selected_lmf_amount:78000});
+const soaRows=['pricing','historical'].includes(scenario)?[
+  {id:101,description:'1st Monthly',scheduleType:'monthly',interest:1234.56,dueAmount:10000,totalDue:10000,amountPaid:10000,paidInterestAmount:1234.56,status:'Paid'},
+  {id:102,description:'2nd Monthly',scheduleType:'monthly',interestAmount:2345.67,dueAmount:10000,totalDue:10000,amountPaid:1000,paidInterestAmount:1000,status:'Partial'},
+  {id:103,description:'3rd Monthly',scheduleType:'monthly',interest_amount:3456.78,dueAmount:10000,totalDue:10000,amountPaid:0,status:'Unpaid'},
+  {id:104,description:'Cancelled Monthly',scheduleType:'monthly',interest:99999.99,dueAmount:100000,totalDue:100000,status:'Cancelled'},
+]:[];
 const client=new QueryClient({defaultOptions:{queries:{retry:false}}});client.setQueryData(['currentUser'],{user:{id:1,role,permissions:Object.values(PERMISSIONS)}});
-createRoot(document.getElementById('root')).render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/projects/lot-projects/qa-project/listings/1']}><Routes><Route path='/projects/lot-projects/:projectSlug/listings/:listingId' element={<TabErrorBoundary>{params.get('view')==='unit'?<UnitStatus listing={listing} canEditListing/>:<PaymentsSOA listing={listing} payments={payments} canCreate canEdit canDelete/>}</TabErrorBoundary>}/></Routes></MemoryRouter></QueryClientProvider>);
+createRoot(document.getElementById('root')).render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/projects/lot-projects/qa-project/listings/1']}><Routes><Route path='/projects/lot-projects/:projectSlug/listings/:listingId' element={<TabErrorBoundary>{params.get('view')==='unit'?<UnitStatus listing={listing} canEditListing/>:<PaymentsSOA listing={listing} payments={payments} soaRows={soaRows} readOnly={scenario==='historical'} canCreate canEdit canDelete/>}</TabErrorBoundary>}/></Routes></MemoryRouter></QueryClientProvider>);
 `);
-const css=readdirSync(resolve(root,'CLIENT/SYSTEM/dist/assets')).find(file=>file.endsWith('.css'));
+const css=readdirSync(resolve(root,'CLIENT/SYSTEM/dist/assets')).find(file=>file.startsWith('index-')&&file.endsWith('.css'));
 const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/@fs/${path('CLIENT/SYSTEM/dist/assets/'+css)}"></head><body><div id="root"></div><script type="module" src="/@vite/client"></script><script type="module" src="/@fs/${entry.replaceAll('\\','/')}"></script></body></html>`;
 const server=await createServer({configFile:false,envDir:false,root:resolve(root,'CLIENT/SYSTEM'),resolve:{dedupe:['react','react-dom','react-router-dom','@tanstack/react-query']},css:{postcss:{plugins:[]}},define:{'import.meta.env.VITE_API_URL':JSON.stringify('/api/v1')},plugins:[{name:'qa-payments-harness',configureServer(dev){dev.middlewares.use((req,res,next)=>{if(req.url?.split('?')[0]!=='/')return next();res.setHeader('Content-Type','text/html');res.end(html)})}}],server:{host:'127.0.0.1',port:4187,strictPort:true,fs:{allow:[root]}}});
 await server.listen();
@@ -33,6 +42,29 @@ await context.route('**/*',async route=>{const url=new URL(route.request().url()
 async function check(name,action){try{await action();checks.push({name,status:'PASS'})}catch(error){checks.push({name,status:'FAIL',reason:error.message});await page.screenshot({path:resolve(out,'failure-'+checks.length+'.png')}).catch(()=>{})}console.log(JSON.stringify(checks.at(-1)))}
 async function open(scenario='reservation',role='super_admin'){await page.goto(`http://127.0.0.1:4187/?scenario=${scenario}&role=${role}`);await page.getByRole('heading',{name:'Payments & SOA',exact:true}).waitFor()}
 try{
+  await check('Contract summary uses account prices and totals paid, partial and unpaid interest without cancelled rows',async()=>{
+    await open('pricing');const summary=page.getByRole('group',{name:'Contract price breakdown',exact:true});
+    for(const [label,amount] of [['Base Selling Price',780000],['LMF Amount',78000],['Total Interest Amount',7037.01],['TCP',858000]]){
+      const formatted=new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP',minimumFractionDigits:2}).format(amount);
+      await summary.getByText(label,{exact:true}).locator('..').getByText(formatted,{exact:true}).waitFor();
+    }
+    await page.locator('select').filter({has:page.locator('option[value="Downpayment"]')}).selectOption('Downpayment');
+    await summary.getByText('₱7,037.01',{exact:true}).waitFor();assert.equal(mutations.filter(request=>request.method!=='GET').length,0);
+    await page.screenshot({path:resolve(out,'contract-summary-desktop.png')});
+    for(const width of [320,390,768,1440]){
+      await page.setViewportSize({width,height:1000});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+      for(const value of await summary.locator('p.text-2xl').all())assert.ok(await value.evaluate(node=>node.scrollWidth<=node.clientWidth+1));
+      if(width===390)await page.screenshot({path:resolve(out,'contract-summary-mobile.png')});
+    }
+  });
+  await check('Cash pricing, zero LMF and historical accounts retain their correct contract amounts',async()=>{
+    const currency=amount=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP',minimumFractionDigits:2}).format(amount);
+    for(const [scenario,base,lmf,tcp,interest] of [['cash',740000,74000,814000,0],['waived',780000,0,780000,0],['historical',780000,78000,858000,7037.01]]){
+      await open(scenario);const summary=page.getByRole('group',{name:'Contract price breakdown',exact:true});
+      for(const [label,amount] of [['Base Selling Price',base],['LMF Amount',lmf],['TCP',tcp],['Total Interest Amount',interest]])await summary.getByText(label,{exact:true}).locator('..').getByText(currency(amount),{exact:true}).waitFor();
+      if(scenario==='historical')assert.equal(await page.getByRole('button',{name:'Add Payment',exact:true}).count(),0);
+    }
+  });
   await check('Void opens owner authorization without crashing the Payments tab or submitting a mutation',async()=>{
     await open();await page.getByRole('button',{name:'Void',exact:true}).first().click();await page.getByRole('heading',{name:'Void Payment',exact:true}).waitFor();await page.getByText('Super Admin Password *',{exact:true}).waitFor();assert.equal(await page.getByText('This tab could not be displayed',{exact:true}).count(),0);assert.equal(mutations.filter(r=>r.method!=='GET').length,0);await page.screenshot({path:resolve(out,'void-owner.png')});await page.getByRole('button',{name:'Cancel',exact:true}).click();
   });

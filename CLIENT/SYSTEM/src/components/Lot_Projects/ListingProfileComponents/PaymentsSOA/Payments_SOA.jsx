@@ -204,7 +204,7 @@ const StatusPill = ({ status }) => {
   )
 }
 
-const SummaryCard = ({ label, value, tone = 'slate', isMoney = true }) => {
+const SummaryCard = ({ label, value, tone = 'slate', isMoney = true, hint = '' }) => {
   const styles = {
     slate: 'bg-white text-slate-950',
     blue: 'bg-blue-50 text-blue-700',
@@ -219,6 +219,7 @@ const SummaryCard = ({ label, value, tone = 'slate', isMoney = true }) => {
       <p className="mt-3 text-2xl font-black">
         {isMoney ? money(value) : value}
       </p>
+      {hint ? <p className="mt-2 text-xs font-semibold text-slate-500">{hint}</p> : null}
     </div>
   )
 }
@@ -870,6 +871,15 @@ const PaymentsSOA = ({
   const paymentRecords = useMemo(() => normalizePayments(payments, listing), [payments, listing])
   const canonicalReceivable = listing?.financialSnapshot?.receivable || null
   const canonicalCash = listing?.financialSnapshot?.cash || null
+  const baseSellingPrice = cleanMoney(getListingValue(listing, ['baseSellingPrice', 'soa_selected_base_selling_price'], 0))
+  const lmfAmount = cleanMoney(getListingValue(listing, ['lmfAmount', 'lmf_amount', 'soa_selected_lmf_amount'], 0))
+  const tcpAmount = cleanMoney(getListingValue(listing, ['tcpAmount', 'tcp', 'soa_selected_tcp'], 0))
+  const totalInterestAmount = useMemo(
+    () => rows
+      .filter((row) => String(row.status || '').trim().toLowerCase() !== 'cancelled')
+      .reduce((cents, row) => cents + Math.round(Number(row.interest || 0) * 100), 0) / 100,
+    [rows]
+  )
 
   const unitCode = getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], 'Unit')
   const projectName = getListingValue(listing, ['project_name', 'projectName'], 'Project')
@@ -1574,6 +1584,13 @@ const PaymentsSOA = ({
             <span className="inline-flex h-11 items-center rounded-xl border border-blue-200 bg-blue-50 px-5 text-sm font-black text-blue-700">Historical record</span>
           )}
         </div>
+      </div>
+
+      <div role="group" aria-label="Contract price breakdown" className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Base Selling Price" value={baseSellingPrice} />
+        <SummaryCard label="LMF Amount" value={lmfAmount} tone="amber" />
+        <SummaryCard label="Total Interest Amount" value={totalInterestAmount} tone="blue" hint="Includes paid and unpaid SOA installments." />
+        <SummaryCard label="TCP" value={tcpAmount} tone="emerald" hint="Total Contract Price" />
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
