@@ -350,7 +350,7 @@ const ListingProfile = () => {
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/cancellation-code`,
         payload,
-        { confirmationHandled: 'technical' }
+        { confirmationHandled: 'compact' }
       ),
   })
 

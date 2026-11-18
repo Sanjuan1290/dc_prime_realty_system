@@ -60,9 +60,9 @@ test('document management UIs keep Required/Optional separate from Responsible P
   assert.match(documents, /RequirementPill/);
   assert.match(documents, /DocumentActionsMenu/);
   assert.match(documents, /Responsible Party/);
-  assert.match(documents, /client action/);
-  assert.match(documents, /internal action/);
-  assert.match(documents, /seller action/);
+  assert.match(documents, /Client Action/);
+  assert.match(documents, /Internal Action/);
+  assert.match(documents, /Seller Action/);
 
   for (const source of [editRequirements, addDocument, reserveChecklist]) {
     assert.match(source, /Company \/ Internal/);

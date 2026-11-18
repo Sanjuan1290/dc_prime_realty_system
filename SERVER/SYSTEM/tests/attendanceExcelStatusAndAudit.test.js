@@ -46,7 +46,7 @@ test('manual attendance and corrections expose reasons and attendance details in
   assert.match(modal, /Attendance Date/)
   assert.match(modal, /Previous Time In/)
   assert.match(modal, /New Time Out/)
-  assert.match(modal, /log\.metadata\?\.reason/)
+  assert.match(modal, /contextFields\.reason/)
 })
 
 test('Attendance Settings uses a separate required Add Department modal with stable row keys', () => {

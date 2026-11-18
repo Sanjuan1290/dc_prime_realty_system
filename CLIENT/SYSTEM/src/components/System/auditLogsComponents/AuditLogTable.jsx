@@ -1,5 +1,6 @@
 import { FiEye } from 'react-icons/fi'
-import { formatDateTime } from '../../../utils/formatDateTime'
+import { formatPhilippineDateTime } from '../../../utils/formatDateTime'
+import { auditActivityTitle, auditRecordLabel } from '../../../utils/auditReportEvidence'
 
 const actionStyles = {
   create: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
@@ -39,7 +40,7 @@ const AuditLogTable = ({ logs = [], isLoading, isPageChanging = false, paginatio
         <table className="min-w-[1100px] w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>
-              {['Date & Time', 'User', 'Action', 'Module', 'Title', 'Entity', 'Actions'].map((head) => (
+              {['Date & Time (PHT)', 'User', 'Action', 'Module', 'What happened', 'Record', 'Actions'].map((head) => (
                 <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">
                   {head}
                 </th>
@@ -63,7 +64,7 @@ const AuditLogTable = ({ logs = [], isLoading, isPageChanging = false, paginatio
 
             {!isLoading && logs.map((log) => (
               <tr key={log.id} className="align-top transition hover:bg-slate-50">
-                <td className="whitespace-nowrap px-5 py-4 font-semibold text-slate-600">{formatDateTime(log.createdAt)}</td>
+                <td className="whitespace-nowrap px-5 py-4 font-semibold text-slate-600">{formatPhilippineDateTime(log.createdAt, { fallback: 'Not recorded' })}</td>
                 <td className="px-5 py-4">
                   <p className="font-black text-slate-900">{log.actorName || 'System'}</p>
                   <p className="text-xs font-semibold text-slate-500">{log.actorEmail || log.actorRole || '-'}</p>
@@ -71,11 +72,11 @@ const AuditLogTable = ({ logs = [], isLoading, isPageChanging = false, paginatio
                 <td className="px-5 py-4"><ActionBadge value={log.action} label={log.title === 'Requested client document resubmission' ? 'Request Resubmission' : ''} /></td>
                 <td className="px-5 py-4 font-black text-blue-700">{log.module}</td>
                 <td className="px-5 py-4">
-                  <p className="font-black text-slate-900">{log.title}</p>
+                  <p className="font-black text-slate-900">{auditActivityTitle(log)}</p>
                   <p className="mt-1 line-clamp-2 max-w-md text-xs font-semibold text-slate-500">{log.description || 'No description provided.'}</p>
                 </td>
                 <td className="px-5 py-4 font-semibold text-slate-600">
-                  {log.entityLabel || (log.entityType ? `${log.entityType}${log.entityId ? ` #${log.entityId}` : ''}` : '-')}
+                  {auditRecordLabel(log)}
                 </td>
                 <td className="px-5 py-4">
                   <button

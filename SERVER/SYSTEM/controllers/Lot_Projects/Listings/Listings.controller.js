@@ -2421,6 +2421,15 @@ export const updateLotProjectListing = async (req, res) => {
       ? await syncListingInterestToUnlockedSoa(connection, project.lot_project_id, existingListing.lot_project_listing_id, annualInterestRate)
       : { synced: 0, skipped: 0 };
 
+    const savedListingFinancials = storedListingReviewFinancials(existingListing);
+    const updatedListingFinancials = isProtectedListing ? savedListingFinancials : listingReviewFinancialsAfterEdit({
+      installmentPricePerSqm,
+      cashPricePerSqm,
+      installmentPricing,
+      legalMiscRate,
+      reservationFee,
+      annualInterestRate: annualInterestChanged ? annualInterestRate : savedListingFinancials.annualInterestRate,
+    });
     const auditTitle = statusTransitionAction === LISTING_STATUS_ACTIONS.VOID_UNPAID_CANCELLATION
       ? 'Voided unpaid reservation'
       : statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
@@ -2452,43 +2461,28 @@ export const updateLotProjectListing = async (req, res) => {
           oldUnitIds: existingListing.lot_project_listing_old_unit_ids,
           lotType: existingListing.lot_project_listing_unit_type,
           lotAreaSqm: Number(existingListing.lot_project_listing_area_sqm || 0),
-          installmentPricePerSqm: Number(existingListing.lot_project_listing_installment_price_per_sqm || existingListing.lot_project_listing_price_per_sqm || 0),
-          cashPricePerSqm: Number(existingListing.lot_project_listing_cash_price_per_sqm || existingListing.lot_project_listing_price_per_sqm || 0),
-          netSellingPrice: Number(existingListing.lot_project_listing_net_selling_price || 0),
-          legalMiscRate: Number(existingListing.lot_project_listing_lmf_rate || 0),
-          legalMiscAmount: Number(existingListing.lot_project_listing_lmf_amount || 0),
-          tcp: Number(existingListing.lot_project_listing_tcp || 0),
-          reservationFee: Number(existingListing.lot_project_listing_reservation_fee || 0),
-          annualInterestRate: Number(existingListing.annual_interest_rate || 0),
+          ...savedListingFinancials,
           status: existingListing.lot_project_listing_status,
           soldSubstatus: existingListing.lot_project_listing_sold_substatus,
+          ...(reviewCadastralDiff ? { cadastralLots: reviewCadastralDiff.before } : {}),
+          ...(reviewDocumentsDiff ? { documentRequirements: reviewDocumentsDiff.before } : {}),
         },
         after: {
           unitCode,
           oldUnitIds: toNullable(oldUnitIdsValue),
           lotType: normalizeLotType(req.body.lotType || req.body.lot_type),
-          lotAreaSqm,
-          installmentPricePerSqm,
-          cashPricePerSqm,
-          netSellingPrice: installmentPricing.netSellingPrice,
-          legalMiscRate,
-          legalMiscAmount: installmentPricing.lmfAmount,
-          tcp: installmentPricing.tcp,
-          reservationFee,
-          annualInterestRate,
+          lotAreaSqm: isProtectedListing ? Number(existingListing.lot_project_listing_area_sqm || 0) : lotAreaSqm,
+          ...updatedListingFinancials,
           status: listingStatus.status,
           soldSubstatus: listingStatus.soldSubstatus,
-          cadastralLots: Array.isArray(req.body.cadastralLots) ? req.body.cadastralLots : null,
-          documentRequirements: Array.isArray(req.body.documentRequirements)
-            ? req.body.documentRequirements.map((document) => ({
-                documentId: document.document_id || document.id || null,
-                name: document.document_name || document.name || null,
-                isRequired: document.is_required ?? document.requirement ?? null,
-                responsibleParty: document.responsible_party || document.responsibleParty || null,
-              }))
-            : null,
+          ...(reviewCadastralDiff ? { cadastralLots: reviewCadastralDiff.after } : {}),
+          ...(reviewDocumentsDiff ? { documentRequirements: reviewDocumentsDiff.after } : {}),
         },
         statusTransitionAction,
+        ...(isCancellationAction ? {
+          reason: toNullable(req.body.cancellationReason || req.body.cancellation_reason),
+          originalCancellationReason: currentAccount?.cancellation_reason || null,
+        } : {}),
         resetToAvailable,
         voidUnpaidAccount,
         saleArchiveResult,

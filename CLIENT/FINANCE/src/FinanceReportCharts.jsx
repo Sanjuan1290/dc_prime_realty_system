@@ -20,10 +20,11 @@ export function FinanceTrendChart({series,balance=false,openingBalance}){
   const y=value=>top+plotHeight-(value-min)/range*plotHeight;
   const step=plotWidth/Math.max(1,series.length);
   const x=index=>left+step*(index+(balance?1:0.5));
-  const ticks=Array.from({length:5},(_,i)=>min+range*i/4);
+  const ticks=max===min?[0]:Array.from({length:5},(_,i)=>min+range*i/4);
   const labelStep=Math.max(1,Math.ceil(series.length/6));
   const barWidth=Math.min(20,step*.34);
-  const line=[[left,y(Number(openingBalance))],...series.map((row,index)=>[x(index),y(Number(row.balance))])];
+  const line=balance?[[left,y(Number(openingBalance))],...series.map((row,index)=>[x(index),y(Number(row.balance))])]:[];
+  const linePoints=line.map(point=>point.join(',')).join(' ');
   return <svg xmlns="http://www.w3.org/2000/svg" className="finance-plot" viewBox={`0 0 ${width} ${height}`}
     role="img" aria-label={balance?'Running cash balance over the report period':'Money in and money out by period'}
     fontFamily="Arial, sans-serif" fontSize="13">
@@ -32,7 +33,8 @@ export function FinanceTrendChart({series,balance=false,openingBalance}){
       <text x={left-9} y={y(value)+4} fill="#506780" textAnchor="end">₱{compact.format(value)}</text>
     </g>)}
     {balance
-      ?<><polyline points={line.map(point=>point.join(',')).join(' ')} fill="none" stroke={balanceColor} strokeWidth="3" strokeLinejoin="round"/>
+      ?<><polygon points={`${left},${y(0)} ${linePoints} ${line.at(-1)[0]},${y(0)}`} fill="#eaf2fa"/>
+        <polyline points={linePoints} fill="none" stroke={balanceColor} strokeWidth="3" strokeLinejoin="round"/>
         {series.map((row,index)=><circle key={row.label} cx={x(index)} cy={y(Number(row.balance))} r={series.length>48?2:3.5} fill={balanceColor}>
           <title>{row.label} · {financeMoney(row.balance)}</title></circle>)}</>
       :series.map((row,index)=><g key={row.label}>

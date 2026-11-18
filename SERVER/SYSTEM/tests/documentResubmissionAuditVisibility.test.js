@@ -29,7 +29,7 @@ test('audit UI shows resubmission reason and refreshes after the action', () => 
 
   assert.match(profile, /invalidateQueries\(\{ queryKey: \['audit-logs'\] \}\)/);
   assert.match(documents, /This will be recorded in Audit Logs/);
-  assert.match(details, /log\.metadata\?\.reason/);
+  assert.match(details, /contextFields\.reason/);
   assert.match(details, />Reason</);
 });
 
@@ -45,7 +45,7 @@ test('audit UI labels document rejection as a resubmission action and exposes th
   assert.match(details, /isDocumentResubmission/);
   assert.match(details, /Previous Status/);
   assert.match(details, /New Status/);
-  assert.match(details, /Needs Resubmission/);
+  assert.match(details, /formatAuditRecordedValue\('newStatus', contextFields\.newStatus\)/);
   assert.match(filters, /Reject \/ Resubmission/);
   assert.match(filters, /description, or reason/);
   assert.match(documentController, /newStatus:\s*'Rejected'/);

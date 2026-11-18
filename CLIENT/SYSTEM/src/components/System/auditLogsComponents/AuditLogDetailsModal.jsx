@@ -1,6 +1,15 @@
 import { FiArrowUpRight, FiInfo, FiSearch, FiX } from 'react-icons/fi'
-import { formatDateTime } from '../../../utils/formatDateTime'
-import { getAuditChanges, getAuditReferences, getAuditExtraFields, getAuditEvidenceCoverage } from '../../../utils/auditReportEvidence'
+import { formatPhilippineDateTime } from '../../../utils/formatDateTime'
+import {
+  auditActivityTitle,
+  auditFieldLabel,
+  auditRecordLabel,
+  formatAuditRecordedValue,
+  getAuditChanges,
+  getAuditDisplayChanges,
+  getAuditExtraFields,
+  getAuditReferences,
+} from '../../../utils/auditReportEvidence'
 
 
 const formatAttendanceDate = (value) => {
@@ -117,7 +126,6 @@ const AuditLogDetailsModal = ({ log, onClose, onViewReview, onResolveRecord, des
 
   const isDocumentResubmission = log.title === 'Requested client document resubmission'
     || (log.action === 'reject' && log.module === 'Documents' && log.metadata?.newStatus === 'Rejected')
-  const actionLabel = isDocumentResubmission ? 'Request Resubmission' : log.action
   const isManualAttendance = log.module === 'Attendance' && log.title === 'Added manual attendance'
   const isAttendanceCorrection = log.module === 'Attendance' && log.title === 'Corrected attendance time'
   const isAttendanceAudit = isManualAttendance || isAttendanceCorrection
@@ -129,15 +137,22 @@ const AuditLogDetailsModal = ({ log, onClose, onViewReview, onResolveRecord, des
   const attendanceDate = log.metadata?.attendanceDate || entityParts[1] || ''
   const { reviewId: linkedReviewId } = getAuditReferences(log.metadata)
   const settingsChanges = getSettingsChanges(log)
-  const evidenceChanges = getAuditChanges(log)
+  const changes = getAuditDisplayChanges(log, getAuditChanges(log))
   const contextFields = getAuditExtraFields(log)
-  const hasRecordedSnapshot = Boolean(log.metadata && (Object.prototype.hasOwnProperty.call(log.metadata, 'before') || Object.prototype.hasOwnProperty.call(log.metadata, 'after') || Object.prototype.hasOwnProperty.call(log.metadata, 'changes')))
   const isSettingsAudit = Boolean(settingsChangeDefinitions[log.module])
+  const contextRows = Object.entries(contextFields).filter(([key, value]) => {
+    if (['requestId', 'reason', 'newStatusLabel'].includes(key)) return false
+    if (key === 'verificationMethod' && isSettingsAudit) return false
+    if (key === 'originalCancellationReason' && value === contextFields.reason) return false
+    if (isDocumentResubmission && ['documentName', 'previousStatus', 'newStatus'].includes(key)) return false
+    if (isAttendanceAudit && /^(employee|attendanceDate)|time(in|out)/i.test(key)) return false
+    return true
+  })
   const settingsAuthorization = getAuthorizationLabel(log.metadata?.verificationMethod)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label="Audit Log Details" className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
@@ -145,29 +160,33 @@ const AuditLogDetailsModal = ({ log, onClose, onViewReview, onResolveRecord, des
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-950">Audit Log Details</h2>
-              <p className="mt-1 text-sm font-semibold text-slate-500">Activity, actor, and target information.</p>
+              <p className="mt-1 text-sm font-semibold text-slate-500">Recorded activity and changes.</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900">
+          <button type="button" onClick={onClose} aria-label="Close audit details" className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900">
             <FiX className="h-5 w-5" />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <DetailRow label="Date & Time" value={formatDateTime(log.createdAt)} />
-            <DetailRow label="Action" value={actionLabel} />
-            <DetailRow label="User" value={log.actorName} />
-            <DetailRow label="User Email" value={log.actorEmail} />
-            <DetailRow label="Module" value={log.module} />
-            <DetailRow label="Entity" value={log.entityLabel || (log.entityType ? `${log.entityType}${log.entityId ? ` #${log.entityId}` : ''}` : '-')} />
-          </div>
+          <section aria-label="What happened">
+            <h3 className="text-lg font-black text-slate-950">{auditActivityTitle(log)}</h3>
+            {log.description ? (
+              <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-slate-600">{log.description}</p>
+            ) : null}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <DetailRow label="Who recorded it" value={log.actorName || 'System'} />
+              <DetailRow label="Date and time" value={formatPhilippineDateTime(log.createdAt, { timeZoneLabel: true, fallback: 'Not recorded' })} />
+              <DetailRow label="Record" value={auditRecordLabel(log)} />
+              <DetailRow label="Module" value={log.module} />
+            </div>
+          </section>
 
           {isDocumentResubmission ? (
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <DetailRow label="Document" value={log.metadata?.documentName || log.entityLabel} />
-              <DetailRow label="Previous Status" value={log.metadata?.previousStatus || '-'} />
-              <DetailRow label="New Status" value={log.metadata?.newStatusLabel || 'Needs Resubmission'} />
+              <DetailRow label="Previous Status" value={formatAuditRecordedValue('previousStatus', contextFields.previousStatus === '-' ? undefined : contextFields.previousStatus)} />
+              <DetailRow label="New Status" value={formatAuditRecordedValue('newStatus', contextFields.newStatus)} />
             </div>
           ) : null}
 
@@ -195,19 +214,54 @@ const AuditLogDetailsModal = ({ log, onClose, onViewReview, onResolveRecord, des
             </div>
           ) : null}
 
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Title</p>
-            <p className="mt-1 text-base font-black text-slate-950">{log.title}</p>
-            <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-slate-600">
-              {log.description || 'No description provided.'}
-            </p>
-          </div>
+          {!isSettingsAudit ? (
+            <section className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4" aria-label="What changed">
+              <h3 className="text-sm font-black text-slate-900">What changed</h3>
+              {changes.length ? (
+                <div className="mt-3 space-y-2">
+                  {changes.map((change, index) => (
+                    <div key={`${change.path}-${index}`} className="rounded-xl border border-blue-100 bg-white p-3">
+                      <p className="text-xs font-bold text-slate-600">{change.field}</p>
+                      <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
+                        <div><span className="text-xs text-slate-500">Before</span><p className="whitespace-pre-line break-words font-semibold">{change.before}</p></div>
+                        <div><span className="text-xs text-slate-500">After</span><p className="whitespace-pre-line break-words font-semibold">{change.after}</p></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="mt-2 text-sm text-slate-600">No field changes were recorded for this entry.</p>}
+              {changes.some((change) => change.before === 'Not recorded' || change.after === 'Not recorded') ? (
+                <p className="mt-2 text-xs text-slate-500">“Not recorded” means the audit log saved no value for that field at that point.</p>
+              ) : null}
+            </section>
+          ) : null}
+
+          {contextFields.reason ? (
+            <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <h3 className="text-sm font-black text-amber-900">Reason</h3>
+              <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-amber-950">{contextFields.reason}</p>
+            </section>
+          ) : null}
+
+          {contextRows.length ? (
+            <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+              <h3 className="text-sm font-black text-slate-900">Recorded details</h3>
+              <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+                {contextRows.map(([key, value]) => (
+                  <div key={key} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                    <dt className="text-xs font-semibold text-slate-500">{auditFieldLabel(key)}</dt>
+                    <dd className="mt-1 whitespace-pre-line break-words text-sm font-semibold text-slate-900">{formatAuditRecordedValue(key, value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ) : null}
 
           <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4" aria-label="Record navigation">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-black uppercase tracking-wide text-slate-500">Original Record</p>
-                <p className="mt-1 text-sm text-slate-600">Audit Log #{log.id} · {log.entityType || 'Unspecified type'} {log.entityId ? `#${log.entityId}` : ''}</p>
+                <p className="mt-1 text-sm text-slate-600">{auditRecordLabel(log)}</p>
               </div>
               {destination?.status === 'available' && destination.destination?.path ? (
                 <a href={destination.destination.path} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700">
@@ -223,17 +277,12 @@ const AuditLogDetailsModal = ({ log, onClose, onViewReview, onResolveRecord, des
             {destination?.status === 'historical' ? <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{destination.reason}</p> : null}
             {destinationError ? <p role="alert" className="mt-3 text-sm text-red-700">{destinationError}</p> : null}
           </section>
-          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4" aria-label="Recorded evidence coverage">
-            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Saved Evidence</p>
-            <p className="mt-2 text-sm font-semibold text-slate-700">{getAuditEvidenceCoverage(log)} · {evidenceChanges.length ? `${evidenceChanges.length} recorded field change${evidenceChanges.length === 1 ? '' : 's'}` : hasRecordedSnapshot ? 'no reconstructable field differences' : 'no field-by-field comparison available'}.</p>
-            <p className="mt-1 text-xs text-slate-500">A missing field is not proof that its value was unchanged. Audit Logs never reconstructs past values from current business records.</p>
-            {Object.keys(contextFields).length ? <dl className="mt-3 grid gap-2 sm:grid-cols-2">{Object.entries(contextFields).filter(([key]) => !['verificationMethod'].includes(key)).map(([key,value]) => <div key={key} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2"><dt className="text-xs font-semibold text-slate-500">{titleCase(key)}</dt><dd className="mt-1 break-words text-sm font-semibold text-slate-900">{String(value)}</dd></div>)}</dl> : null}
-          </section>
-
           <details className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-            <summary className="cursor-pointer text-sm font-bold text-slate-800">Technical Reference (recorded identifiers)</summary>
+            <summary className="cursor-pointer text-sm font-bold text-slate-800">Technical details</summary>
             <dl className="mt-3 grid gap-3 sm:grid-cols-2">
               <DetailRow label="Audit Log ID" value={String(log.id)} />
+              <DetailRow label="User email" value={log.actorEmail || 'Not recorded'} />
+              <DetailRow label="Record ID" value={log.entityId || 'Not recorded'} />
               <DetailRow label="Actor User ID" value={String(log.actorUserId ?? '-')} />
               <DetailRow label="Actor Role" value={log.actorRole || '-'} />
               <DetailRow label="Request ID" value={log.metadata?.requestId || 'Not recorded'} />
@@ -245,25 +294,6 @@ const AuditLogDetailsModal = ({ log, onClose, onViewReview, onResolveRecord, des
             <span className="text-sm font-semibold text-blue-950">Related Review #{linkedReviewId}</span>
             <button type="button" onClick={() => onViewReview?.(linkedReviewId)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white">View Review</button>
           </div> : null}
-          {log.metadata?.reason ? (
-            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-xs font-black uppercase tracking-wide text-amber-700">Reason</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm font-bold leading-relaxed text-amber-950">{log.metadata.reason}</p>
-            </div>
-          ) : null}
-
-
-          {!isSettingsAudit && evidenceChanges.length ? (
-            <section className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
-              <p className="text-xs font-black uppercase tracking-wide text-blue-700">Recorded Before & After Changes</p>
-              <div className="mt-3 space-y-2">{evidenceChanges.map((change,index) => (
-                <div key={`${change.path}-${index}`} className="rounded-xl border bg-white p-3">
-                  <p className="text-xs font-bold text-slate-600">{change.field}</p>
-                  <div className="mt-2 grid grid-cols-2 gap-3 text-sm"><div><span className="text-xs text-slate-500">Before</span><p className="break-words font-semibold">{change.before}</p></div><div><span className="text-xs text-slate-500">After</span><p className="break-words font-semibold">{change.after}</p></div></div>
-                </div>
-              ))}</div>
-            </section>
-          ) : null}
           {isSettingsAudit ? (
             <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
