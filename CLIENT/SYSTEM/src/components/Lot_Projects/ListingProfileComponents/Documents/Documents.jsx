@@ -30,6 +30,7 @@ const StatusPill = ({ value = 'Missing' }) => {
 const MetadataPill = ({ children, tone }) => <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${tone}`}>{children}</span>
 const LibraryStatusPill = ({ value }) => String(value || 'active').toLowerCase() === 'active' ? <MetadataPill tone="border-emerald-200 bg-emerald-50 text-emerald-800">Active</MetadataPill> : <MetadataPill tone="border-slate-300 bg-slate-100 text-slate-700">Deactivated</MetadataPill>
 const RequirementPill = ({ value }) => <MetadataPill tone={value === 'Required' ? 'border-violet-200 bg-violet-50 text-violet-800' : 'border-slate-300 bg-slate-100 text-slate-700'}>{value || 'Optional'}</MetadataPill>
+const SummaryPill = ({ count, label, tone }) => <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${tone}`}><strong className="font-black">{count}</strong>{' '}{label}</span>
 const ResponsibilityPill = ({ value }) => <span className="text-sm text-slate-600">{getDocumentResponsiblePartyLabel(normalizeDocumentResponsibleParty(value))}</span>
 
 const DocumentActionsMenu = ({ children, name }) => {
@@ -268,38 +269,15 @@ const Documents = ({
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="flex flex-wrap gap-2">
-            <span className="text-xs font-semibold text-slate-600">
-              {rows.length} docs
-            </span>
-
-            <span className="text-xs font-semibold text-slate-600">
-              {approvedCount} approved
-            </span>
-
-            <span className="text-xs font-semibold text-slate-600">
-              {submittedCount} submitted
-            </span>
-
-            <span className="text-xs font-semibold text-slate-600">
-              {missingCount} missing
-            </span>
-
-            <span className="text-xs font-semibold text-slate-600">
-              {requiredCount} required
-            </span>
-
-            <span className="text-xs font-semibold text-slate-600">
-              {actionCounts.client} client action
-            </span>
-
-            <span className="text-xs font-semibold text-slate-600">
-              {actionCounts.internal} internal action
-            </span>
-
-            <span className="text-xs font-semibold text-slate-600">
-              {actionCounts.seller} seller action
-            </span>
+          <div role="group" aria-label="Document summary" className="flex flex-wrap gap-2">
+            <SummaryPill count={rows.length} label="docs" tone="border-slate-300 bg-slate-100 text-slate-700" />
+            <SummaryPill count={approvedCount} label="approved" tone="border-emerald-200 bg-emerald-50 text-emerald-800" />
+            <SummaryPill count={submittedCount} label="submitted" tone="border-blue-200 bg-blue-50 text-blue-800" />
+            <SummaryPill count={missingCount} label="missing" tone="border-red-200 bg-red-50 text-red-800" />
+            <SummaryPill count={requiredCount} label="required" tone="border-violet-200 bg-violet-50 text-violet-800" />
+            <SummaryPill count={actionCounts.client} label="client action" tone="border-amber-200 bg-amber-50 text-amber-800" />
+            <SummaryPill count={actionCounts.internal} label="internal action" tone="border-cyan-200 bg-cyan-50 text-cyan-800" />
+            <SummaryPill count={actionCounts.seller} label="seller action" tone="border-orange-200 bg-orange-50 text-orange-800" />
           </div>
 
           {!readOnly ? (
