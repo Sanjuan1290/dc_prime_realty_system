@@ -1,5 +1,6 @@
 import {getPool,withTransaction} from './db.js';
 import {problem,validateTransaction,validateRange,validDate,money} from './domain.js';
+import {getFinanceReport} from './reports.js';
 const positiveId = value => {
   const s=String(value??''); if (!/^[1-9]\d*$/.test(s) || s.length>18) throw problem('INVALID_ID','Record ID must be positive.');return s;
 };
@@ -124,20 +125,9 @@ export async function getTransaction(id, {includeImport=false}={}) {
   }
   return transaction;
 }
-export async function getDashboard(query={}) {
+export async function getDashboard(query={},pool=getPool()) {
   const {from,to}=validateRange(query); // all-time starting cash = 0.00
-  const [rows]=await getPool().execute(`SELECT
-     COALESCE(SUM(CASE WHEN transaction_date<? AND kind='income' THEN amount WHEN transaction_date<? AND kind='expense' THEN -amount ELSE 0 END),0) AS opening_balance,
-     COALESCE(SUM(CASE WHEN transaction_date>=? AND kind='income' THEN amount ELSE 0 END),0) AS money_in,
-     COALESCE(SUM(CASE WHEN transaction_date>=? AND kind='expense' THEN amount ELSE 0 END),0) AS money_out,
-     COUNT(*) AS total_posted
-   FROM finance_transactions WHERE status='posted' AND transaction_date<=?`,[from,from,from,from,to]);
-  const r=rows[0];
-  // use BigInt instead of IEEE-754 for amounts returned by MySQL DECIMAL
-  const toCents=value=>{const [w,f=''] = String(value).split('.');return BigInt(w)*100n+(String(value).trim().startsWith('-')?-1n:1n)*BigInt((f+'00').slice(0,2));};
-  const {pesos}=await import('./domain.js');
-  const opening=toCents(r.opening_balance),incoming=toCents(r.money_in),outgoing=toCents(r.money_out);
-  return {from,to,currency:'PHP',opening_balance:pesos(opening),money_in:pesos(incoming),money_out:pesos(outgoing),net_change:pesos(incoming-outgoing),closing_balance:pesos(opening+incoming-outgoing),total_posted:Number(r.total_posted)};
+  return getFinanceReport({from,to},pool);
 }
 export async function listAudit(query={},pool=getPool()) {
   const page=Number(query.page??1);

@@ -1,5 +1,6 @@
 import {useId, useState} from 'react';
-import {FiArrowDownLeft, FiArrowRight, FiArrowUpRight, FiBarChart2, FiDollarSign} from 'react-icons/fi';
+import {FiArrowDownLeft, FiArrowRight, FiArrowUpRight, FiBarChart2} from 'react-icons/fi';
+import FinanceActualTotals, {FinanceTotalsNote} from './FinanceActualTotals.jsx';
 import FinanceDateFilter from './FinanceDateFilter.jsx';
 import {Notice, Spinner} from './FinanceFeedback.jsx';
 import {FinanceTrendChart} from './FinanceReportCharts.jsx';
@@ -48,17 +49,17 @@ export default function FinanceDashboard({
           </button>
         </div>
         <div className="finance-dashboard-summary">
-          <CashTile icon={FiDollarSign} label="Closing balance" value={dashboard.closing_balance}
-            hint={'As of ' + financeDate(dashboard.to)} tone="balance" />
-          <CashTile icon={FiArrowDownLeft} label="Money in" value={dashboard.money_in} hint="Posted income" tone="income" />
-          <CashTile icon={FiArrowUpRight} label="Money out" value={dashboard.money_out} hint="Posted expenses" tone="expense" />
-          <CashTile icon={FiBarChart2} label="Net cash change" value={dashboard.net_change} hint="Money in minus money out"
+          <CashTile icon={FiArrowDownLeft} label="Money in" value={dashboard.money_in} hint="Gross income, including undo entries" tone="income" />
+          <CashTile icon={FiArrowUpRight} label="Money out" value={dashboard.money_out} hint="Gross expenses, including reversed payroll" tone="expense" />
+          <CashTile icon={FiBarChart2} label="Net cash change" value={dashboard.net_change} hint="Gross money in minus gross money out"
             tone={Number(dashboard.net_change) < 0 ? 'expense' : 'net'} />
+          <FinanceActualTotals report={dashboard}/>
         </div>
         <dl className="finance-overview-strip">
           <div><dt>Opening balance</dt><dd>{financeMoney(dashboard.opening_balance)}</dd></div>
           <div><dt>Posted transactions in this period</dt><dd>{countFormat.format(dashboard.period_count)}</dd></div>
         </dl>
+        <FinanceTotalsNote report={dashboard}/>
 
         {dashboard.period_count === 0 ? (
           <Notice type="info" title="No posted transactions in this period">
@@ -68,12 +69,12 @@ export default function FinanceDashboard({
           <>
             <div className="finance-dashboard-insights">
               <section className="panel finance-chart-panel">
-                <div className="finance-card-heading"><h2>Cash flow</h2><p>{financeBucketLabel(dashboard.bucket_size)} money in and out</p></div>
+                <div className="finance-card-heading"><h2>Cash flow</h2><p>{financeBucketLabel(dashboard.bucket_size)} gross money in and out, including payroll corrections</p></div>
                 <div className="chart-legend"><span className="chart-income">Money in</span><span className="chart-expense">Money out</span></div>
                 <div className="finance-chart-scroll"><FinanceTrendChart series={dashboard.series} /></div>
               </section>
               <section className="panel finance-chart-panel">
-                <div className="finance-card-heading"><h2>Top categories</h2><p>Largest totals in the selected period</p></div>
+                <div className="finance-card-heading"><h2>Top categories</h2><p>Largest gross totals, including payroll corrections</p></div>
                 <ul className="finance-top-categories">
                   {topCategories.map(category => <li key={category.kind + '/' + category.id} tabIndex={0} aria-describedby={`${categoriesId}-${category.kind}-${category.id}`}>
                     <div className="finance-category-total">

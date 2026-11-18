@@ -29,19 +29,20 @@ async function check(name,action){try{await action();checks.push({name,status:'P
 const reportBefore=await api('/finance/reports?from=2026-11-01&to=2026-11-30');
 try {
  await page.goto(base+'/finance');await nav('Reports').click();
- await check('Reports show four summary cards, retain closing balances, and fit mobile/tablet/desktop',async()=>{
+ await check('Reports show actual totals in place of Closing balance and fit mobile/tablet/desktop',async()=>{
   const summary=page.locator('.finance-report-summary');await summary.waitFor();
   assert.equal(await summary.locator('.finance-metric').count(),4);assert.equal(await summary.getByText('Opening balance',{exact:true}).count(),0);
-  await summary.locator('.finance-metric-balance').getByText(financeMoney(reportBefore.closing_balance),{exact:true}).waitFor();
+  assert.equal(await summary.getByText('Closing balance',{exact:true}).count(),0);
+  await summary.getByRole('region',{name:'Actual money in and out',exact:true}).getByText(financeMoney(reportBefore.actual_money_out),{exact:true}).waitFor();
   for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:1000});await fits();await page.screenshot({path:resolve(out,'reports-'+width+'.png'),fullPage:true,animations:'disabled'})}
  });
- await check('The exported PDF uses the same four cards and preserves closing balance',async()=>{
+ await check('The exported PDF uses the same gross summary and actual totals',async()=>{
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export PDF',exact:true}).click();const file=await download,path=resolve(out,'finance-report.pdf');await file.saveAs(path);
   const {getDocument}=await import('../../CLIENT/SYSTEM/node_modules/pdfjs-dist/legacy/build/pdf.mjs');
   const pdf=await getDocument({data:new Uint8Array(readFileSync(path)),isEvalSupported:false}).promise;
   let text='';for(let number=1;number<=pdf.numPages;number++)text+=(await(await pdf.getPage(number)).getTextContent()).items.map(item=>item.str).join(' ');
-  assert.doesNotMatch(text,/Opening balance/);for(const label of ['Money in','Money out','Net cash change','Closing balance'])assert.ok(text.includes(label));
-  assert.ok(text.includes(financeMoney(reportBefore.closing_balance)));await pdf.destroy();
+  assert.doesNotMatch(text,/Opening balance|Closing balance/);for(const label of ['Money in','Money out','Net cash change','Actual totals'])assert.ok(text.includes(label));
+  assert.ok(text.includes(financeMoney(reportBefore.actual_money_out)));await pdf.destroy();
  });
  await check('Transaction details hide the original-import timestamp and retain its receipt metadata',async()=>{
   const entries=await api('/finance/transactions?from=2026-11-01&to=2026-11-30&page_size=100');

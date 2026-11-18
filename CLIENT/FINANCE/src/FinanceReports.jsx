@@ -1,5 +1,6 @@
 import {useEffect, useId, useRef, useState} from 'react';
-import {FiArrowDownLeft, FiArrowUpRight, FiBarChart2, FiDownload, FiChevronDown, FiList, FiPlusCircle} from 'react-icons/fi';
+import {FiArrowDownLeft, FiArrowUpRight, FiBarChart2, FiDownload, FiChevronDown, FiList} from 'react-icons/fi';
+import FinanceActualTotals, {FinanceTotalsNote} from './FinanceActualTotals.jsx';
 import {api} from './api.js';
 import FinanceDateFilter from './FinanceDateFilter.jsx';
 import {Notice, Spinner} from './FinanceFeedback.jsx';
@@ -9,10 +10,9 @@ import {financeBucketLabel, financeDayCount, financePeriodLabel, financePresetRa
 
 const defaults = range => ({ ...range });
 const summaries = [
-  ['Money in', 'money_in', FiArrowDownLeft, 'income'],
-  ['Money out', 'money_out', FiArrowUpRight, 'expense'],
-  ['Net cash change', 'net_change', FiBarChart2],
-  ['Closing balance', 'closing_balance', FiPlusCircle, 'balance'],
+  ['Money in', 'money_in', FiArrowDownLeft, 'income', 'Gross income, including undo entries'],
+  ['Money out', 'money_out', FiArrowUpRight, 'expense', 'Gross expenses, including reversed payroll'],
+  ['Net cash change', 'net_change', FiBarChart2, 'net', 'Gross money in minus gross money out'],
 ];
 
 export default function FinanceReports({categories, refreshKey, initialRange}) {
@@ -111,13 +111,16 @@ export default function FinanceReports({categories, refreshKey, initialRange}) {
           </button>
         </div>
         <div className="finance-report-summary" aria-label="All posted transactions for the report period">
-          {summaries.map(([label, key, Icon, tone]) => (
+          {summaries.map(([label, key, Icon, tone, hint]) => (
             <div className={`tile finance-metric finance-metric-${tone || 'neutral'}`} key={key}>
               <div className="finance-metric-heading"><span>{label}</span><Icon aria-hidden="true" /></div>
               <strong>{financeMoney(report[key])}</strong>
+              <small>{hint}</small>
             </div>
           ))}
+          <FinanceActualTotals report={report}/>
         </div>
+        <FinanceTotalsNote report={report}/>
 
         {!chartPageHasData && <Notice type="info" title="No posted transactions in this period">
           Any opening balance carries forward to the end date.
@@ -125,7 +128,7 @@ export default function FinanceReports({categories, refreshKey, initialRange}) {
         {chartPageHasData && <div className="finance-report-chart-grid">
           <section className="panel finance-chart-panel" ref={movementChart}>
             <div className="finance-card-heading"><h2>Money In and Out</h2><p>
-              {financeBucketLabel(report.bucket_size)} totals
+              {financeBucketLabel(report.bucket_size)} gross totals, including payroll corrections
             </p></div>
             <div className="chart-legend">
               <span className="chart-income">Money in <strong>{financeMoney(report.filtered_money_in)}</strong></span>
@@ -141,7 +144,7 @@ export default function FinanceReports({categories, refreshKey, initialRange}) {
         </div>}
         {report.matched_count > 0 && <section className="panel finance-chart-panel" ref={categoryChart}>
           <div className="finance-content-heading">
-            <div className="finance-card-heading"><h2>Category Breakdown</h2><p>Largest categories by transaction type</p></div>
+            <div className="finance-card-heading"><h2>Category Breakdown</h2><p>Largest gross totals by transaction type, including payroll corrections</p></div>
             <div className="chart-type">
               <label className="finance-filter-label" htmlFor={filterId + '-chart'}>Chart type</label>
               <select id={filterId + '-chart'} value={shownCategoryKind} disabled={editingDisabled} onChange={event => setCategoryKind(event.target.value)}>
@@ -170,7 +173,7 @@ export default function FinanceReports({categories, refreshKey, initialRange}) {
             <FiChevronDown className="finance-table-chevron" aria-hidden="true" />
           </summary>
           <div className="finance-cash-table-body">
-          <p className="finance-table-note">All amounts in Philippine pesos. Balances include the opening balance.</p>
+          <p className="finance-table-note">Gross ledger amounts in Philippine pesos, including payroll corrections. Balances include the opening balance.</p>
           <div className="table-wrap finance-analysis-table"><table className="finance-cash-table" aria-label="Cash flow data">
             <thead><tr><th scope="col">Period</th><th scope="col" className="align-right">Money in</th><th scope="col" className="align-right">Money out</th><th scope="col" className="align-right">Closing balance</th></tr></thead>
             <tbody>{report.series.map(row => (

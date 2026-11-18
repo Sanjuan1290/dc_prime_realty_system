@@ -146,11 +146,14 @@ test('Finance refuses an orphan reversal and a valid preview never changes balan
   ok(await preview(originalFile),201);assert.deepEqual(ok(await api('finance','/finance/dashboard?from=2026-11-01&to=2026-11-18')),before);
 });
 test('Finance imports the original and reversal once, with exact cents and no double balance impact',async()=>{
-  const balance=ok(await api('finance','/finance/dashboard?from=2026-11-01&to=2026-11-18')).closing_balance;
+  const before=ok(await api('finance','/finance/dashboard?from=2026-11-01&to=2026-11-18')),balance=before.closing_balance;
   releaseBatch=await commit(originalFile);reversalBatch=await commit(await exported('2026-11-17'));
   const rows=await ledgerSalary();assert.equal(rows.length,2);assert.equal(rows[0].amount,rows[1].amount);assert.equal(rows[0].kind,'expense');assert.equal(rows[1].kind,'income');
   const duplicate=ok(await preview(await exported('2026-11-16','2026-11-17')),201);assert.equal(duplicate.counts.duplicate,2);assert.equal(duplicate.counts.new,0);
   assert.equal(ok(await api('finance','/finance/dashboard?from=2026-11-01&to=2026-11-18')).closing_balance,balance);
+  const after=ok(await api('finance','/finance/reports?from=2026-11-01&to=2026-11-18'));
+  assert.equal(after.actual_money_in,before.actual_money_in);assert.equal(after.actual_money_out,before.actual_money_out);
+  assert.equal(after.payroll_correction_count,2);
   // Leave this preview uncommitted so the following undo proves dependency protection.
 });
 test('Finance cannot remove an original payment while its reversal remains active',async()=>{
@@ -161,6 +164,8 @@ test('re-release uses a new immutable identity and cannot be backdated before th
   await finalize();const backdated=await release('2026-11-16');ok(backdated,409);assert.equal(backdated.data.code,'PAYROLL_RELEASE_BEFORE_REVERSAL');assert.equal((await details()).payroll_status,'finalized');
   ok(await release('2026-11-18'));const third=await exported('2026-11-18');assert.equal(third.rows[0].source_transaction_id,'salary:'+payrollId+':3');thirdBatch=await commit(third);
   assert.equal((await ledgerSalary()).filter(row=>row.status==='posted').length,3);
+  const report=ok(await api('finance','/finance/reports?from=2026-11-01&to=2026-11-18'));
+  assert.equal(report.actual_money_out,third.rows[0].amount);assert.equal(report.actual_money_in,'0.00');
 });
 test('ordered Realty delivery acknowledges retries and its export matches HR fingerprints',async()=>{
   const [events]=await hrDb.query('SELECT payload_json FROM hr_outbox_events WHERE aggregate_id=? ORDER BY event_revision',[String(payrollId)]);

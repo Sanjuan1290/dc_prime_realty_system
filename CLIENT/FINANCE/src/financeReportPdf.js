@@ -64,13 +64,14 @@ export async function downloadFinanceReport({report,summaries,categoryKind,categ
   doc.text('Generated '+financeDateTime(new Date().toISOString())+' (Philippine Time)',width-margin,24,{align:'right'});
 
   doc.setTextColor(...muted);
-  doc.text('Ledger totals include all posted transactions within the period.',margin,39);
-  const tileWidth=(contentWidth-(summaries.length-1)*3)/summaries.length;
+  doc.text('Gross totals include all posted transactions within the period.',margin,39);
+  const tileCount=summaries.length+1;
+  const tileWidth=(contentWidth-(tileCount-1)*3)/tileCount;
   summaries.forEach(([label,key],index)=>{
     const x=margin+index*(tileWidth+3);
     doc.setDrawColor(...line);
     doc.setFillColor(245,248,252);
-    doc.roundedRect(x,43,tileWidth,19,2,2,'FD');
+    doc.roundedRect(x,43,tileWidth,24,2,2,'FD');
     doc.setFontSize(9);
     doc.setTextColor(...muted);
     doc.text(label,x+3,49);
@@ -80,6 +81,18 @@ export async function downloadFinanceReport({report,summaries,categoryKind,categ
     doc.text(financeMoney(report[key]),x+3,57,{maxWidth:tileWidth-5});
     doc.setFont(fontFamily,'normal');
   });
+  const actualX=margin+summaries.length*(tileWidth+3);
+  doc.setFillColor(...navy);doc.roundedRect(actualX,43,tileWidth,24,2,2,'F');
+  doc.setTextColor(255,255,255);doc.setFontSize(9);doc.text('Actual totals',actualX+3,49);
+  for(const [index,label,key] of [[0,'Money in','actual_money_in'],[1,'Money out','actual_money_out']]){
+    const y=55+index*6;
+    doc.setFontSize(8);doc.setFont(fontFamily,'normal');doc.text(label,actualX+3,y);
+    doc.setFontSize(11);doc.setFont(fontFamily,'bold');
+    doc.text(report[key]==null?'—':financeMoney(report[key]),actualX+tileWidth-3,y,{align:'right',maxWidth:tileWidth-22});
+  }
+  doc.setFont(fontFamily,'normal');doc.setTextColor(...muted);doc.setFontSize(8);
+  const explanation=doc.splitTextToSize('Actual totals exclude salary releases reversed by '+report.to+' and their matching undo entries. Each imported payment is counted once.',contentWidth);
+  doc.text(explanation,margin,73);
 
   const applied=[
     filters.kind==='all'?'All types':filters.kind==='income'?'Income':'Expense',
@@ -89,8 +102,9 @@ export async function downloadFinanceReport({report,summaries,categoryKind,categ
   doc.setTextColor(...muted);
   doc.setFontSize(9);
   const filterLines=doc.splitTextToSize('Report scope - '+applied.join(' | '),contentWidth);
-  doc.text(filterLines,margin,70);
-  const chartTop=76+(filterLines.length-1)*4;
+  const scopeTop=80+(explanation.length-1)*3.5;
+  doc.text(filterLines,margin,scopeTop);
+  const chartTop=scopeTop+6+(filterLines.length-1)*4;
   const half=(contentWidth-6)/2;
   const place=(image,title,x,y,w)=>{
     doc.setFontSize(11);
@@ -108,7 +122,7 @@ export async function downloadFinanceReport({report,summaries,categoryKind,categ
     return y+9;
   };
   const trendsEnd=Math.max(
-    place(images[0],'Money In and Out',margin,chartTop,half),
+    place(images[0],'Money In and Out (gross)',margin,chartTop,half),
     place(images[1],'Running Cash Balance (whole ledger)',margin+half+6,chartTop,half),
   );
   if(images[0]){
@@ -116,7 +130,7 @@ export async function downloadFinanceReport({report,summaries,categoryKind,categ
     doc.setTextColor(...muted);
     doc.text('Money in (green) | Money out (amber)',margin,trendsEnd+2);
   }
-  const categoryTitle=categoryKind==='income'?'Top Income Categories':'Top Expense Categories';
+  const categoryTitle=categoryKind==='income'?'Top Income Categories (gross)':'Top Expense Categories (gross)';
   const categoryEnd=place(images[2],categoryTitle,margin,trendsEnd+10,Math.min(160,contentWidth));
   const rowData=report.categories.map(row=>[row.name,row.kind==='income'?'Income':'Expense',String(row.count),financeMoney(row.amount)]);
   let startY=categoryEnd+6;

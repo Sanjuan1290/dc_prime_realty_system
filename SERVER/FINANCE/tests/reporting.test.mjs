@@ -33,14 +33,48 @@ test('Breakdown filters keep the account-wide summary and running balance',()=>{
 
 test('Report query counts only posted entries and requests monthly totals for longer dates',async()=>{
   const report=await getFinanceReport({from:'2026-01-01',to:'2026-11-18'},{execute:async(sql,params)=>{
-    assert.equal((sql.match(/status='posted'/g)||[]).length,2);
-    assert.deepEqual(params,['2026-01-01','%Y-%m','2026-01-01','2026-11-18']);
+    assert.equal((sql.match(/status='posted'/g)||[]).length,4);
+    assert.deepEqual(params,['2026-11-18','2026-01-01','%Y-%m','2026-01-01','2026-11-18']);
     return [[rows[0]]];
   }});
   assert.equal(report.bucket_size,'month');
   assert.equal(report.series.length,11);
   assert.equal(report.period_count,0);
   assert.equal(report.closing_balance,'100.00');
+});
+
+test('Actual totals exclude canceled payroll pairs while gross activity and the net stay intact',()=>{
+  const report=buildFinanceReport([
+    rows[1],
+    {...rows[2],amount:'14925.00',record_count:2,payroll_correction_amount:'7462.50',payroll_correction_count:1},
+    {...rows[2],kind:'income',amount:'7462.50',payroll_correction_amount:'7462.50',payroll_correction_count:1},
+  ],{from,to});
+  assert.equal(report.money_in,'411329.16');assert.equal(report.money_out,'14925.00');
+  assert.equal(report.actual_money_in,'403866.66');assert.equal(report.actual_money_out,'7462.50');
+  assert.equal(report.net_change,'396404.16');assert.equal(report.closing_balance,'396404.16');
+  assert.equal(report.period_count,6);assert.equal(report.payroll_correction_count,2);
+  assert.equal(report.categories.find(category=>category.kind==='expense').amount,'14925.00');
+});
+
+test('Actual totals preserve centavos above floating-point precision and stay account-wide under filters',()=>{
+  const report=buildFinanceReport([
+    {...rows[1],amount:'90071992547409.93'},
+    {...rows[2],amount:'90071992547409.92',payroll_correction_amount:'90071992547409.91',payroll_correction_count:1},
+    {...rows[2],kind:'income',amount:'90071992547409.91',payroll_correction_amount:'90071992547409.91',payroll_correction_count:1},
+  ],{from,to,kind:'expense',source:'hr',category_id:'2'});
+  assert.equal(report.actual_money_in,'90071992547409.93');assert.equal(report.actual_money_out,'0.01');
+  assert.equal(report.net_change,'90071992547409.92');assert.equal(report.matched_count,1);
+});
+
+test('Cross-period payroll corrections keep gross timing separate from the unreversed actual payments',()=>{
+  const report=buildFinanceReport([
+    {...rows[0],kind:'expense',amount:'7462.50'},
+    {...rows[2],kind:'income',amount:'7462.50',payroll_correction_amount:'7462.50',payroll_correction_count:1},
+    {...rows[2],amount:'8000.01'},
+  ],{from,to});
+  assert.equal(report.actual_money_in,'0.00');assert.equal(report.actual_money_out,'8000.01');
+  assert.equal(report.net_change,'-537.51');assert.equal(report.closing_balance,'-8000.01');
+  assert.equal(report.payroll_correction_money_out,'0.00');assert.equal(report.total_posted,3);
 });
 
 test('Import history identifies the exact existing ledger record and restores separately',async()=>{

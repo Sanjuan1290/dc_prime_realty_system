@@ -22,6 +22,14 @@ Admins can delete invitations that have not been accepted, including expired inv
 
 ## Imports and reports
 
+Dashboard and Reports show gross Money in, gross Money out, Net cash change, and an Actual totals card with money in/out after payroll corrections. The Closing balance summary card is removed; closing balance remains available to the running balance chart and API. Closing balance equals opening balance plus net cash change, so it matches net change only when the opening balance is zero.
+
+Actual totals exclude a posted HR reversal and its exact preceding posted release when their source identities, amounts and dates agree. Multiple undo/re-release cycles retain the latest unreversed release. Older Realty-labelled HR payments require import-receipt proof of external HR origin. Other payroll, genuine refunds and equal-value payments from different employees remain counted. Matching uses source identities rather than descriptions, categories or amount alone.
+
+Corrections apply as of the selected end date. A reversal after that date does not change an earlier report. When a release and reversal fall on opposite sides of the selected start date, the UI explains that actual in minus actual out can differ from the period's gross net movement. Gross charts, category totals, cash flow tables and transaction history retain the original posting dates. The PDF includes the same actual totals and explanation.
+
+Repeated import receipts do not multiply ledger amounts. The existing importer counts each source payment once, including a salary exported from both HR and Company Finances. Both report APIs share one calculation and a single SQL statement for a consistent view of gross and actual amounts. Deploy the Finance API and frontend together for the new actual-total fields; no schema migration is required. [Verification](../../QA_REPORTS/2026-11-18-finance-actual-totals.md).
+
 HR salary events and Company Finances transfers use signed CSV only. ZIP, Excel, unsigned or edited files are rejected. Both producers preserve the same verified, exact-centavo source rows. HR payroll has its own source namespace; repeated salary events exported by either application are recognized. Older external HR salaries labelled Realty are recognized only through a committed import receipt proving their origin. Historical Realty payroll remains distinct.
 
 ### Required CSV signing configuration
