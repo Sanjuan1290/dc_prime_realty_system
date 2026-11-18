@@ -11,7 +11,7 @@ test('Finance schema has only finance-owned tables',()=>{
   assert.deepEqual(tables,['finance_users','finance_sessions','finance_categories','finance_transactions','finance_audit_logs']);
   assert.match(sql,/UNIQUE KEY uq_finance_source/);assert.match(sql,/UNIQUE KEY uq_finance_correction/);
 });
-test('No delete transaction endpoint; manual adjustments are auditable',()=>{const src=read('src/server.js');assert.doesNotMatch(src,/app\.delete\(/);assert.match(src,/transactions\/:id\/void/);assert.match(src,/transactions\/:id\/correct/);});
+test('No delete transaction endpoint; manual adjustments are auditable',()=>{const src=read('src/server.js');assert.doesNotMatch(src,/app\.delete\([^\n]*\/transactions/);assert.match(src,/app\.delete\([^\n]*\/categories\/:id[^\n]*requireRole\('admin'\)/);assert.match(src,/transactions\/:id\/void/);assert.match(src,/transactions\/:id\/correct/);});
 test('Protected finance endpoints authenticate and authorize',()=>{const s=read('src/server.js');assert.match(s,/app\.use\(prefix,requireUser,requirePermanentPassword\)/);assert.match(s,/requireRole\('admin','accountant'\)/);assert.match(s,/requireRole\('admin'\)/);assert.match(s,/CSRF_ORIGIN/);});
 test('Bootstrap refuses existing users',()=>{assert.match(read('scripts/create-admin.mjs'),/COUNT\(\*\) AS n/);assert.match(read('scripts/create-admin.mjs'),/Bootstrap refused/);});
 

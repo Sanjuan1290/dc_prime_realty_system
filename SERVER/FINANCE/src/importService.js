@@ -63,7 +63,7 @@ export async function previewImport(body,actor,options={}){
     for(const item of items)await conn.execute(`INSERT INTO finance_import_items(batch_id,\`row_number\`,source_system,source_transaction_id,source_revision_sha256,source_category,source_kind,category_id,decision,source_row_json)
       VALUES(?,?,?,?,?,?,?,?,?,?)`,[id,item.row_number,item.source_system,item.source_transaction_id,item.source_revision_sha256,item.source_category,item.kind,item.category_id,item.decision,JSON.stringify(item.row)]);
     await audit(conn,actor.id,'finance.import.preview','import_batch',id,{file_sha256:fileHash,counts:counts(items),selected_totals:data.totals});
-    return {batch_id:id,expires_in_minutes:60,file_sha256:fileHash,manifest:{source_system:data.manifest.source_system,export_id:data.manifest.export_id,period:data.manifest.period,salary_source:data.manifest.salary_source},selected_totals:data.totals,counts:counts(items),ready:items.every(x=>['new','restore','duplicate'].includes(x.decision)),items:items.map(({row,...rest})=>rest)};
+    return {batch_id:id,expires_in_minutes:60,file_sha256:fileHash,manifest:{source_system:data.manifest.source_system,export_id:data.manifest.export_id,period:data.manifest.period,salary_source:data.manifest.salary_source},selected_totals:data.totals,counts:counts(items),ready:items.every(x=>['new','restore','duplicate'].includes(x.decision)),items:items.map(({row,...rest})=>({...rest, transaction_date:row.transaction_date, description:row.description}))};
   });
 }
 export async function listImportBatches(query={},pool=getPool()){
@@ -74,6 +74,30 @@ export async function listImportBatches(query={},pool=getPool()){
     FROM finance_import_batches b LEFT JOIN finance_users u ON u.id=b.committed_by
     WHERE b.status IN ('committed','undone') ORDER BY b.committed_at DESC,b.id DESC LIMIT ${pageSize} OFFSET ${(page-1)*pageSize}`);
   return {items:rows,page,page_size:pageSize,total:Number(count.total)};
+}
+export async function getImportDetails(id,pool=getPool()) {
+  if(!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(String(id))) invalid('INVALID_IMPORT','Choose a valid import.');
+  const [[batch]]=await pool.execute(`SELECT id,file_name,source_system,status,committed_at,result_json
+    FROM finance_import_batches WHERE id=? AND status IN ('committed','undone')`,[id]);
+  if(!batch) invalid('NOT_FOUND','Import receipt not found.',404);
+  const [items]=await pool.execute(`SELECT i.row_number,i.source_system,i.source_transaction_id,i.source_kind AS kind,
+    i.source_category,i.decision,i.transaction_id AS existing_transaction_id,i.source_row_json,
+    c.name AS category_name,t.status AS ledger_status
+    FROM finance_import_items i LEFT JOIN finance_categories c ON c.id=i.category_id
+    LEFT JOIN finance_transactions t ON t.id=i.transaction_id
+    WHERE i.batch_id=? ORDER BY i.row_number`,[id]);
+  const restored=new Set();
+  if(parseJson(batch.result_json)?.restored>0) {
+    const [events]=await pool.execute(`SELECT entity_id FROM finance_audit_logs
+      WHERE action='finance.import.payment_restored' AND entity_type='transaction'
+      AND JSON_UNQUOTE(JSON_EXTRACT(metadata_json,'$.batch_id'))=?`,[id]);
+    for(const event of events) restored.add(String(event.entity_id));
+  }
+  return {...batch,items:items.map(({source_row_json,...item})=>{
+    const source=parseJson(source_row_json)??{};
+    const decision=item.decision==='imported'&&restored.has(String(item.existing_transaction_id))?'restored':item.decision;
+    return {...item,decision,amount:source.amount,transaction_date:source.transaction_date,description:source.description};
+  })};
 }
 export async function commitImport(batchId,actor){
   if(!/^[0-9a-f-]{36}$/.test(String(batchId)))invalid('INVALID_BATCH','Choose a valid preview ID.');

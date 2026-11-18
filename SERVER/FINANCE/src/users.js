@@ -30,6 +30,38 @@ export async function createUser(body,actor,{mailer=sendInvitation,checkSettings
   });
   return deliverInvitation(user,password,password_hash,actor,mailer);
 }
+
+export async function updateUser(id,body,actor) {
+  if(!/^[1-9]\d{0,17}$/.test(String(id))) throw problem('INVALID_USER','Choose a valid account.');
+  const {role,is_active:active}=body??{};
+  if((role===undefined&&active===undefined)||
+    (role!==undefined&&!['admin','accountant','viewer'].includes(role))||
+    (active!==undefined&&typeof active!=='boolean')) throw problem('INVALID_USER','Choose a valid Finance role and status.');
+  return withTransaction(async conn=>{
+    // Serialize changes to administrator membership before checking who can still sign in.
+    const [administrators]=await conn.execute("SELECT id,must_change_password FROM finance_users WHERE role='admin' AND is_active=1 ORDER BY id FOR UPDATE");
+    if(!administrators.some(admin=>String(admin.id)===String(actor.id)&&!Number(admin.must_change_password))) {
+      throw problem('ADMIN_REQUIRED','An enabled Finance Admin must update account access.',403);
+    }
+    const [[user]]=await conn.execute('SELECT id,role,is_active,must_change_password FROM finance_users WHERE id=? FOR UPDATE',[id]);
+    if(!user) throw problem('NOT_FOUND','Finance account not found.',404);
+    const before={role:user.role,is_active:Boolean(Number(user.is_active))};
+    const after={role:role??before.role,is_active:active??before.is_active};
+    if(before.role===after.role&&before.is_active===after.is_active) return {id:String(id),...after};
+    const removesUsableAdmin=before.role==='admin'&&before.is_active&&!Number(user.must_change_password)&&
+      (after.role!=='admin'||!after.is_active);
+    if(removesUsableAdmin&&!administrators.some(admin=>String(admin.id)!==String(id)&&!Number(admin.must_change_password))) {
+      throw problem('LAST_ADMIN','Keep at least one enabled Finance Admin who has completed password setup.',409);
+    }
+    await conn.execute('UPDATE finance_users SET role=?,is_active=? WHERE id=?',[after.role,Number(after.is_active),id]);
+    if(!after.is_active) {
+      await conn.execute('UPDATE finance_sessions SET revoked_at=UTC_TIMESTAMP() WHERE user_id=? AND revoked_at IS NULL',[id]);
+      await conn.execute('DELETE FROM finance_password_resets WHERE user_id=?',[id]);
+    }
+    await audit(conn,actor.id,'user.access_changed','user',id,{before,after});
+    return {id:String(id),...after};
+  });
+}
 export async function resendInvitation(id,actor,{mailer=sendInvitation,checkSettings=invitationSettings}={}){
   if(!/^[1-9]\d{0,17}$/.test(String(id)))throw problem('INVALID_USER','Choose a valid account.');
   checkSettings();const password=temporaryPassword(),password_hash=hashPassword(password);

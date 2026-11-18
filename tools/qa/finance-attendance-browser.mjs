@@ -41,13 +41,13 @@ try{
     const after=await api('/finance-api/api/v1/finance/dashboard?from=2026-10-01&to=2026-10-31');assert.deepEqual(after,financeBefore);
     await page.getByLabel('From',{exact:true}).fill('2026-10-01');await page.getByLabel('To',{exact:true}).fill('2026-10-31');await page.getByRole('combobox',{name:/^Status/}).selectOption('void');await page.getByRole('row').filter({hasText:originalDescription}).waitFor();await page.getByRole('row').filter({hasText:correctedDescription}).waitFor();
   });
-  await check('Finance: audit history and reconciliation display real results',async()=>{
-    await page.getByRole('button',{name:'Audit log',exact:true}).click();await page.getByRole('cell',{name:'Transaction corrected',exact:true}).first().waitFor();
-    await page.getByRole('button',{name:'Reconciliation',exact:true}).click();await page.getByRole('button',{name:'Run reconciliation',exact:true}).click();await page.getByRole('heading',{name:'Cash sources',exact:true}).waitFor();await layout('finance-reconciliation');
+  await check('Finance: audit history and reports display real results',async()=>{
+    await page.getByRole('button',{name:'Audit Logs',exact:true}).click();await page.getByRole('cell',{name:'Transaction corrected',exact:true}).first().waitFor();
+    await page.getByRole('button',{name:'Reports',exact:true}).click();await page.getByRole('region',{name:'Finance report results'}).waitFor();assert.ok(await page.getByRole('button',{name:'Export PDF',exact:true}).isEnabled());await layout('finance-reports');
   });
   await check('Finance: viewer has no entry, user-management or admin tabs',async()=>{
     await page.getByRole('button',{name:'Sign out',exact:true}).click();await login('/finance','viewer@qa.invalid');await page.getByText('Financial summary',{exact:true}).waitFor();
-    for(const name of ['New entry','Users','Audit log','Imports'])assert.equal(await page.getByRole('button',{name,exact:true}).count(),0);
+    for(const name of ['New entry','Users','Audit Logs','Imports'])assert.equal(await page.getByRole('button',{name,exact:true}).count(),0);
     await page.setViewportSize({width:390,height:844});await layout('finance-viewer-mobile');
   });
   await check('Attendance: real login, live editing controls and page data load',async()=>{

@@ -8,10 +8,11 @@ import {getPool,assertSafeDatabase} from './db.js';
 import {checkStartupDatabase,readStartupTimeout} from './serverStartup.js';
 import {problem,dateInManila} from './domain.js';
 import {login,requireUser,requireRole,publicUser,changePassword,requirePermanentPassword,COOKIE_NAME,sessionCookie,sessionHash,clearCookie} from './auth.js';
-import {getDashboard,listTransactions,postTransaction,voidTransaction,correctTransaction,listCategories,createCategory,setCategoryActive,listAudit} from './ledger.js';
-import {listUsers,createUser,resendInvitation} from './users.js';
+import {getDashboard,listTransactions,getTransaction,postTransaction,voidTransaction,correctTransaction,listCategories,createCategory,setCategoryActive,deleteCategory,listAudit} from './ledger.js';
+import {listUsers,createUser,resendInvitation,updateUser} from './users.js';
+import {getFinanceReport} from './reports.js';
 import {getFinanceReconciliation} from './reconciliation.js';
-import {previewImport,commitImport,listImportBatches} from './importService.js';
+import {previewImport,commitImport,listImportBatches,getImportDetails} from './importService.js';
 import {previewUndoImport,undoImport} from './importUndo.js';
 import {requestPasswordReset,resetPassword} from './passwordRecovery.js';
 const app=express();app.disable('x-powered-by');app.use(helmet());app.use((req,res,next)=>express.json({limit:req.path==='/api/v1/finance/imports/preview'?'3mb':'64kb'})(req,res,next));
@@ -22,7 +23,7 @@ app.use((req,res,next)=>{
   const origin=req.headers.origin;
   if(origin){if(!allowed.includes(origin))return next(problem('ORIGIN_DENIED','Finance origin is not permitted.',403));
     res.set('Access-Control-Allow-Origin',origin);res.set('Vary','Origin');res.set('Access-Control-Allow-Credentials','true');
-    res.set('Access-Control-Allow-Headers','Content-Type,X-Requested-With');res.set('Access-Control-Allow-Methods','GET,POST,PATCH,OPTIONS');}
+    res.set('Access-Control-Allow-Headers','Content-Type,X-Requested-With');res.set('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS');}
   if(req.method==='OPTIONS')return res.sendStatus(204);
   if(['POST','PATCH','PUT','DELETE'].includes(req.method)){
     if(req.headers['x-requested-with']!=='dcprime-finance')return next(problem('CSRF_GUARD','Missing Finance request header.',403));
@@ -59,13 +60,16 @@ const prefix='/api/v1/finance';
 app.use(prefix,requireUser,requirePermanentPassword);
 app.use(prefix,(req,res,next)=>process.env.FINANCE_READ_ONLY==='true'&&['POST','PATCH','PUT','DELETE'].includes(req.method)?next(problem('FINANCE_READ_ONLY','Finance is temporarily read-only. Your administrator can restore editing.',503)):next());
 app.get(`${prefix}/dashboard`,wrap(async(req,res)=>res.json(await getDashboard(req.query))));
+app.get(`${prefix}/reports`,wrap(async(req,res)=>res.json(await getFinanceReport(req.query))));
 app.get(`${prefix}/transactions`,wrap(async(req,res)=>res.json(await listTransactions(req.query))));
+app.get(`${prefix}/transactions/:id`,wrap(async(req,res)=>res.json(await getTransaction(req.params.id,{includeImport:req.financeUser.role==='admin'}))));
 app.post(`${prefix}/transactions`,requireRole('admin','accountant'),wrap(async(req,res)=>res.status(201).json(await postTransaction(req.body,req.financeUser))));
 app.post(`${prefix}/transactions/:id/void`,requireRole('admin'),wrap(async(req,res)=>res.json(await voidTransaction(req.params.id,req.body?.reason,req.financeUser))));
 app.post(`${prefix}/transactions/:id/correct`,requireRole('admin'),wrap(async(req,res)=>res.status(201).json(await correctTransaction(req.params.id,req.body,req.financeUser))));
 app.get(`${prefix}/categories`,wrap(async(req,res)=>res.json({categories:await listCategories(req.query.kind)})));
 app.post(`${prefix}/categories`,requireRole('admin'),wrap(async(req,res)=>res.status(201).json(await createCategory(req.body,req.financeUser))));
 app.patch(`${prefix}/categories/:id`,requireRole('admin'),wrap(async(req,res)=>res.json(await setCategoryActive(req.params.id,req.body?.is_active,req.financeUser))));
+app.delete(`${prefix}/categories/:id`,requireRole('admin'),wrap(async(req,res)=>res.json(await deleteCategory(req.params.id,req.financeUser))));
 app.get(`${prefix}/audit`,requireRole('admin'),wrap(async(req,res)=>res.json(await listAudit(req.query))));
 // Read-only Finance-side reconciliation, no access to Realty or HR databases.
 app.get(`${prefix}/reconciliation`,requireRole('admin'),wrap(async(req,res)=>res.json(await getFinanceReconciliation(req.query))));
@@ -73,11 +77,13 @@ app.get(`${prefix}/reconciliation`,requireRole('admin'),wrap(async(req,res)=>res
 const requireImportEnabled=(req,res,next)=>process.env.FINANCE_IMPORTS_READ_ONLY!=='true'?next():next(problem('IMPORT_DISABLED','Imports are temporarily paused by your administrator.',503));
 // Imports retain admin access, preview validation and an atomic commit.
 app.get(`${prefix}/imports`,requireRole('admin'),wrap(async(req,res)=>res.json(await listImportBatches(req.query))));
+app.get(`${prefix}/imports/:id`,requireRole('admin'),wrap(async(req,res)=>res.json(await getImportDetails(req.params.id))));
 app.post(`${prefix}/imports/preview`,requireRole('admin'),requireImportEnabled,wrap(async(req,res)=>res.status(201).json(await previewImport(req.body,req.financeUser))));
 app.post(`${prefix}/imports/:id/commit`,requireRole('admin'),requireImportEnabled,wrap(async(req,res)=>res.json(await commitImport(req.params.id,req.financeUser))));
 app.get(`${prefix}/imports/:id/undo-preview`,requireRole('admin'),wrap(async(req,res)=>res.json(await previewUndoImport(req.params.id))));
 app.post(`${prefix}/imports/:id/undo`,requireRole('admin'),wrap(async(req,res)=>res.json(await undoImport(req.params.id,req.body,req.financeUser))));
 app.get(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.json({users:await listUsers()})));
+app.patch(`${prefix}/users/:id`,requireRole('admin'),wrap(async(req,res)=>res.json(await updateUser(req.params.id,req.body,req.financeUser))));
 app.post(`${prefix}/users/:id/invitation`,requireRole('admin'),wrap(async(req,res)=>res.json(await resendInvitation(req.params.id,req.financeUser))));
 app.post(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.status(201).json(await createUser(req.body,req.financeUser))));
 app.use((req,res)=>res.status(404).json({error:{code:'NOT_FOUND',message:'Finance endpoint not found.'}}));

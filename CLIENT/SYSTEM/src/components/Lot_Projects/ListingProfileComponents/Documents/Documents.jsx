@@ -270,14 +270,14 @@ const Documents = ({
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div role="group" aria-label="Document summary" className="flex flex-wrap gap-2">
-            <SummaryPill count={rows.length} label="docs" tone="border-slate-300 bg-slate-100 text-slate-700" />
-            <SummaryPill count={approvedCount} label="approved" tone="border-emerald-200 bg-emerald-50 text-emerald-800" />
-            <SummaryPill count={submittedCount} label="submitted" tone="border-blue-200 bg-blue-50 text-blue-800" />
-            <SummaryPill count={missingCount} label="missing" tone="border-red-200 bg-red-50 text-red-800" />
-            <SummaryPill count={requiredCount} label="required" tone="border-violet-200 bg-violet-50 text-violet-800" />
-            <SummaryPill count={actionCounts.client} label="client action" tone="border-amber-200 bg-amber-50 text-amber-800" />
-            <SummaryPill count={actionCounts.internal} label="internal action" tone="border-cyan-200 bg-cyan-50 text-cyan-800" />
-            <SummaryPill count={actionCounts.seller} label="seller action" tone="border-orange-200 bg-orange-50 text-orange-800" />
+            <SummaryPill count={rows.length} label="Docs" tone="border-slate-300 bg-slate-100 text-slate-700" />
+            <SummaryPill count={approvedCount} label="Approved" tone="border-emerald-200 bg-emerald-50 text-emerald-800" />
+            <SummaryPill count={submittedCount} label="Submitted" tone="border-blue-200 bg-blue-50 text-blue-800" />
+            <SummaryPill count={missingCount} label="Missing" tone="border-red-200 bg-red-50 text-red-800" />
+            <SummaryPill count={requiredCount} label="Required" tone="border-violet-200 bg-violet-50 text-violet-800" />
+            <SummaryPill count={actionCounts.client} label="Client Action" tone="border-amber-200 bg-amber-50 text-amber-800" />
+            <SummaryPill count={actionCounts.internal} label="Internal Action" tone="border-cyan-200 bg-cyan-50 text-cyan-800" />
+            <SummaryPill count={actionCounts.seller} label="Seller Action" tone="border-orange-200 bg-orange-50 text-orange-800" />
           </div>
 
           {!readOnly ? (
