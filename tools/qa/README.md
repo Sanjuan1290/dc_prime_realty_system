@@ -46,7 +46,7 @@ From `SERVER/SYSTEM`, `npm run check:db` is a separate read-only diagnostic usin
 ## HR and Finance recovery
 
 - `node tools/qa/hr-finance-startup.mjs` checks both real entrypoints with stalled sockets, healthy/stalled queries, production startup, additive schema initialization, and required production TLS. It uses synthetic connections and does not start business jobs.
-- After building, `node tools/qa/hr-finance-recovery-browser.mjs` checks both real login bundles against the local Pages proxy and simulated provider failures. It verifies cooldowns, retained fields, separate security-check messages and absence of automatic credential resubmission.
+- After building, `node tools/qa/hr-finance-recovery-browser.mjs` checks both real login bundles against the local Pages proxy and simulated provider failures. It verifies recovery after five consecutive health failures, cooldowns, retained fields, separate security-check messages and absence of automatic credential resubmission. `node --test SERVER/SYSTEM/tests/apiReadiness.test.mjs` also checks the startup deadline, shared polling and long Retry-After intervals.
 - `node tools/qa/live-api-diagnostics.mjs --apps=hr,finance` performs unauthenticated GET checks on their deployed health/session endpoints. Add `--wait-for-health` for a longer single health-request timeout, or `--include-direct --direct-only` to check only the documented Render health origins. It never signs in or changes records. `cf-mitigated` is captured when provided by Cloudflare.
 
 ## PDF features and live-operation verification

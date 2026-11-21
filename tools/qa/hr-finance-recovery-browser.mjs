@@ -19,7 +19,11 @@ globalThis.fetch=async(input,options={})=>{
   if(url.hostname!=='qa-render.invalid')throw new Error('External access is disabled in this test');
   scenario.requests.push({path:url.pathname,method:options.method});
   const sleep=()=>new Response('Too Many Requests\n',{status:429,headers:{'x-render-routing':'hibernate-rate-limited','retry-after':'2'}});
-  if(url.pathname==='/api/v1/health')return json({ok:true});
+  if(url.pathname==='/api/v1/health'){
+    const count=scenario.requests.filter(request=>request.path==='/api/v1/health').length;
+    if(scenario.kind==='cold-health'&&count<=5)return json({code:'SERVER_UNAVAILABLE',message:'Connecting to database',retryAfterSeconds:1},503);
+    return json({ok:true});
+  }
   if(url.pathname==='/api/v1/auth/me')return scenario.kind==='initial-startup'?sleep():scenario.kind==='session-unavailable'?json({code:'SERVER_UNAVAILABLE',message:'The server is temporarily unavailable.',retryAfterSeconds:2},503):json({message:'Not signed in.'},401);
   if(url.pathname==='/api/v1/system-status')return scenario.kind==='initial-startup'?sleep():json({status:'active'});
   if(url.pathname==='/api/v1/auth/login'){
@@ -56,13 +60,23 @@ try{
   browser=await chromium.launch({headless:true,executablePath:process.env.QA_CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe'});
   for(const app of [{key:'hr',path:'/hr/login'},{key:'finance',path:'/finance'}]){
   currentApp=app;
-  for(const kind of ['initial-startup','login-startup','login-limit','plain-limit','session-unavailable','gateway-error','security-check']){
+  for(const kind of ['cold-health','initial-startup','login-startup','login-limit','plain-limit','session-unavailable','gateway-error','security-check']){
     scenario={kind,requests:[]};const context=await browser.newContext({viewport:{width:1440,height:1000}});const page=await context.newPage();page.setDefaultTimeout(8000);page.on('pageerror',e=>exceptions.push(e.message));
     await page.route('**/*',route=>route.request().url().startsWith(base)?route.continue():route.abort());
     try{
       await page.goto(base+app.path);await page.locator('input[type=email]').fill('startup-qa@example.invalid');await page.locator('input[type=password]').fill(password);
-      if(!['initial-startup','session-unavailable'].includes(kind))await page.locator('button[type=submit]').click();
-      if(kind!=='security-check'){
+      if(!['cold-health','initial-startup','session-unavailable'].includes(kind))await page.locator('button[type=submit]').click();
+      if(kind==='cold-health'){
+        await page.waitForFunction(()=>document.querySelector('button[type=submit]')?.disabled===false,{},{timeout:12000});
+        assert.equal(scenario.requests.filter(r=>r.path==='/api/v1/health').length,6,'Cold health must recover beyond four attempts');
+        assert.equal(scenario.requests.filter(r=>r.path==='/api/v1/auth/me').length,1,'Session is checked only after health is ready');
+        assert.equal(scenario.requests.filter(r=>r.method==='POST').length,0,'Startup polling never submits credentials');
+        await page.locator('button[type=submit]').click();
+        await page.getByRole('alert').filter({hasText:/Incorrect email or password|Invalid HR credentials/}).waitFor();
+        assert.equal(scenario.requests.filter(r=>r.method==='POST').length,1);
+        assert.equal(scenario.requests.filter(r=>r.path==='/api/v1/health').length,6,'Successful health remains cached during login');
+        await page.screenshot({path:resolve(out,app.key+'-'+kind+'.png')});
+      }else if(kind!=='security-check'){
         const message=kind.includes('startup')?/waking up/:['session-unavailable','gateway-error'].includes(kind)?/unavailable/:/Too many (login attempts|sign-in requests)/;
         await page.getByRole('alert').filter({hasText:message}).waitFor();
         assert.equal(await page.locator('button[type=submit]').isDisabled(),true);
