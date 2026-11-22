@@ -71,10 +71,12 @@ export async function listImportBatches(query={},pool=getPool()){
   if(!Number.isSafeInteger(requestedPage)||requestedPage<1||requestedPage>10000||!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>100)invalid('INVALID_PAGE','Choose a valid import history page and size.');
   const [[count]]=await pool.execute("SELECT COUNT(*) AS total FROM finance_import_batches WHERE status IN ('committed','undone')");
   const page=Math.min(requestedPage,Math.max(1,Math.ceil(Number(count.total)/pageSize)));
-  const [rows]=await pool.execute(`SELECT b.id,b.source_system,b.file_name,b.file_sha256,b.status,b.source_from,b.source_to,b.total_rows,b.selected_money_in,b.selected_money_out,b.committed_at,b.result_json,b.undone_at,b.undo_reason,b.undo_result_json,u.display_name AS imported_by
+  const [rows]=await pool.execute(`SELECT b.id,b.source_system,b.file_name,b.file_sha256,b.status,b.source_from,b.source_to,b.total_rows,b.selected_money_in,b.selected_money_out,b.committed_at,b.result_json,b.undone_at,b.undo_reason,b.undo_result_json,u.display_name AS imported_by,
+    CASE WHEN b.status='committed' AND (b.committed_at IS NULL OR UTC_TIMESTAMP() >= DATE_ADD(b.committed_at, INTERVAL 24 HOUR)) THEN 1 ELSE 0 END AS undo_locked,
+    CASE WHEN b.status='committed' AND b.committed_at IS NOT NULL THEN GREATEST(0,TIMESTAMPDIFF(SECOND,UTC_TIMESTAMP(),DATE_ADD(b.committed_at, INTERVAL 24 HOUR))) ELSE 0 END AS undo_seconds_remaining
     FROM finance_import_batches b LEFT JOIN finance_users u ON u.id=b.committed_by
     WHERE b.status IN ('committed','undone') ORDER BY b.committed_at DESC,b.id DESC LIMIT ${pageSize} OFFSET ${(page-1)*pageSize}`);
-  return {items:rows,page,page_size:pageSize,total:Number(count.total)};
+  return {items:rows.map(row=>({...row,undo_locked:Number(row.undo_locked)===1,undo_seconds_remaining:Number(row.undo_seconds_remaining||0)})),page,page_size:pageSize,total:Number(count.total)};
 }
 export async function getImportDetails(id,pool=getPool()) {
   if(!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(String(id))) invalid('INVALID_IMPORT','Choose a valid import.');

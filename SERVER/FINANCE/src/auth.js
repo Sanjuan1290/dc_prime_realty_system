@@ -46,6 +46,7 @@ export async function changePassword(req){
     const [[session]]=await conn.execute('SELECT token_hash FROM finance_sessions WHERE token_hash=? AND user_id=? AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP() FOR UPDATE',[req.financeSessionHash,user.id]);
     if(!session)throw problem('UNAUTHENTICATED','Session expired.',401);
     await conn.execute('UPDATE finance_users SET password_hash=?,must_change_password=0,temporary_password_expires_at=NULL WHERE id=?',[passwordHash,user.id]);
+    await conn.execute('UPDATE finance_import_undo_authorizations SET consumed_at=UTC_TIMESTAMP() WHERE admin_user_id=? AND consumed_at IS NULL',[user.id]);
     await conn.execute('UPDATE finance_sessions SET revoked_at=UTC_TIMESTAMP() WHERE user_id=? AND token_hash<>? AND revoked_at IS NULL',[user.id,req.financeSessionHash]);
     await audit(conn,user.id,'user.password.changed','user',user.id,{});
     return {user:publicUser({...user,must_change_password:0})};

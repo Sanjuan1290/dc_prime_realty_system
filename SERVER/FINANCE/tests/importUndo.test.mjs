@@ -35,6 +35,7 @@ test('an upgraded database can start without DDL privileges',async()=>{
     if(sql.includes('information_schema.TABLES'))return [[{TABLE_NAME:'finance_password_resets'}]];
     if(sql.startsWith('SELECT COLUMN_NAME'))return [[...['must_change_password','temporary_password_expires_at','invitation_sent_at'].map(COLUMN_NAME=>({COLUMN_NAME}))]];
     if(sql.startsWith('SELECT TABLE_NAME'))return [metadata];
-    assert.equal(sql,'INSERT IGNORE INTO finance_import_mutex(id) VALUES(1)','Existing schema must not need CREATE or ALTER permissions');return [{affectedRows:0}];
+    if(sql.startsWith('CREATE TABLE IF NOT EXISTS finance_import_undo_authorizations'))return [{affectedRows:0}];
+    assert.equal(sql,'INSERT IGNORE INTO finance_import_mutex(id) VALUES(1)','Existing schema must not need unexpected DDL or ALTER permissions');return [{affectedRows:0}];
   }});
 });

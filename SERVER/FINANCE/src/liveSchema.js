@@ -19,5 +19,21 @@ export async function ensureImportSchema(pool){
   if(Number(column('finance_categories','name')?.CHARACTER_MAXIMUM_LENGTH)<200)await pool.execute('ALTER TABLE finance_categories MODIFY COLUMN name VARCHAR(200) NOT NULL');
   if(!column('finance_import_mutex','id'))await pool.execute('CREATE TABLE IF NOT EXISTS finance_import_mutex (id TINYINT UNSIGNED NOT NULL PRIMARY KEY)');
   await pool.execute('INSERT IGNORE INTO finance_import_mutex(id) VALUES(1)');
+  await pool.execute(`CREATE TABLE IF NOT EXISTS finance_import_undo_authorizations (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    batch_id CHAR(36) NOT NULL,
+    admin_user_id BIGINT UNSIGNED NOT NULL,
+    review_token_hash CHAR(64) NOT NULL,
+    code_salt CHAR(32) NOT NULL,
+    code_hash CHAR(64) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    consumed_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_finance_undo_auth_user_batch_created (admin_user_id,batch_id,created_at),
+    KEY idx_finance_undo_auth_batch_actor (batch_id,admin_user_id,consumed_at,expires_at),
+    CONSTRAINT fk_finance_undo_auth_batch FOREIGN KEY (batch_id) REFERENCES finance_import_batches(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_finance_undo_auth_admin FOREIGN KEY (admin_user_id) REFERENCES finance_users(id) ON DELETE RESTRICT
+  )`);
 }
 export async function ensureFinanceSchema(pool){await ensureInvitationSchema(pool);await ensureImportSchema(pool);await ensurePasswordRecoverySchema(pool);}

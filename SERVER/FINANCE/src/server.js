@@ -13,7 +13,7 @@ import {listUsers,createUser,resendInvitation,updateUser,deletePendingInvitation
 import {getFinanceReport} from './reports.js';
 import {getFinanceReconciliation} from './reconciliation.js';
 import {previewImport,commitImport,listImportBatches,getImportDetails} from './importService.js';
-import {previewUndoImport,undoImport} from './importUndo.js';
+import {previewUndoImport,requestUndoAuthorization,undoImport} from './importUndo.js';
 import {requestPasswordReset,resetPassword} from './passwordRecovery.js';
 const app=express();app.disable('x-powered-by');app.use(helmet());app.use((req,res,next)=>express.json({limit:req.path==='/api/v1/finance/imports/preview'?'3mb':'64kb'})(req,res,next));
 let databaseReady=false;
@@ -82,6 +82,7 @@ app.get(`${prefix}/imports/:id`,requireRole('admin','accountant'),wrap(async(req
 app.post(`${prefix}/imports/preview`,requireRole('admin','accountant'),requireImportEnabled,wrap(async(req,res)=>res.status(201).json(await previewImport(req.body,req.financeUser))));
 app.post(`${prefix}/imports/:id/commit`,requireRole('admin','accountant'),requireImportEnabled,wrap(async(req,res)=>res.json(await commitImport(req.params.id,req.financeUser))));
 app.get(`${prefix}/imports/:id/undo-preview`,requireRole('admin'),wrap(async(req,res)=>res.json(await previewUndoImport(req.params.id))));
+app.post(`${prefix}/imports/:id/undo-authorization`,requireRole('admin'),wrap(async(req,res)=>res.json(await requestUndoAuthorization(req.params.id,req.body,req.financeUser))));
 app.post(`${prefix}/imports/:id/undo`,requireRole('admin'),wrap(async(req,res)=>res.json(await undoImport(req.params.id,req.body,req.financeUser))));
 app.get(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.json({users:await listUsers()})));
 app.patch(`${prefix}/users/:id`,requireRole('admin'),wrap(async(req,res)=>res.json(await updateUser(req.params.id,req.body,req.financeUser))));
