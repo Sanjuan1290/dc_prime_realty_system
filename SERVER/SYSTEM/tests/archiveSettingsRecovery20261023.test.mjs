@@ -73,11 +73,13 @@ test('archive tabs show errors in place and use valid confirmation policies', ()
   assert.match(client,/const CONFIRMATION_POLICIES = new Set\(\['compact', 'technical'\]\)/);
 });
 
-test('review shortcuts are gone but review sections and stable IDs remain', () => {
+test('review shortcuts are gone; comparison and decision remain with history available on demand', () => {
   const ui = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');
   assert.doesNotMatch(ui,/aria-label="Review sections"/);
   assert.doesNotMatch(ui,/href=\{`#\$\{id\}`\}/);
-  for (const id of ['review-overview','review-changes','review-history','review-decision'])
+  for (const id of ['review-changes','review-decision'])
     assert.ok(ui.includes(`id="${id}"`), `${id} section missing`);
+  assert.doesNotMatch(ui,/id="review-overview"|id="review-history"/);
+  assert.match(ui,/showHistory&&<ReviewHistoryDialog events=\{review.events\|\|\[\]\}/);
 });
 

@@ -62,7 +62,8 @@ test('current account routes stay editable while older accounts stay protected',
   const documents = read('CLIENT/SYSTEM/src/components/Lot_Projects/ListingProfileComponents/Documents/Documents.jsx');
 
   assert.match(controller, /isAccountRoute && Number\(row\.current_account_id \|\| 0\) !== selectedAccountId/);
-  assert.match(profile, /const readOnly = Boolean\(profile\.readOnly\)/);
+  assert.match(profile, /const historicalAccount = Boolean\(profile\.readOnly\)/);
+  assert.match(profile, /const readOnly = reviewView \|\| historicalAccount/);
   assert.doesNotMatch(profile, /Read-only historical account/);
   assert.doesNotMatch(profile, /This page is locked to/);
   assert.match(profile, /!readOnly && canReservePermission && showReserveModal/);

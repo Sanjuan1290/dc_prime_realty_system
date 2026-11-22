@@ -27,7 +27,6 @@ import {
 import PageHeader from '../../components/Shared/PageHeader'
 import ReviewLiveRecordPanel from '../../components/Shared/ReviewLiveRecordPanel'
 import ReviewReturnLink from '../../components/Shared/ReviewReturnLink'
-import { dismissReviewRecordQuery } from '../../utils/reviewRecordNavigation'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import EditGroupModal from '../../components/System/sellerGroupComponents/EditGroupModal'
 import SellerSetupCheck from '../../components/System/sellerGroupComponents/SellerSetupCheck'
@@ -267,18 +266,18 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const selectedProjectId = Number(searchParams.get('project') || 0)
   const { data: currentUserData } = useCurrentUser()
   const actor = currentUserData?.user
-  const canAddMember = hasPermission(actor, PERMISSIONS.SYSTEM_USERS_CREATE)
-  const canEditSeller = hasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT)
-  const canEditNetwork = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE)
-  const canImportMembers = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE)
+  const canAddMember = !reviewView && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_CREATE)
+  const canEditSeller = !reviewView && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT)
+  const canEditNetwork = !reviewView && hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE)
+  const canImportMembers = !reviewView && hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE)
     && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_CREATE)
     && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT)
   const canExportMembers = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW)
   const canCheckSellerSetup = ['super_admin','system_admin'].includes(actor?.role) && canExportMembers
-  const canChangeSellerStatus = ['super_admin','system_admin'].includes(actor?.role)
+  const canChangeSellerStatus = !reviewView && ['super_admin','system_admin'].includes(actor?.role)
   // Independently controlled in Roles & Access. Does not grant general
   // account deactivation, seller edit, or manager replacement privileges.
-  const canDeactivateEmptyManager = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_DEACTIVATE_EMPTY_MANAGER)
+  const canDeactivateEmptyManager = !reviewView && hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_DEACTIVATE_EMPTY_MANAGER)
 
   const exportMembers = async () => {
     setIsExportingMembers(true)
@@ -401,7 +400,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   )
 
   useEffect(() => {
-    if (workflowAutoOpenedRef.current) return
+    if (reviewView || workflowAutoOpenedRef.current) return
     if (['network_edit_review', 'network_status_review', 'network_rates_review'].includes(workflowAction) && configuration) {
       workflowAutoOpenedRef.current = true
       setShowEditGroupModal(true)
@@ -419,7 +418,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         reports_under_user_id: member.accredited_seller_reports_under_user_id || '',
       })
     }
-  }, [configuration, group.id, groupId, members, workflowAction, workflowSellerId])
+  }, [configuration, group.id, groupId, members, workflowAction, workflowSellerId, reviewView])
   const analytics = analyticsQuery.data?.data?.summary || {}
   const recentSales = analyticsQuery.data?.data?.recentSales || []
   const filteredMembers = useMemo(() => {
@@ -498,7 +497,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 
   return (
     <main className="flex flex-col gap-5">
-      <ReviewReturnLink role={portalRole} reviewId={dismissedReviewId} />
+      <ReviewReturnLink role={portalRole} reviewId={reviewView?workflowReviewId:dismissedReviewId} />
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-start gap-3">
           <PageHeader
@@ -1281,7 +1280,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
       ) : null}
 
       {showReplacementHistory && !isExternal && canCheckSellerSetup ? (
-        <ManagerReplacementHistory groupId={Number(group.id || groupId)} networkName={group.name} onClose={() => setShowReplacementHistory(false)} canRestore={hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_MANAGER_RESTORE) && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_DEACTIVATE)} onSaved={(message) => {setAlert({type:'success',message});queryClient.invalidateQueries();}} />
+        <ManagerReplacementHistory groupId={Number(group.id || groupId)} networkName={group.name} onClose={() => setShowReplacementHistory(false)} canRestore={!reviewView && hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_MANAGER_RESTORE) && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_DEACTIVATE)} onSaved={(message) => {setAlert({type:'success',message});queryClient.invalidateQueries();}} />
       ) : null}
 
       {emptyManagerTarget ? <DeactivateEmptyManagerModal groupId={Number(group.id||groupId)} manager={emptyManagerTarget}
@@ -1330,7 +1329,6 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             ? null
             : { ...group, ...fixedRates }}
         error={configurationQuery.isError ? 'You cannot access this Network, or it is no longer available.' : reviewEntityType === 'seller_group_project_rates' && !accreditedProjects.some(item=>Number(item.lot_project_id)===selectedProjectId) ? 'The reviewed project is unavailable for this Network. Another project was not substituted.' : reviewEntityType === 'accredited_seller' && !members.find((member) => Number(member.accredited_seller_id) === reviewAccreditedSellerId) ? 'The selected seller was not found in this Network.' : ''}
-        onDismiss={() => setSearchParams(dismissReviewRecordQuery(searchParams), { replace: true })}
         onBackToReview={() => navigate(`${rootPath}/review-center/reviews/${workflowReviewId}`)}
       /> : null}
       {showEditGroupModal ? (

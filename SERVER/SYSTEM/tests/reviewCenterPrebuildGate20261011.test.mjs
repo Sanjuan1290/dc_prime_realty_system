@@ -21,7 +21,7 @@ test('guard accepts the corrected source and rejects a reintroduced undefined co
   const good = runGate(reviewFile)
   assert.equal(good.status, 0, good.stderr || good.stdout)
   const source = fs.readFileSync(reviewFile, 'utf8')
-  const target = 'Dedicated review workspace</p></div>'
+  const target = '<div id="review-changes" className="scroll-mt-24">'
   assert.ok(source.includes(target))
   const broken = source.replace(target, `${target}
     {(counts.notificationCountsAvailable === false) ? null : null}`)

@@ -62,7 +62,7 @@ test('audit archive receives the authenticated actor role and shows their own pa
 
 test('privileged deletion UI is not loosened by role-only wording changes', () => {
   const listingPage = src('CLIENT/SYSTEM/src/pages/Lot_Projects/ListingProfile.jsx')
-  assert.match(listingPage, /canPermanentlyDelete=\{currentUserData\?\.user\?\.role === 'super_admin'\}/)
+  assert.match(listingPage, /canPermanentlyDelete=\{!readOnly && currentUserData\?\.user\?\.role === 'super_admin'\}/)
   const backend = src('SERVER/SYSTEM/controllers/Lot_Projects/Settings/Settings.controller.js')
   assert.match(backend, /roleHasPermission|canEditProjectSettings/)
 })

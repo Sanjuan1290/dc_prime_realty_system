@@ -5,7 +5,6 @@ import { FiEdit2, FiSettings } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import ReviewLiveRecordPanel from '../../components/Shared/ReviewLiveRecordPanel'
 import ReviewReturnLink from '../../components/Shared/ReviewReturnLink'
-import { dismissReviewRecordQuery } from '../../utils/reviewRecordNavigation'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ProjectSettingsAuthorizationModal from '../../components/Lot_Projects/SettingsComponents/ProjectSettingsAuthorizationModal'
 import EditSettingsModal from '../../components/Lot_Projects/SettingsComponents/EditSettingsModal/EditSettingsModal'
@@ -68,7 +67,7 @@ const Settings = () => {
 
   const settings = data?.data || {}
   const project = data?.project || {}
-  const canEdit = Boolean(data?.canEdit)
+  const canEdit = !reviewView && Boolean(data?.canEdit)
   const actorRole = currentUserData?.user?.role || ''
   const workflowAuditCaseId = Number(searchParams.get('auditCaseId') || 0)
 
@@ -126,7 +125,7 @@ const Settings = () => {
 
   return (
     <main className="flex flex-col gap-6">
-      <ReviewReturnLink role={actorRole} reviewId={dismissedReviewId} />
+      <ReviewReturnLink role={actorRole} reviewId={reviewView?reviewId:dismissedReviewId} />
       {alert ? (
         <StatusAlert
           type={alert.type}
@@ -231,10 +230,9 @@ const Settings = () => {
         loading={isLoading}
         record={isError ? null : isLoading ? null : settings}
         error={isError ? 'Settings are unavailable or you do not have access.' : ''}
-        onDismiss={() => setSearchParams(dismissReviewRecordQuery(searchParams), { replace: true })}
         onBackToReview={() => navigate(`/portal/${actorRole || 'super_admin'}/review-center/reviews/${reviewId}`)}
       /> : null}
-      {showEdit ? (
+      {showEdit && canEdit ? (
         <EditSettingsModal
           settings={settings}
           isSaving={updateSettingsMutation.isPending}

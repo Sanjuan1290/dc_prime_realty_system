@@ -1416,6 +1416,15 @@ const PaymentsSOA = ({
     }
   }, [workflowAction, workflowPaymentId, canEdit, readOnly, paymentRecords])
 
+  const reviewView=searchParams.get('reviewView')==='1'
+  useEffect(()=>{
+    if(!reviewView)return
+    const target=workflowScheduleId?'soa-record-'+workflowScheduleId:workflowPaymentId?'payment-record-'+workflowPaymentId:null
+    if(!target)return
+    const frame=requestAnimationFrame(()=>document.getElementById(target)?.scrollIntoView({block:'center'}))
+    return()=>cancelAnimationFrame(frame)
+  },[reviewView,workflowPaymentId,workflowScheduleId,paymentRecords.length,rows.length])
+
   const handlePreviewPayment = (payload) =>
     useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/preview`, payload, { confirmationHandled: 'technical' })
 
@@ -1684,7 +1693,7 @@ const PaymentsSOA = ({
 
             <tbody className="divide-y divide-slate-100">
               {filteredPayments.map((payment) => (
-                <tr key={payment.paymentId || payment.id} className="transition hover:bg-slate-50">
+                <tr id={`payment-record-${payment.paymentId||payment.id}`} key={payment.paymentId || payment.id} className={`transition hover:bg-slate-50 ${reviewView&&Number(payment.paymentId||payment.id)===workflowPaymentId?'bg-blue-50 ring-1 ring-inset ring-blue-200':''}`}>
                   <td className="px-4 py-4 font-black text-slate-950">
                     {payment.client}
                   </td>
@@ -1913,7 +1922,7 @@ const PaymentsSOA = ({
 
             <tbody className="divide-y divide-slate-100">
               {rows.map((row) => (
-                <tr key={row.id} className="transition hover:bg-slate-50">
+                <tr id={`soa-record-${row.scheduleId||row.id}`} key={row.id} className={`transition hover:bg-slate-50 ${reviewView&&Number(row.scheduleId||row.id)===workflowScheduleId?'bg-blue-50 ring-1 ring-inset ring-blue-200':''}`}>
                   <td className="min-w-[108px] whitespace-nowrap px-4 py-3 font-semibold text-slate-600">
                     {formatDate(row.dueDate)}
                   </td>

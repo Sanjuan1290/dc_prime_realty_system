@@ -12,6 +12,7 @@ test('View Record selects the exact form section instead of only its parent page
   const link = getReviewRecordLink({review:common,actorRole:'auditor',reviewId:60})
   const url = new URL(link,'https://example.test')
   assert.equal(url.searchParams.get('reviewTab'),'payments')
+  assert.equal(url.searchParams.get('tab'),'payments')
   assert.equal(url.searchParams.get('paymentId'),'7')
   assert.equal(url.pathname,'/portal/lot-projects/sample/listings/20/accounts/30')
   assert.equal(url.searchParams.get('workflowAction'),null)
@@ -48,7 +49,8 @@ test('Before & After defaults to changed fields with explicit missing evidence',
  assert.match(form,/Full Form Comparison/)
  assert.match(form,/Not Recorded/)
  assert.match(form,/import \{ REVIEW_FORM_TEMPLATES \}/)
- assert.match(live,/import \{ REVIEW_FORM_TEMPLATES \}/)
+ assert.doesNotMatch(live,/REVIEW_FORM_TEMPLATES|role="dialog"/)
+ assert.match(live,/if\(!error&&record&&typeof record==='object'&&!Array.isArray\(record\)\)return null/)
  assert.match(templates,/lot_project_payment_proof/)
  assert.doesNotMatch(live,/onSave=|onSubmit=|useFetchPost|mutation\.mutate/)
 })
@@ -58,7 +60,9 @@ test('listing profile checks exact account, listing and record identity before s
  assert.match(listing,/exactAccount && exactListing/)
  assert.match(listing,/reviewTargetId === Number\(profile\.client\?\.id/)
  assert.match(listing,/reviewScheduleId === reviewTargetId/)
- assert.match(listing,/setActiveTab\(reviewTab\)/)
+ assert.match(listing,/searchParams.get\('tab'\)\|\|\(reviewView\?reviewTab:''\)/)
+ assert.match(listing,/setActiveTab\(requestedTab\)/)
+ assert.match(listing,/if\(reviewView&&!profileQuery.isLoading&&\(profileQuery.isError\|\|!exactAccount\|\|!exactListing\|\|!reviewRecord\)\)return/)
 })
 
 

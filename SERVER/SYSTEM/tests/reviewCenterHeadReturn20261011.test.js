@@ -9,7 +9,8 @@ const detail = ui.split('export const ReviewDetails =')[1].split('const ReviewCe
 
 test('No standalone Claim Review control remains, while Head confirmation and correction remain', () => {
   assert.doesNotMatch(detail, /Claim Review|type: 'claim'/);
-  assert.match(detail, /type: 'head-confirm'/);
+  assert.match(detail, /setAction\('head-confirm'\)/);
+  assert.match(detail, /onConfirm=\{\(\)=>mutation.mutate\(\{type:action==='head-confirm'\?'head-confirm':'audit-verify'\}\)\}/);
   assert.match(detail, /setAction\('return'\)/);
   assert.match(detail, /const correctAndConfirm = \(\) =>/);
   assert.doesNotMatch(detail, /\/reviews\/\$\{reviewId\}\/claim/);

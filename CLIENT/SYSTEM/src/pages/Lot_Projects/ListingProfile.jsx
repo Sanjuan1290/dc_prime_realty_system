@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import ReviewLiveRecordPanel from '../../components/Shared/ReviewLiveRecordPanel'
 import ReviewReturnLink from '../../components/Shared/ReviewReturnLink'
-import { dismissReviewRecordQuery } from '../../utils/reviewRecordNavigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FiArrowLeft,
@@ -209,14 +208,12 @@ const ListingProfile = () => {
     ['lot_project_account','lot_project_commission_account','lot_project_reservation','lot_project_cancellation'].includes(reviewEntityType) ? reviewTargetId === Number(profile.account?.id || 0) ? profile.account : null :
     ['lot_project_lmf_schedule','lot_project_penalty_schedule'].includes(reviewEntityType) ? (profile.soaRows || []).find((row)=>Number(row.scheduleId||row.id||row.lot_project_payment_schedule_id)===reviewScheduleId && reviewScheduleId === reviewTargetId) : null
   ) : null
-  const readOnly = Boolean(profile.readOnly)
+  const historicalAccount = Boolean(profile.readOnly)
+  const readOnly = reviewView || historicalAccount
   useEffect(() => {
-    const requestedTab=searchParams.get('tab')
+    const requestedTab=searchParams.get('tab')||(reviewView?reviewTab:'')
     if(visibleTabs.some(tab=>tab.key===requestedTab))setActiveTab(requestedTab)
-  },[searchParams,visibleTabs])
-  useEffect(() => {
-    if (reviewView && visibleTabs.some(tab => tab.key === reviewTab)) setActiveTab(reviewTab)
-  }, [reviewView, reviewTab, visibleTabs])
+  },[searchParams,visibleTabs,reviewView,reviewTab])
   useEffect(() => {
     if (['payment_correction','penalty_adjustment','lmf_correction','payment_proof_review'].includes(workflowAction)) setActiveTab('payments')
     if (workflowAction === 'signed_receipt_review') setActiveTab('printouts')
@@ -729,9 +726,11 @@ const ListingProfile = () => {
   const hasActiveBuyerFormLink = ['active', 'opened'].includes(String(currentBuyerFormLink?.status || '').toLowerCase())
   const canManageDocuments = Boolean(!readOnly && canUpdateBuyerDocuments && listing.hasClientProfile && listing.canEditBuyerProfile)
 
+  if(reviewView&&!profileQuery.isLoading&&(profileQuery.isError||!exactAccount||!exactListing||!reviewRecord))return <main className="grid gap-4"><ReviewLiveRecordPanel record={null} error="The exact review record is unavailable or outside your access." onBackToReview={()=>navigate('/portal/'+(user?.role||'super_admin')+'/review-center/reviews/'+workflowReviewId)}/></main>
+
   return (
     <main className="flex flex-col gap-6">
-      <ReviewReturnLink role={user?.role} reviewId={dismissedReviewId} />
+      <ReviewReturnLink role={user?.role} reviewId={reviewView?workflowReviewId:dismissedReviewId} />
       {alert ? (
         <StatusAlert
           type={alert.type}
@@ -762,15 +761,15 @@ const ListingProfile = () => {
           <div className="flex items-start gap-4">
             <button
               type="button"
-              onClick={() => navigate(readOnly ? `/portal/lot-projects/${projectSlug}/listings/${listingId}` : `/portal/lot-projects/${projectSlug}/listings`)}
+              onClick={() => navigate(historicalAccount ? `/portal/lot-projects/${projectSlug}/listings/${listingId}` : `/portal/lot-projects/${projectSlug}/listings`)}
               className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 active:scale-[0.98]"
-              aria-label={readOnly ? 'Back to current listing' : 'Back to listings'}
+              aria-label={historicalAccount ? 'Back to current listing' : 'Back to listings'}
             >
               <FiArrowLeft className="h-4 w-4" />
             </button>
 
             <div>
-              <p className="text-xs font-black uppercase tracking-wide text-blue-700">{readOnly ? 'Historical Buyer Account' : 'Listing Details'}</p>
+              <p className="text-xs font-black uppercase tracking-wide text-blue-700">{historicalAccount ? 'Historical Buyer Account' : 'Listing Details'}</p>
 
               <h1 className="mt-1 text-2xl font-black text-slate-950 sm:text-3xl">
                 {listing.unit_id || listing.unitCode || '-'}
@@ -1016,7 +1015,7 @@ const ListingProfile = () => {
         <AccountHistoryPanel
           projectSlug={projectSlug}
           listingId={listingId}
-          canPermanentlyDelete={currentUserData?.user?.role === 'super_admin'}
+          canPermanentlyDelete={!readOnly && currentUserData?.user?.role === 'super_admin'}
         />
       ) : null}
 
@@ -1096,7 +1095,6 @@ const ListingProfile = () => {
         record={reviewRecord}
         loading={profileQuery.isLoading}
         error={profileQuery.isError ? 'You cannot access this record, or it is no longer available.' : !profileQuery.isLoading && !exactAccount ? 'This buyer account does not match the requested review record.' : !profileQuery.isLoading && !exactListing ? 'This listing does not match the requested review record.' : !profileQuery.isLoading && !reviewRecord ? 'The exact record was not found. Return to Review Center to see its saved history.' : ''}
-        onDismiss={() => setSearchParams(dismissReviewRecordQuery(searchParams), { replace: true })}
         onBackToReview={() => navigate(`/portal/${user?.role || 'super_admin'}/review-center/reviews/${workflowReviewId}`)}
       /> : null}
       {!readOnly && canUpdateBuyerDocuments && showBuyerFormLinkModal ? (

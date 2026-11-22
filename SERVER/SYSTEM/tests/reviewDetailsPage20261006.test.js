@@ -21,7 +21,7 @@ test('Review Center opens a dedicated review route instead of rendering the over
 
 test('Dedicated review workspace shows form-based history and compact changes on request', () => {
   const center = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx')
-  assert.match(center, /Dedicated review workspace/)
+  assert.match(center, /aria-label="Review information"/)
   assert.match(center, /<ReviewFormComparison/)
   const form = read('CLIENT/SYSTEM/src/components/Shared/ReviewFormComparison.jsx')
   assert.match(form, /Full Form Comparison/)

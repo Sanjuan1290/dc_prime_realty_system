@@ -156,12 +156,12 @@ test('Cancellations and reserved/sold edits are wired to Head approval and the A
   assert.match(listings, /consume: false/);
 });
 
-test('Review Center makes post-action checks explicit and keeps correction controls', async () => {
+test('Review Center retains status and correction controls in the compact layout', async () => {
   const page = await readProjectFile('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');
   assert.match(page, /Awaiting Department Head Review/);
   assert.match(page, /Awaiting Auditor Review/);
-  assert.match(page, /Change already saved/);
-  assert.match(page, /does not automatically undo or lock it/);
+  assert.match(page, /ReviewInformationDialog/);
+  assert.match(page, /setAction\('no-issue'\)/);
   assert.match(page, /Super Admin direct entry/);
   assert.match(page, /Correct &amp; Confirm/);
   assert.match(page, /resolve-with-notes/);

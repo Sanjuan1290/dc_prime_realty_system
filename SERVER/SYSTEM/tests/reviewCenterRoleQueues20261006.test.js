@@ -54,7 +54,7 @@ test('returned correction UI tells Staff why it was returned and how to resubmit
   assert.match(center, /latestCorrectionRequest\.message/);
   assert.match(center, /Correct &amp; Resubmit/);
   assert.match(center, /Return & Notify Staff/);
-  assert.match(center, /Change already saved/);
+  assert.match(center, /ReviewInformationDialog/);
 });
 
 

@@ -61,9 +61,9 @@ test('review comparison is snapshot-only, Review History is local, and Audit UI 
  assert.match(component,/Historical|historical|saved historical/);
  assert.doesNotMatch(component,/useQuery|fetch\(|useFetch\(/);
  // The Review Center links to its own history instead of requiring Audit Logs access.
- assert.match(review, /id="review-history"/);
+ assert.match(review, /showHistory&&<ReviewHistoryDialog events=\{review.events\|\|\[\]\}/);
  assert.match(review, /View Review History/);
- assert.match(review, /document\.getElementById\('review-history'\)\?\.scrollIntoView/);
+ assert.match(review, /onClick=\{\(\) => setShowHistory\(true\)\}/);
  assert.doesNotMatch(review, /hasPermission\(actor, PERMISSIONS.AUDIT_LOGS_VIEW\)/);
  assert.doesNotMatch(review, /View Activity/);
  assert.match(auditPage,/reviewId.*linkedReviewId/);

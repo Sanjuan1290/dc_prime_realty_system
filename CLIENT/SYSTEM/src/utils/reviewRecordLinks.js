@@ -60,7 +60,8 @@ export const getReviewRecordLink = ({
         lot_project_reservation:'unit', lot_project_cancellation:'unit',
         lot_project_account:'unit',
       }
-      if (tabByType[type]) params.set('reviewTab', tabByType[type])
+      const tab=review.action_key==='listing.documents.update'?'documents':tabByType[type]
+      if(tab){params.set('reviewTab',tab);params.set('tab',tab)}
     }
     return `/portal/lot-projects/${encodedSlug}/listings/${location.listingId}${accountPart}?${params}`
   }

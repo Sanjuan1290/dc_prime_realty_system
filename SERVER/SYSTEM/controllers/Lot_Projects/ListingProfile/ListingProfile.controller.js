@@ -659,6 +659,8 @@ export const getLotProjectListingProfile = async (req, res) => {
           ${annualInterestSelect}
           ${cadastralSelect}
           cp.*,
+          l.lot_project_listing_id,
+          l.lot_project_id,
           current_account.lot_project_account_id,
           current_account.account_reference,
           current_account.account_status,

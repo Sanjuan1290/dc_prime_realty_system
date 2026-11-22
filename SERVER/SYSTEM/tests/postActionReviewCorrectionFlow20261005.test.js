@@ -118,9 +118,9 @@ test('Review Center explains correction ownership and gives original Staff a Cor
   const page = await readProjectFile('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');
   assert.match(page, /Returned for Correction/);
   assert.match(page, /Correct &amp; Resubmit/);
-  assert.match(page, /Auditor-confirmed correction required/);
+  assert.match(page, /auditCase.finding/);
   assert.match(page, /correctionRoleLabel/);
-  assert.match(page, /An open Audit Case does not prevent permitted changes/);
+  assert.match(page, /canApplyAuditCorrection && supportsRecordCorrection && correctionLink/);
 });
 
 

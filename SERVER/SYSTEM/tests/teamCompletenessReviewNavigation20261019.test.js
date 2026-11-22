@@ -66,9 +66,9 @@ test('bulk-edit workbook download continues through existing audited exporter', 
   assert.match(modal, /editable: format === 'editable'/)
 })
 
-test('review modal separates dismiss from intentional back navigation on all record pages', () => {
+test('native record pages keep return navigation without a duplicate summary dialog', () => {
   const modal = source('CLIENT/SYSTEM/src/components/Shared/ReviewLiveRecordPanel.jsx')
-  assert.match(modal, /onDismiss/)
+  assert.doesNotMatch(modal, /onDismiss|role="dialog"/)
   assert.match(modal, /onBackToReview/)
   assert.doesNotMatch(modal, /onClick=\{onClose\}/)
   for (const page of [
@@ -76,7 +76,7 @@ test('review modal separates dismiss from intentional back navigation on all rec
     'CLIENT/SYSTEM/src/pages/Lot_Projects/Settings.jsx',
     'CLIENT/SYSTEM/src/pages/Lot_Projects/ListingProfile.jsx',
   ]) {
-    assert.match(source(page), /onDismiss=\{\(\) => setSearchParams\(dismissReviewRecordQuery\(searchParams\), \{ replace: true \}\)\}/)
+    assert.doesNotMatch(source(page), /onDismiss=|dismissReviewRecordQuery/)
     assert.match(source(page), /onBackToReview/)
     assert.match(source(page), /<ReviewReturnLink/)
   }

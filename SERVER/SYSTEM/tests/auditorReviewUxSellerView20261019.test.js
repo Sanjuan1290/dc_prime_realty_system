@@ -18,17 +18,18 @@ test('Auditor queue uses readable pending statuses and restrained colors without
   assert.match(source, /reviewStatusLabel\(row.status\)/)
 })
 
-test('Review Details explains task and action, never assumes unavailable means deleted', () => {
+test('Review Details puts supporting information behind an icon and never assumes unavailable means deleted', () => {
   const source = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx')
   assert.match(source, /reviewTaskGuidance/)
   assert.match(source, /What you need to check/)
   assert.match(source, /Review Decision/)
-  assert.match(source, /Change already saved/)
+  assert.doesNotMatch(source, /Change already saved|How this review works|id="review-overview"/)
+  assert.match(source, /aria-label="Review information"/)
+  assert.match(source, /showInformation&&<ReviewInformationDialog/)
   assert.match(source, /This does not necessarily mean the record was deleted/)
   assert.match(source, /Report an Issue/)
-  assert.match(source, /How this review works/)
   assert.match(source, /review-changes/)
-  assert.match(source, /review-history/)
+  assert.match(source, /showHistory&&<ReviewHistoryDialog/)
 })
 
 test('Review history defaults to changed fields and retains the full saved form', () => {

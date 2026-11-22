@@ -29,7 +29,7 @@ test('secure purge is owner-only with password and email-code routes', () => {
   assert.match(controller, /attempt_count/);
   assert.match(controller, /expires_at < NOW\(\)/);
   assert.match(controller, /Only Super Admin can permanently delete account records/);
-  assert.match(listingProfile, /canPermanentlyDelete=\{currentUserData\?\.user\?\.role === 'super_admin'\}/);
+  assert.match(listingProfile, /canPermanentlyDelete=\{!readOnly && currentUserData\?\.user\?\.role === 'super_admin'\}/);
   assert.match(accountHistory, /Super Admin authority is required for permanent account-record deletion/);
 });
 
