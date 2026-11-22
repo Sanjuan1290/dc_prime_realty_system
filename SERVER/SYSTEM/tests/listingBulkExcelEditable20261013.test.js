@@ -49,8 +49,8 @@ test('editable Excel export has no sheet-level lock and keeps protected fields v
     status: 'all',
     project: {id: 1, name: 'Bailen'},
     listings: [
-      {id: 1, rawStatus: 'available', status: 'Available', unitCode: 'LA-0208', lotAreaSqm: 300, installmentPricePerSqm: 1300},
-      {id: 2, rawStatus: 'sold', status: 'Sold / Active', unitCode: 'LA-0401', lotAreaSqm: 300, installmentPricePerSqm: 1800},
+      {id: 1, rawStatus: 'available', status: 'Available', unitCode: 'LA-0208', lotAreaSqm: 300, installmentPricePerSqm: 1300, annualInterestRate: 4, soaAnnualInterestRate: 4},
+      {id: 2, rawStatus: 'sold', status: 'Sold / Active', unitCode: 'LA-0401', lotAreaSqm: 300, installmentPricePerSqm: 1800, annualInterestRate: 0, soaAnnualInterestRate: 11.5, soaInterestRateSource: 'custom'},
     ],
   });
   const { workbook, filename, options } = captured();
@@ -74,6 +74,30 @@ test('editable Excel export has no sheet-level lock and keeps protected fields v
   assert.equal(availablePriceCell.s.fill.fgColor.rgb, 'EFF6FF');
   assert.equal(soldPriceCell.s.fill.fgColor.rgb, 'E5E7EB');
   assert.equal(listingSheet.D3.v.startsWith('Protected'), true);
+  const editableHeaders = Object.values(listingSheet).filter(cell => cell?.t === 's').map(cell => cell.v);
+  assert.ok(editableHeaders.includes('Annual Interest Rate (%)'));
+  assert.ok(editableHeaders.includes('New Annual Interest Rate (%)'));
+  assert.ok(!editableHeaders.includes('Listing Default Annual Interest Rate (%)'));
+  assert.ok(!editableHeaders.includes('New Listing Default Annual Interest Rate (%)'));
+  assert.ok(!editableHeaders.includes('Interest Rate Source'));
+  assert.equal(cellFor('Annual Interest Rate (%)', 2).v, 4);
+  assert.equal(cellFor('Annual Interest Rate (%)', 3).v, 11.5);
+  assert.equal(cellFor('New Annual Interest Rate (%)', 2).s.fill.fgColor.rgb, 'EFF6FF');
+  assert.equal(cellFor('New Annual Interest Rate (%)', 3).s.fill.fgColor.rgb, 'E5E7EB');
 });
 
-
+test('Bailen complete inventory export keeps one effective rate column and no New columns', async () => {
+  const { exportListingWorkbook, captured } = await exporterPromise;
+  exportListingWorkbook({
+    editable: false, status: 'all', project: {id: 1, name: 'Bailen Project'},
+    listings: [{id: 2, rawStatus: 'sold', status: 'Sold / Active', unitCode: 'LA-0401', annualInterestRate: 0, soaAnnualInterestRate: 11.5, soaInterestRateSource: 'custom'}],
+  });
+  const { workbook, filename } = captured();
+  const listingSheet = workbook.Sheets.Listings;
+  const headers = Object.values(listingSheet).filter(cell => cell?.t === 's' && cell.v).map(cell => cell.v);
+  assert.equal(filename, 'Bailen_Project_Listings_all.xlsx');
+  assert.ok(headers.includes('Annual Interest Rate (%)'));
+  assert.ok(!headers.includes('Listing Default Annual Interest Rate (%)'));
+  assert.ok(!headers.includes('Interest Rate Source'));
+  assert.ok(!headers.some(header => String(header).startsWith('New ')));
+});

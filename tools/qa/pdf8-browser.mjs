@@ -26,14 +26,20 @@ async function download(format){
 const set=(book,id,header,value)=>{const rows=XLSX.utils.sheet_to_json(book.Sheets.Listings,{header:1});const r=rows.findIndex(row=>row[0]===id),c=rows[0].indexOf(header);assert.ok(r>0&&c>=0);book.Sheets.Listings[XLSX.utils.encode_cell({r,c})]={v:value,t:typeof value==='number'?'n':'s'}};
 let editable;
 try{
- await check('Downloaded editable workbook pairs current/new columns and shows the buyer 11.5% separately from the 0% default',async()=>{
+ await check('Project dashboard uses clear labels for overdue, upcoming and missing-document items',async()=>{
+  await page.goto(base+project);
+  await page.getByText('Overdue Installments',{exact:true}).waitFor();
+  await page.getByText('Installments Due in Next 7 Days',{exact:true}).waitFor();
+  await page.getByText('Units Missing Required Documents',{exact:true}).waitFor();
+ });
+ await check('Downloaded editable workbook shows one effective Annual Interest Rate column and a paired New column',async()=>{
   editable=await download('editable');const book=XLSX.readFile(editable,{cellStyles:true}),rows=XLSX.utils.sheet_to_json(book.Sheets.Listings,{defval:null}),headers=XLSX.utils.sheet_to_json(book.Sheets.Listings,{header:1})[0];
-  for(const field of ['Unit ID','Old Unit IDs','Cadastral Lots','Lot Type','Lot Area SQM','Installment Price / SQM','Cash Price / SQM','Reservation Fee','Legal / Misc Rate (%)','Listing Default Annual Interest Rate (%)'])assert.equal(headers.indexOf('New '+field),headers.indexOf(field)+1);
-  assert.ok(!headers.includes('Cadastral Lots (comma-separated)'));const sold=rows.find(row=>row['Listing ID']===fixture.ids[0]);assert.equal(sold['Annual Interest Rate (%)'],11.5);assert.equal(sold['Listing Default Annual Interest Rate (%)'],0);assert.equal(sold['Interest Rate Source'],'Buyer SOA');assert.equal(sold['New Unit ID'],'');
+  for(const field of ['Unit ID','Old Unit IDs','Cadastral Lots','Lot Type','Lot Area SQM','Installment Price / SQM','Cash Price / SQM','Reservation Fee','Legal / Misc Rate (%)','Annual Interest Rate (%)'])assert.equal(headers.indexOf('New '+field),headers.indexOf(field)+1);
+  assert.ok(!headers.includes('Cadastral Lots (comma-separated)'));const sold=rows.find(row=>row['Listing ID']===fixture.ids[0]);assert.equal(sold['Annual Interest Rate (%)'],11.5);assert.equal(sold['New Annual Interest Rate (%)'],'');assert.equal(headers.includes('Listing Default Annual Interest Rate (%)'),false);assert.equal(headers.includes('New Listing Default Annual Interest Rate (%)'),false);assert.equal(headers.includes('Interest Rate Source'),false);assert.equal(sold['New Unit ID'],'');
   assert.equal(book.Workbook.Sheets[1].Hidden,1);assert.equal(book.Sheets.Listings['!protect'],undefined);
  });
- await check('Complete reference Excel also contains the effective 11.5% rate and no New columns',async()=>{
-  const book=XLSX.readFile(await download('inventory')),row=XLSX.utils.sheet_to_json(book.Sheets.Listings).find(row=>row['Listing ID']===fixture.ids[0]);assert.equal(row['Annual Interest Rate (%)'],11.5);assert.equal(row['Listing Default Annual Interest Rate (%)'],0);assert.equal(Object.keys(row).some(key=>key.startsWith('New ')),false);
+ await check('Complete reference Excel contains one effective Annual Interest Rate column and no New columns',async()=>{
+  const book=XLSX.readFile(await download('inventory')),row=XLSX.utils.sheet_to_json(book.Sheets.Listings).find(row=>row['Listing ID']===fixture.ids[0]);assert.equal(row['Annual Interest Rate (%)'],11.5);assert.equal(Object.keys(row).some(key=>key==='Listing Default Annual Interest Rate (%)'||key==='Interest Rate Source'),false);assert.equal(Object.keys(row).some(key=>key.startsWith('New ')),false);
  });
  await check('Editing a current column gives a clear upload error before validation or save',async()=>{
   const book=XLSX.readFile(editable);set(book,fixture.ids[1],'Unit ID','LA-MISTAKE');const path=resolve(out,'reference-mistake.xlsx');XLSX.writeFile(book,path);

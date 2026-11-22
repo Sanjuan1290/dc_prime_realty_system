@@ -63,11 +63,17 @@ test('explicit 0% buyer overrides and inherited listing rates are distinguished 
   await db.execute('UPDATE lot_project_client_profiles SET soa_interest_rate_overridden=0,soa_annual_interest_rate=11.5 WHERE lot_project_client_profile_id=?',[profileId]);row=(await exportRows()).data.find(row=>row.id===ids[0]);assert.equal(row.soaAnnualInterestRate,0);assert.equal(row.soaInterestRateSource,'listing');
  }finally{await db.execute('UPDATE lot_project_client_profiles SET soa_interest_rate_overridden=1,soa_annual_interest_rate=11.5 WHERE lot_project_client_profile_id=?',[profileId])}
 });
+test('editable workbook shows one effective rate while its hidden baseline retains the listing default',async()=>{
+ const workbook=await book(),headers=XLSX.utils.sheet_to_json(workbook.Sheets.Listings,{header:1})[0],sold=XLSX.utils.sheet_to_json(workbook.Sheets.Listings,{defval:null})[0],baseline=XLSX.utils.sheet_to_json(workbook.Sheets['Original Values'],{defval:null})[0];
+ assert.ok(headers.includes('Annual Interest Rate (%)'));assert.ok(headers.includes('New Annual Interest Rate (%)'));
+ assert.ok(!headers.includes('Listing Default Annual Interest Rate (%)'));assert.ok(!headers.includes('New Listing Default Annual Interest Rate (%)'));assert.ok(!headers.includes('Interest Rate Source'));
+ assert.equal(sold['Annual Interest Rate (%)'],11.5);assert.equal(sold['New Annual Interest Rate (%)'],'');assert.equal(baseline['Inventory Annual Interest Rate Baseline (%)'],0);
+});
 test('untouched paired templates validate with zero changes and do not turn the visible buyer interest into a listing edit',async()=>{
  const before=await snapshot(),rows=await parse(await book()),result=ok(await validate(rows));assert.equal(result.valid,true,JSON.stringify(result));assert.equal(result.changedCount,0);assert.equal(result.unchangedCount,3);assert.deepEqual(await snapshot(),before);
 });
 test('protected financial changes reject the entire mixed batch without updating an eligible inventory row',async()=>{
- const workbook=await book();set(workbook,ids[0],'New Listing Default Annual Interest Rate (%)',11.5);set(workbook,ids[1],'New Lot Area SQM',325);
+ const workbook=await book();set(workbook,ids[0],'New Annual Interest Rate (%)',11.5);set(workbook,ids[1],'New Lot Area SQM',325);
  const rows=await parse(workbook),before=await snapshot(),result=ok(await validate(rows));assert.equal(result.valid,false);assert.match(JSON.stringify(result.errors),/Annual Interest Rate cannot be changed/);ok(await apply(rows),409);assert.deepEqual(await snapshot(),before);
 });
 test('stale rows with proposed changes are rejected without overwriting a concurrent edit',async()=>{

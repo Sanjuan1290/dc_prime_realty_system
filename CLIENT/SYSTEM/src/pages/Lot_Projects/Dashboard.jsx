@@ -222,9 +222,9 @@ const Dashboard = () => {
           <p className="text-sm font-semibold text-slate-500">Current operational items that may need follow-up.</p>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <AttentionCard label="Overdue Schedules" value={isLoading ? '...' : number(stats.overdueCount)} helper="Payment schedules currently overdue." tone="red" />
-          <AttentionCard label="Due Soon" value={isLoading ? '...' : number(stats.dueSoonCount)} helper="Upcoming payment schedules flagged by the dashboard." tone="amber" />
-          <AttentionCard label="Recent Units Missing Documents" value={isLoading ? '...' : number(missingDocumentUnits)} helper="Based on the latest unit records returned by the project dashboard." tone="blue" />
+          <AttentionCard label="Overdue Installments" value={isLoading ? '...' : number(stats.overdueCount)} helper="Unpaid or partially paid installments past their due date." tone="red" />
+          <AttentionCard label="Installments Due in Next 7 Days" value={isLoading ? '...' : number(stats.dueSoonCount)} helper="Unpaid or partially paid installments due today or within the next 7 days." tone="amber" />
+          <AttentionCard label="Units Missing Required Documents" value={isLoading ? '...' : number(missingDocumentUnits)} helper="Units with one or more required documents still missing." tone="blue" />
         </div>
 
         <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
@@ -313,7 +313,3 @@ const Dashboard = () => {
 }
 
 export default Dashboard
-
-
-
-
