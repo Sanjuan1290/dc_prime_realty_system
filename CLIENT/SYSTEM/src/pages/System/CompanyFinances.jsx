@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiEdit2, FiPlus, FiTag, FiAlertTriangle, FiRefreshCw, FiTrash2, FiDownload, FiCalendar } from 'react-icons/fi'
+import { FiEdit2, FiPlus, FiTag, FiAlertTriangle, FiTrash2, FiDownload, FiCalendar } from 'react-icons/fi'
 import { useFetch, useFetchBlob, useFetchPost, useFetchPut } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { hasPermission, PERMISSIONS } from '../../config/permissions'
@@ -95,7 +95,7 @@ export default function CompanyFinances(){
   return <main className="mx-auto max-w-7xl space-y-5 pb-10">
     <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
       <div><p className="text-xs font-bold uppercase tracking-wider text-blue-600">D&C Prime Realty</p><h1 className="text-2xl font-black text-slate-950">Company Finances</h1><p className="mt-1 text-sm text-slate-600">Money received, money spent, and the remaining balance. No bank connection needed.</p></div>
-      <button className={`${btn} border border-slate-300 bg-white text-slate-700`} onClick={()=>{finance.refetch();categories.refetch()}}><FiRefreshCw/> Refresh</button>
+
     </header>
     {error?<StatusAlert type="error" message={error}/>:null}
     {notice?<StatusAlert type="success" message={notice} onClose={()=>setNotice('')}/>:null}
@@ -133,9 +133,8 @@ export default function CompanyFinances(){
       <Card className="border-blue-200 bg-blue-50/30">
         <h2 className="text-base font-black text-slate-900">Where does the money come from?</h2>
         <p className="mt-1 text-sm text-slate-600">The balance starts at ₱0.00. Recorded collections and income add money; paid expenses subtract it.</p>
-        <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
           <div><span className="text-slate-500">Property Collections</span><p className="font-bold">{php(data.sources?.property_collections)}</p></div>
-          <div><span className="text-slate-500">Salary Paid (net of reversals)</span><p className="font-bold">{php(data.sources?.salary_paid)}</p></div>
           <div><span className="text-slate-500">Commissions & Network</span><p className="font-bold">{php(Number(data.sources?.commissions_paid||0)+Number(data.sources?.network_payouts||0))}</p></div>
           <div><span className="text-slate-500">Other Income</span><p className="font-bold">{php(data.sources?.other_income)}</p></div>
         </div>

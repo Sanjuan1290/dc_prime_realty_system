@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FaUserPlus } from 'react-icons/fa'
-import { FiEdit2, FiKey, FiLock, FiPlus, FiRefreshCw, FiSearch, FiShield, FiUserCheck, FiUsers, FiRotateCcw } from 'react-icons/fi'
+import { FiEdit2, FiKey, FiLock, FiPlus, FiSearch, FiShield, FiUserCheck, FiUsers, FiRotateCcw } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import useCurrentUser from '../../utils/useCurrentUser'
@@ -53,7 +53,7 @@ const Users = () => {
   ]
 
   return <main className="flex flex-col gap-6">
-    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between"><PageHeader title="System Users" description="System Admin, Auditor, Department Staff and Department Head accounts. Super Admin remains the emergency owner fallback." icon={FaUserPlus} /><div className="flex gap-2"><button type="button" onClick={() => refetch()} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 font-bold"><FiRefreshCw className={isFetching ? 'animate-spin' : ''} />Refresh</button>{canCreate && ['super_admin','system_admin'].includes(actor.role) ? <button type="button" onClick={() => open('create')} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 font-black text-white"><FiPlus />Create System User</button> : null}</div></div>
+    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between"><PageHeader title="System Users" description="System Admin, Auditor, Department Staff and Department Head accounts. Super Admin remains the emergency owner fallback." icon={FaUserPlus} /><div className="flex gap-2">{canCreate && ['super_admin','system_admin'].includes(actor.role) ? <button type="button" onClick={() => open('create')} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 font-black text-white"><FiPlus />Create System User</button> : null}</div></div>
     {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
     {isLoading ? <StatusAlert type="loading" message="Loading system users..." /> : null}{isError ? <StatusAlert type="error" message={error?.message || 'Failed to load users.'} /> : null}
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{stats.map(([label,value,Icon]) => <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex justify-between"><div><p className="text-sm font-bold text-slate-500">{label}</p><p className="mt-2 text-3xl font-black">{value}</p></div><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><Icon /></span></div></div>)}</section>

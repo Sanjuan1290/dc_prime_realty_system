@@ -62,14 +62,15 @@ try{
    await navigation('Transactions').click();await page.getByRole('form',{name:'Transaction filters'}).waitFor();await fits();await page.screenshot({path:resolve(out,'transactions-'+width+'.png'),fullPage:true});await navigation('Reports').click();await dates('2026-09-10','2026-09-11');
   }
  });
- await check('Dashboard charts share the interactions and mobile layout',async()=>{
-  await navigation('Dashboard').click();const flow=chart('Money in and money out by period');await flow.waitFor();await flow.focus();await flow.getByRole('tooltip').waitFor();await flow.press('ArrowRight');await flow.getByRole('tooltip').waitFor();
-  const category=page.locator('.finance-top-categories>li').first();await category.focus();await category.getByRole('tooltip').waitFor();
+ await check('Dashboard shows a compact summary and working shortcuts with no report charts',async()=>{
+  await navigation('Dashboard').click();await page.getByRole('heading',{name:'This month at a glance',exact:true}).waitFor();
+  assert.equal(await page.locator('.finance-dashboard-summary .finance-metric').count(),3);assert.equal(await page.locator('.finance-plot').count(),0);
+  const shortcuts=page.getByRole('region',{name:'Finance quick navigation'});await shortcuts.getByRole('button',{name:/^Transactions/}).click();await page.getByRole('form',{name:'Transaction filters'}).waitFor();await navigation('Dashboard').click();
   await page.setViewportSize({width:390,height:844});await fits();await page.screenshot({path:resolve(out,'dashboard-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});
  });
  await check('Touch can inspect a chart and dismiss its tooltip by tapping elsewhere',async()=>{
   const mobile=await browser.newContext({storageState:await context.storageState(),viewport:{width:390,height:844},isMobile:true,hasTouch:true});await mobile.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());const touch=await mobile.newPage();touch.on('pageerror',error=>errors.push(error.message));
-  try{await touch.goto(base+'/finance');const flow=chart('Money in and money out by period',touch);await flow.waitFor();await flow.tap({position:{x:130,y:100}});await flow.getByRole('tooltip').waitFor();await touch.getByRole('heading',{name:'Dashboard',exact:true}).tap();await flow.getByRole('tooltip').waitFor({state:'hidden'});await fits(touch)}finally{await mobile.close()}
+  try{await touch.goto(base+'/finance');await touch.getByRole('region',{name:'Finance quick navigation'}).getByRole('button',{name:/^Reports/}).tap();const flow=chart('Money in and money out by period',touch);await flow.waitFor();await flow.tap({position:{x:130,y:100}});await flow.getByRole('tooltip').waitFor();await touch.getByRole('heading',{name:'Reports',exact:true}).tap();await flow.getByRole('tooltip').waitFor({state:'hidden'});await fits(touch)}finally{await mobile.close()}
  });
  await check('Monthly, yearly and empty periods render safely and PDF export still works',async()=>{
   await navigation('Reports').click();await dates('2026-01-01','2026-11-18');assert.equal(report.bucket_size,'month');await chart('Money in and money out by period').focus();await page.getByRole('tooltip').waitFor();

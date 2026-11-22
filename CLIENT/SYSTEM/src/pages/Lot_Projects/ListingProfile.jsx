@@ -12,7 +12,6 @@ import {
   FiLink,
   FiPrinter,
   FiPauseCircle,
-  FiRefreshCw,
   FiUnlock,
   FiUser,
   FiUserCheck,
@@ -716,10 +715,7 @@ const ListingProfile = () => {
     rejectBuyerFormSubmissionMutation.mutate({ submission, reason: reason.trim() })
   }
 
-  const handleRefresh = () => {
-    profileQuery.refetch()
-    if (!readOnly) buyerFormStateQuery.refetch()
-  }
+
 
   const isHeld = listing.rawStatus === 'hold' || listing.listing_status === 'Hold'
   const canHold = listing.rawStatus === 'available' || listing.listing_status === 'Available'
@@ -828,15 +824,7 @@ const ListingProfile = () => {
               ) : null}
             </div>
 
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={profileQuery.isFetching}
-              className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
-            >
-              <FiRefreshCw className={`h-4 w-4 ${profileQuery.isFetching ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
+
 
             {!readOnly ? <>
             {canEditListingPermission ? <button

@@ -88,7 +88,7 @@ test('project performance SQL uses the exact buyer account, sale origin, type, p
   for(const query of queries.slice(0,3)){assert.ok(query.params.includes(17));assert.ok(query.params.includes('2026-10-01'));assert.ok(query.params.includes('2026-10-31'))}
 })
 
-test('only Seller Performance Details changes; original Lot charts and financial cards remain', () => {
+test('Seller Performance Details and the remaining Lot charts and financial cards stay available', () => {
   const lot = read('CLIENT/SYSTEM/src/pages/Lot_Projects/Reports.jsx')
   const system = read('CLIENT/SYSTEM/src/pages/System/Reports.jsx')
   const component = read('CLIENT/SYSTEM/src/components/Reports/PerformanceLeaderboard.jsx')
@@ -97,7 +97,8 @@ test('only Seller Performance Details changes; original Lot charts and financial
   assert.match(system,/PerformanceLeaderboard sellers=\{crossProjectSellers\}/)
   assert.match(lot,/Network Sales Comparison/)
   assert.match(lot,/groupChartData = buildBreakdownChartData\(groupPerformance, 'group'\)/)
-  for (const label of ['Sales and Settlement Trend','Commission Comparison','Inventory Value Comparison','Unit Status Mix','Recent Unit Records']) assert.ok(lot.includes(label), label)
+  for (const label of ['Sales and Settlement Trend','Commission Comparison','Inventory Value Comparison','Recent Unit Records']) assert.ok(lot.includes(label), label)
+  assert.doesNotMatch(lot,/Unit Status Mix/)
   assert.match(component,/Seller Performance Details/)
   assert.match(component,/Company \/ Network/)
   assert.match(component,/In-House/)
@@ -162,9 +163,10 @@ test('the separate performance dataset is read only and cannot replace original 
   assert.match(lot,/networks=\{data\?\.data\?\.performanceRankings\?\.groupPerformance/)
 })
 
-test('performance details retain search, sort, filters, pagination and project breakdown', () => {
+test('performance details retain search, sort, filters and pagination without project breakdown', () => {
   const component = read('CLIENT/SYSTEM/src/components/Reports/PerformanceLeaderboard.jsx')
-  for (const label of ['Search performance','Network Type','Rank By','Rows per page','Seller Role','Project breakdown','Details']) assert.ok(component.includes(label),label)
+  for (const label of ['Search performance','Network Type','Rank By','Rows per page','Seller Role']) assert.ok(component.includes(label),label)
+  assert.doesNotMatch(component,/Project breakdown|setExpanded/)
   assert.doesNotMatch(component,/Export Performance CSV/)
 })
 

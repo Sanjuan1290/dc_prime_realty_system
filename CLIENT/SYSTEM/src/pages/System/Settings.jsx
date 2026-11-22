@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiEdit2, FiRefreshCw, FiSettings, FiShield } from 'react-icons/fi'
+import { FiEdit2, FiSettings, FiShield } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
@@ -115,15 +115,7 @@ const Settings = () => {
         />
 
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => refetch()}
-            disabled={isFetching || saveMutation.isPending}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+
 
           {!isEditing ? (
             <button

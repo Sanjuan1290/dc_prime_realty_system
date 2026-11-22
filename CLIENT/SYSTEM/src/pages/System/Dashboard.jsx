@@ -12,7 +12,6 @@ import {
   FiFileText,
   FiGrid,
   FiMap,
-  FiRefreshCw,
   FiSettings,
   FiUsers,
 } from 'react-icons/fi'
@@ -211,14 +210,7 @@ const Dashboard = () => {
     user,
   ])
 
-  const refreshDashboard = async () => {
-    await Promise.all([
-      dashboardQuery.refetch(),
-      notificationState.refetch(),
-    ])
-  }
 
-  const isRefreshing = dashboardQuery.isFetching || notificationState.isFetching
 
   return (
     <main className="flex flex-col gap-6">
@@ -228,14 +220,7 @@ const Dashboard = () => {
           description="Quick overview of projects, notifications, and items that need attention."
           icon={FiGrid}
         />
-        <button
-          type="button"
-          onClick={refreshDashboard}
-          disabled={isRefreshing}
-          className="inline-flex h-11 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <FiRefreshCw className={isRefreshing ? 'animate-spin' : ''} /> {isRefreshing ? 'Refreshing...' : 'Refresh Dashboard'}
-        </button>
+
       </div>
 
       {dashboardQuery.isLoading ? <StatusAlert type="loading" message="Loading dashboard overview..." /> : null}

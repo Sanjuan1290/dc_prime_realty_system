@@ -90,7 +90,7 @@ const InHouseMemberProfile = () => {
               {networkHead ? <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">Network Head</span> : null}
             </div></div>
           </div>
-          <button type="button" onClick={() => groupQuery.refetch()} disabled={groupQuery.isFetching} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">{groupQuery.isFetching ? 'Refreshing…' : 'Refresh Details'}</button>
+
         </div>
         {selected.user_status !== selected.accredited_seller_status ? <p role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><FiAlertTriangle className="mt-0.5 shrink-0" /> Account status and seller accreditation status do not match. Check the member's account before making further changes.</p> : null}
       </section>

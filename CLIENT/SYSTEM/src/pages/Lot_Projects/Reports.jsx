@@ -1,7 +1,7 @@
 import PerformanceLeaderboard from '../../components/Reports/PerformanceLeaderboard'
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   Area,
   Bar,
@@ -11,8 +11,6 @@ import {
   ComposedChart,
   Legend,
   Line,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -24,7 +22,6 @@ import {
   FiGrid,
   FiLayers,
   FiMapPin,
-  FiRefreshCw,
   FiTrendingDown,
   FiTrendingUp,
   FiUsers,
@@ -355,7 +352,7 @@ const buildBreakdownChartData = (rows = [], labelKey) => rows.slice(0, 8).map((r
 
 const Reports = () => {
   const { projectSlug } = useParams()
-  const queryClient = useQueryClient()
+
   const [alert, setAlert] = useState(null)
   const [dateRange, setDateRange] = useState('this_month')
   const [dateFrom, setDateFrom] = useState(() => defaultDateRange().from)
@@ -391,11 +388,7 @@ const Reports = () => {
   const salesTrend = data?.data?.salesTrend || []
   const stats = data?.data?.stats || {}
 
-  const handleRefresh = () => {
-    if (!canLoadDateRange) return
-    setAlert({ type: 'info', message: 'Refreshing project reports...' })
-    queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
-  }
+
 
   const primarySnapshotStats = [
     { label: 'Total Gross Sales', value: isLoading ? '...' : money(stats.totalGrossSales ?? stats.totalSales), formula: 'Cash Collected + Gross Cash Collectibles', helper: 'Active and pending-cancellation reservation contracts in the selected range.', tone: 'blue', icon: FiTrendingUp },
@@ -423,15 +416,6 @@ const Reports = () => {
     { label: 'Listed', value: Number(stats.listedLotValue || 0), color: chartColors.slate },
     { label: 'Available', value: Number(stats.availableLotValue || 0), color: chartColors.green },
     { label: 'Sold', value: Number(stats.soldLotValue || 0), color: chartColors.indigo },
-  ]
-
-  const unitStatusChartData = [
-    { label: 'Available', count: Number(stats.available || 0), color: chartColors.green },
-    { label: 'Hold', count: Number(stats.hold || 0), color: chartColors.amber },
-    { label: 'Sold Active', count: Number(stats.soldActive || 0), color: chartColors.blue },
-    { label: 'Fully Paid', count: Number(stats.fullyPaid || 0), color: chartColors.indigo },
-    { label: 'Pending Cancel', count: Number(stats.pendingCancellation || 0), color: chartColors.violet },
-    { label: 'Cancelled', count: Number(stats.cancelled || 0), color: chartColors.red },
   ]
 
   const groupChartData = buildBreakdownChartData(groupPerformance, 'group')
@@ -465,7 +449,7 @@ const Reports = () => {
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <SectionHeader title="Business Snapshot" description="Main numbers to check first." />
-          <button type="button" onClick={handleRefresh} disabled={!canLoadDateRange || isFetching} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"><FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />Refresh</button>
+
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
@@ -578,7 +562,7 @@ const Reports = () => {
         </ChartCard>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-2">
+      <section>
         <ChartCard title="Inventory Value Comparison" description="Column chart for listed, available, and sold lot value.">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={inventoryChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
@@ -593,17 +577,6 @@ const Reports = () => {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Unit Status Mix" description="Pie chart showing how units are distributed by current status.">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Tooltip content={<ChartTooltip />} />
-              <Legend />
-              <Pie data={unitStatusChartData.filter((item) => item.count > 0)} dataKey="count" nameKey="label" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                {unitStatusChartData.filter((item) => item.count > 0).map((entry) => <Cell key={entry.label} fill={entry.color} />)}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-        </ChartCard>
       </section>
 
 

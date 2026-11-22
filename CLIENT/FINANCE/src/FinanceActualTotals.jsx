@@ -11,7 +11,6 @@ export default function FinanceActualTotals({report}) {
       <div><dt>Money in</dt><dd>{money(report.actual_money_in)}</dd></div>
       <div><dt>Money out</dt><dd>{money(report.actual_money_out)}</dd></div>
     </dl>
-    <small>After payroll corrections</small>
   </section>;
 }
 

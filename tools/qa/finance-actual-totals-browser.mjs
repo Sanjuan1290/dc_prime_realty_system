@@ -36,13 +36,17 @@ async function summary(selector){
  await page.getByText(/Each imported payment is counted once\./).waitFor();
 }
 async function fits(){const size=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(size.scroll<=size.width+1,JSON.stringify(size));
- const actual=page.getByRole('region',{name:'Actual money in and out',exact:true});assert.ok(await actual.evaluate(node=>node.scrollWidth<=node.clientWidth+1));
+ for(const card of await page.locator('.finance-metric').all())assert.ok(await card.evaluate(node=>node.scrollWidth<=node.clientWidth+1));
 }
 try{
  await page.goto(base+'/finance');await page.getByRole('heading',{name:'Dashboard',exact:true}).waitFor();
- await check('Dashboard separates gross activity from the screenshot’s actual income and expenses',async()=>{
-  await dates('Dashboard');assert.equal(report.money_in,'411329.16');assert.equal(report.money_out,'14925.00');assert.equal(report.actual_money_in,'403866.66');assert.equal(report.actual_money_out,'7462.50');assert.equal(report.net_change,'396404.16');
-  await summary('.finance-dashboard-summary');
+ await check('Dashboard shows the current month actual totals and available balance in three compact cards',async()=>{
+  await page.locator('.finance-dashboard-summary').waitFor();
+  const {financePresetRange}=await import('../../CLIENT/FINANCE/src/financePeriods.js');const range=financePresetRange('month');
+  const response=await context.request.get(base+'/finance-api/api/v1/finance/reports?'+new URLSearchParams({from:range.from,to:range.to}));assert.equal(response.status(),200);report=await response.json();
+  const cards=page.locator('.finance-dashboard-summary');assert.equal(await cards.locator('.finance-metric').count(),3);
+  for(const [tone,key] of [['income','actual_money_in'],['expense','actual_money_out'],['balance','closing_balance']])await cards.locator('.finance-metric-'+tone).getByText(financeMoney(report[key]),{exact:true}).waitFor();
+  assert.equal(await page.getByRole('region',{name:'Dashboard Date Filter',exact:true}).count(),0);assert.equal(await page.locator('.finance-plot').count(),0);
   for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:1000});await fits();await page.screenshot({path:resolve(out,'dashboard-'+width+'.png'),fullPage:true,animations:'disabled'})}
  });
  await check('Reports display the same actual totals and preserve gross chart and table values',async()=>{

@@ -27,7 +27,6 @@ import {
   FiGrid,
   FiLayers,
   FiMapPin,
-  FiRefreshCw,
   FiTrendingDown,
   FiTrendingUp,
   FiUsers,
@@ -631,9 +630,7 @@ const Reports = () => {
               {projectScopeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
-          <button type="button" onClick={() => refetch()} disabled={!canLoadRange || isDashboardsFetching || selectedProjects.length === 0} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50">
-            <FiRefreshCw className={isDashboardsFetching ? 'animate-spin' : ''} /> Refresh
-          </button>
+
           {canExport ? (
             <button type="button" onClick={() => setShowExportModal(true)} disabled={!canLoadRange || isExporting || selectedProjects.length === 0} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
               <FiDownload /> Export PDF
@@ -670,7 +667,7 @@ const Reports = () => {
               <div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">Money Out</p><p className="mt-1 text-xl font-black text-rose-700">{money(financeQuery.data.data.money_out)}</p></div>
               <div className="rounded-xl bg-blue-50 p-4"><p className="text-sm text-blue-800">Available Cash</p><p className="mt-1 text-xl font-black text-blue-950">{financeQuery.data.data.balance_verified ? money(financeQuery.data.data.available_balance) : 'Needs Review'}</p></div>
             </div>
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-600"><span>Property Collections: <strong>{money(financeQuery.data.data.sources?.property_collections)}</strong></span><span>Salary Paid: <strong>{money(financeQuery.data.data.sources?.salary_paid)}</strong></span><span>Commission & Network Paid: <strong>{money(Number(financeQuery.data.data.sources?.commissions_paid||0)+Number(financeQuery.data.data.sources?.network_payouts||0))}</strong></span></div>
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-600"><span>Property Collections: <strong>{money(financeQuery.data.data.sources?.property_collections)}</strong></span><span>Commission & Network Paid: <strong>{money(Number(financeQuery.data.data.sources?.commissions_paid||0)+Number(financeQuery.data.data.sources?.network_payouts||0))}</strong></span></div>
             <p className="mt-3 text-sm text-slate-600">Balance begins at ₱0.00 and includes recorded property payments and other income, less paid expenses. Cash Collected below is a separate sales measure.</p>
             {(financeQuery.data.data.warnings||[]).map(w=><p key={w} className="mt-2 text-sm font-semibold text-amber-800">⚠ {w}</p>)}
           </>}

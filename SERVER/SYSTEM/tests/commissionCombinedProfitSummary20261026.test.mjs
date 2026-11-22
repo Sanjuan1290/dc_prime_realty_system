@@ -75,6 +75,5 @@ test('Commission page shares cached profit query, displays combined totals in ca
   assert.match(page, /Totals include seller commissions and separately tracked Network Company Profit/)
   assert.match(page, /Includes \{money\(record\.companyProfitGross\)\} Company Profit/)
   assert.match(page, /totalsLoading \|\| totalsError \? '—'/)
-  assert.match(page, /refetchProfit\(\)/)
 })
 

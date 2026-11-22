@@ -7,9 +7,7 @@ import {
   FiCheckCircle,
   FiClock,
   FiFileText,
-  FiLoader,
   FiMail,
-  FiRefreshCw,
   FiSearch,
   FiUserCheck,
 } from 'react-icons/fi'
@@ -199,9 +197,7 @@ const Notifications = () => {
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <PageHeader title="Notifications" description="Payment reminders and document status records across all lot projects." icon={FiBell} />
-        <button type="button" onClick={() => activeQuery.refetch()} disabled={activeQuery.isFetching} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 shadow-sm hover:bg-blue-50 disabled:opacity-60">
-          {activeQuery.isFetching ? <FiLoader className="animate-spin" /> : <FiRefreshCw />} {activeQuery.isFetching ? 'Refreshing...' : 'Refresh'}
-        </button>
+
       </div>
 
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}

@@ -318,11 +318,7 @@ const Commission = () => {
     setAlert({ type: 'info', message: 'Commission filters reset.' })
   }
 
-  const refreshRecords = () => {
-    setAlert({ type: 'info', message: 'Refreshing commission records...' })
-    refetch()
-    refetchProfit()
-  }
+
 
   const handleCommissionAction = (commission, payload) => {
     updateCommissionMutation.mutate({
@@ -347,10 +343,7 @@ const Commission = () => {
         />
 
         <div className="flex flex-col gap-2 sm:flex-row">
-          <button type="button" onClick={refreshRecords} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]">
-            <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+
           <button type="button" onClick={resetFilters} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]">
             <FiRefreshCw className="h-4 w-4" />
             Reset View

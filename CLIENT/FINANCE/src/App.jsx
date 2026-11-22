@@ -10,7 +10,7 @@ import PasswordSetup from './PasswordSetup.jsx';
 import PasswordField from './PasswordField.jsx';
 import PasswordRecovery from './PasswordRecovery.jsx';
 import React,{useCallback,useEffect,useState,useRef} from 'react';
-import {FiBarChart2,FiBookOpen,FiGrid,FiPlus,FiLogOut,FiShield,FiList,FiRefreshCcw,FiUserPlus} from 'react-icons/fi';
+import {FiBarChart2,FiBookOpen,FiGrid,FiPlus,FiLogOut,FiShield,FiList,FiUserPlus} from 'react-icons/fi';
 import {api} from './api.js';
 import useRetryCooldown from './useRetryCooldown.js';
 import FinanceImport from './FinanceImport.jsx';
@@ -39,8 +39,8 @@ function EntryForm({categories,initial,onSubmit,onCancel,busy,correcting=false})
 }
 export default function App(){
   const [source,setSource]=useState('all'),[categoryId,setCategoryId]=useState('');
-  const [transactionId,setTransactionId]=useState(null);const[user,setUser]=useState(undefined),[tab,setTab]=useState('overview'),[range,setRange]=useState(defaultRange),[dashboardRange,setDashboardRange]=useState(()=>financePresetRange('month')),[dashboard,setDashboard]=useState(null),[transactions,setTransactions]=useState([]),[recentTransactions,setRecentTransactions]=useState([]),[count,setCount]=useState(0),[categories,setCategories]=useState([]),[users,setUsers]=useState([]),[page,setPage]=useState(1),[status,setStatus]=useState('posted'),[kind,setKind]=useState('all'),[error,setError]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[entry,setEntry]=useState(null),[prompt,setPrompt]=useState(null),[categoryInput,setCategoryInput]=useState({kind:'expense',name:''});
-  const [sessionError,setSessionError]=useState(null),[notice,setNotice]=useState(''),[refreshKey,setRefreshKey]=useState(0);const requestVersion=useRef(0);
+  const [transactionId,setTransactionId]=useState(null);const[user,setUser]=useState(undefined),[tab,setTab]=useState('overview'),[range,setRange]=useState(defaultRange),[dashboardRange]=useState(()=>financePresetRange('month')),[dashboard,setDashboard]=useState(null),[transactions,setTransactions]=useState([]),[count,setCount]=useState(0),[categories,setCategories]=useState([]),[users,setUsers]=useState([]),[page,setPage]=useState(1),[status,setStatus]=useState('posted'),[kind,setKind]=useState('all'),[error,setError]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[entry,setEntry]=useState(null),[prompt,setPrompt]=useState(null),[categoryInput,setCategoryInput]=useState({kind:'expense',name:''});
+  const [sessionError,setSessionError]=useState(null),[notice,setNotice]=useState('');const requestVersion=useRef(0);
   const [resetToken,setResetToken]=useState(()=>new URLSearchParams(window.location.hash.slice(1)).get('reset-password')||'');
   useEffect(()=>{
     const receiveResetLink=()=>{const token=new URLSearchParams(window.location.hash.slice(1)).get('reset-password');if(token){setResetToken(token);window.history.replaceState(null,'',window.location.pathname+window.location.search)}};
@@ -58,14 +58,13 @@ export default function App(){
       const query=new URLSearchParams(overview?{...dates,page_size:'5',status:'posted'}:{...dates,page:String(page),status,kind,source,category_id:categoryId});
       const [report,ledger,categoryList,financeUsers]=await Promise.all([
         overview?api('/finance/reports?'+new URLSearchParams(dates)):null,
-        overview||tab==='transactions'?api('/finance/transactions?'+query):null,
+        tab==='transactions'?api('/finance/transactions?'+query):null,
         api('/finance/categories'),
         canAdmin&&(tab==='audit'||tab==='users')?api('/finance/users'):null,
       ]);
       if(version!==requestVersion.current)return;
       if(overview){
         setDashboard(report);
-        setRecentTransactions(ledger.transactions||[]);
       }else if(ledger){
         setTransactions(ledger.transactions||[]);
         setCount(ledger.total||0);
@@ -74,7 +73,7 @@ export default function App(){
       if(financeUsers)setUsers(financeUsers.users||[]);
     }catch(e){
       if(version!==requestVersion.current)return;
-      if(overview){setDashboard(null);setRecentTransactions([]);}
+      if(overview)setDashboard(null);
       if(tab==='transactions'){setTransactions([]);setCount(0);}
       setCategories([]);
       setError(e.message);
@@ -91,7 +90,7 @@ export default function App(){
   if(user.must_change_password)return <PasswordSetup user={user} onChanged={setUser} onSignOut={async()=>{await api('/auth/logout',{method:'POST'});setUser(null)}}/>;
   const tabs=[{id:'overview',label:'Dashboard',icon:FiGrid},{id:'transactions',label:'Transactions',icon:FiList},{id:'reports',label:'Reports',icon:FiBarChart2},{id:'categories',label:'Categories',icon:FiBookOpen},...(canAdmin?[{id:'audit',label:'Audit Logs',icon:FiShield},{id:'users',label:'Users',icon:FiUserPlus},{id:'imports',label:'Imports',icon:FiBookOpen}]:[])];
   return <div className="app-shell"><aside className="sidebar"><div className="sidebar-brand"><span className="brand-mark">D&C</span><div><strong>Prime Finance</strong><small>Independent Management</small></div></div><nav aria-label="Finance navigation">{tabs.map(t=><button key={t.id} type="button" aria-current={tab===t.id?'page':undefined} className={tab===t.id?'nav-item active':'nav-item'} onClick={()=>{setTab(t.id);setNotice('');setEntry(null);setPrompt(null);}}><t.icon/>{t.label}</button>)}</nav><div className="sidebar-bottom"><div>{user.display_name}<small>{user.role}</small></div><button type="button" className="nav-item" onClick={async()=>{try{await api('/auth/logout',{method:'POST'});}finally{setUser(null);}}}><FiLogOut/>Sign out</button></div></aside>
-  <main className="main" aria-busy={loading}><header className="topbar"><div><div className="eyebrow">D&C Prime Realty / Finance</div><h1>{tabs.find(t=>t.id===tab)?.label}</h1><p>{{overview:'Track cash received, payments made and your current balance.',transactions:'Review posted payments and trace every correction.',categories:'Organize income and expenses for consistent reporting.',audit:'Review account activity and changes to the ledger.',users:'Invite colleagues and manage their Finance access.',imports:'Bring salary and Company Finances payments into your ledger.',reports:'Review cash movement, balances, and category totals.'}[tab]}</p></div><div className="top-actions"><button className="btn" type="button" onClick={()=>{setRefreshKey(key=>key+1);refresh()}} disabled={loading}><FiRefreshCcw/>Refresh</button>{canWrite&&(tab==='overview'||tab==='transactions')&&<button className="btn primary" type="button" onClick={()=>setEntry({...inputDefault,transaction_date:today()})}><FiPlus/>New entry</button>}</div></header>
+  <main className="main" aria-busy={loading}><header className="topbar"><div><div className="eyebrow">D&C Prime Realty / Finance</div><h1>{tabs.find(t=>t.id===tab)?.label}</h1><p>{{overview:'Track cash received, payments made and your current balance.',transactions:'Review posted payments and trace every correction.',categories:'Organize income and expenses for consistent reporting.',audit:'Review account activity and changes to the ledger.',users:'Invite colleagues and manage their Finance access.',imports:'Bring salary and Company Finances payments into your ledger.',reports:'Review cash movement, balances, and category totals.'}[tab]}</p></div><div className="top-actions">{canWrite&&(tab==='overview'||tab==='transactions')&&<button className="btn primary" type="button" onClick={()=>setEntry({...inputDefault,transaction_date:today()})}><FiPlus/>New entry</button>}</div></header>
   {loading&&(tab!=='overview'||dashboard)&&<div className="loading-bar" role="status"><Spinner label="Updating Finance…"/></div>}
   <ErrorNotice message={error} onDismiss={()=>setError('')}/>
   {notice&&<Notice type="success" title="Changes saved" onDismiss={()=>setNotice('')}>{notice}</Notice>}
@@ -99,17 +98,18 @@ export default function App(){
     filters={{...range,kind,status,source,category_id:categoryId}} onApply={next=>{
       setPage(1);setRange({from:next.from,to:next.to});setKind(next.kind);setStatus(next.status);setSource(next.source);setCategoryId(next.category_id);
     }}/>}
-  {tab==='overview'&&<FinanceDashboard range={dashboardRange} onRangeChange={setDashboardRange}
-    dashboard={dashboard} transactions={recentTransactions} loading={loading} onViewTransaction={setTransactionId}
-    onOpenReports={()=>setTab('reports')} onOpenTransactions={()=>{
+  {tab==='overview'&&<FinanceDashboard range={dashboardRange}
+    dashboard={dashboard} loading={loading} canAdmin={canAdmin}
+    onOpenReports={()=>setTab('reports')} onOpenImports={()=>setTab('imports')} onOpenAudit={()=>setTab('audit')}
+    onOpenTransactions={()=>{
       setRange({from:dashboardRange.from,to:dashboardRange.to});setPage(1);setKind('all');setStatus('posted');setSource('all');setCategoryId('');setTab('transactions');
     }}/>}
   {tab==='transactions'&&<div className="panel"><div className="panel-heading"><h2>Transaction history</h2><span>{count} records</span></div><div className="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th>Status</th><th className="align-right">Amount</th>{canAdmin&&<th>Action</th>}</tr></thead><tbody>{transactions.length===0?<tr><td colSpan={canAdmin?7:6} className="empty">No transactions for these filters.</td></tr>:transactions.map(t=><tr key={t.id}><td>{t.transaction_date}</td><td><span className={'pill '+t.kind}>{t.kind}</span></td><td>{t.category_name}</td><td title={t.notes||''}><button type="button" className="text-btn" onClick={()=>setTransactionId(t.id)}>{t.description}</button></td><td><span className={'pill '+(t.status==='void'?'decision-duplicate':'decision-new')}>{t.status==='void'&&t.void_reason?.startsWith('Import undone:')?'Import undone':t.status}</span>{t.corrected_from_transaction_id?<span className="cell-secondary">Corrected</span>:null}</td><td className="align-right">{t.kind==='expense'?'-':'+'}{peso(t.amount)}</td>{canAdmin&&<td>{t.status==='posted'&&t.source_system==='manual'?<><button className="text-btn" onClick={()=>setPrompt({type:'void',id:t.id})}>Void</button> <button className="text-btn" onClick={()=>setEntry({...t,category_id:String(t.category_id),reason:'',mode:'correct',original_id:t.id})}>Correct</button></>:null}</td>}</tr>)}</tbody></table></div><div className="pagination"><button disabled={page===1} className="btn" onClick={()=>setPage(p=>p-1)}>Previous</button><span>Page {page} of {Math.max(1,Math.ceil(count/50))}</span><button disabled={page*50>=count} className="btn" onClick={()=>setPage(p=>p+1)}>Next</button></div></div>}
   {tab==='categories'&&<div className="panel"><h2>Income and expense categories</h2><p className="muted">Organize manual entries and imported payments. Imports use source categories automatically. Historical transactions stay available when a category is disabled.</p>{canAdmin&&<form className="inline-form" onSubmit={e=>{e.preventDefault();mutate('/finance/categories',categoryInput).then(ok=>{if(ok)setCategoryInput({kind:'expense',name:''});});}}><select aria-label="Category type" value={categoryInput.kind} onChange={e=>setCategoryInput(x=>({...x,kind:e.target.value}))}><option value="expense">Expense</option><option value="income">Income</option></select><input aria-label="Category name" placeholder="Category name" maxLength={90} required value={categoryInput.name} onChange={e=>setCategoryInput(x=>({...x,name:e.target.value}))}/><button className="btn primary" disabled={busy}>Add category</button></form>}<div className="category-list">{categories.map(c=><div className="category" key={c.id}><span className={'pill '+c.kind}>{c.kind}</span><strong>{c.name}</strong><small>{Number(c.is_active)?'Active':'Inactive'}</small>{canAdmin&&<button className="btn" disabled={busy} onClick={()=>mutate(`/finance/categories/${c.id}`,{is_active:!Number(c.is_active)},'PATCH')}>{Number(c.is_active)?'Disable':'Enable'}</button>}
     {canAdmin&&Number(c.can_delete)===1&&<button type="button" className="text-btn text-danger" disabled={busy} onClick={()=>setPrompt({type:'category',id:c.id,name:c.name})}>Delete</button>}</div>)}</div></div>}
-  {tab==='reports'&&<FinanceReports categories={categories} refreshKey={refreshKey} initialRange={dashboardRange}/>}
-  {tab==='imports'&&canAdmin&&<FinanceImport onLedgerChanged={refresh} onViewTransaction={setTransactionId} refreshKey={refreshKey}/>}
-  {tab==='audit'&&canAdmin&&<FinanceAudit users={users} onViewTransaction={setTransactionId} refreshKey={refreshKey}/>}
+  {tab==='reports'&&<FinanceReports categories={categories} initialRange={dashboardRange}/>}
+  {tab==='imports'&&canAdmin&&<FinanceImport onLedgerChanged={refresh} onViewTransaction={setTransactionId}/>}
+  {tab==='audit'&&canAdmin&&<FinanceAudit users={users} onViewTransaction={setTransactionId}/>}
   {tab==='users'&&canAdmin&&<FinanceUsers users={users} currentUserId={user.id} onChanged={refresh} onAccessChanged={()=>{setTab('overview');api('/auth/me').then(result=>setUser(result.user)).catch(()=>setUser(null))}}/>}
   {transactionId&&<FinanceTransactionDetails key={transactionId} id={transactionId} onClose={()=>setTransactionId(null)}/>}
   {entry&&<Dialog label="Finance entry" title={entry.mode==='correct'?'Correct transaction':'New cash transaction'} onClose={()=>setEntry(null)} busy={busy}><EntryForm key={entry.mode?`correct-${entry.original_id}`:'create'} categories={categories} initial={entry} busy={busy} correcting={entry.mode==='correct'} onCancel={()=>setEntry(null)} onSubmit={v=>mutate(entry.mode==='correct'?`/finance/transactions/${entry.original_id}/correct`:'/finance/transactions',v)}/></Dialog>}

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiEdit2, FiRefreshCw, FiSettings } from 'react-icons/fi'
+import { FiEdit2, FiSettings } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import ReviewLiveRecordPanel from '../../components/Shared/ReviewLiveRecordPanel'
 import ReviewReturnLink from '../../components/Shared/ReviewReturnLink'
@@ -122,10 +122,7 @@ const Settings = () => {
     setPendingAuthorization(updatedSettings)
   }
 
-  const handleRefresh = () => {
-    setAlert({ type: 'info', message: 'Refreshing project settings...' })
-    refetch()
-  }
+
 
   return (
     <main className="flex flex-col gap-6">
@@ -149,14 +146,7 @@ const Settings = () => {
         />
 
         <div className="flex flex-col gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={handleRefresh}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
-          >
-            <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+
 
           <button
             type="button"

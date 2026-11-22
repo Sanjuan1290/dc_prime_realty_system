@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiClock, FiDollarSign, FiDownload, FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiUsers, FiMoreHorizontal, FiBookOpen, FiAward } from 'react-icons/fi'
+import { FiClock, FiDollarSign, FiDownload, FiEdit2, FiPlus, FiSearch, FiUsers, FiMoreHorizontal, FiBookOpen, FiAward } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import ActionPanelModal, { ActionPanelButton } from '../../components/Shared/ActionPanelModal'
 import StatusAlert from '../../components/Shared/StatusAlert'
@@ -95,7 +95,7 @@ const Employees = () => {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader title="Employees" description="View staff records, work schedules, and salary history." icon={FiUsers} />
         <div className="flex gap-2">
-          <button type="button" onClick={() => employeesQuery.refetch()} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><FiRefreshCw className={employeesQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
+
           {canManage ? <button type="button" onClick={openAdd} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700"><FiPlus />Add Employee</button> : null}
         </div>
       </div>

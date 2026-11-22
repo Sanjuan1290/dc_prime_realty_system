@@ -1,7 +1,7 @@
 import { HR_FEATURE_FLAGS } from '../../config/featureFlags'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiActivity, FiClock, FiDollarSign, FiDownload, FiFileText, FiLock, FiPlus, FiRefreshCw, FiSearch, FiSettings, FiMoreHorizontal, FiCheckCircle, FiUpload, FiRotateCcw } from 'react-icons/fi'
+import { FiActivity, FiClock, FiDollarSign, FiDownload, FiFileText, FiLock, FiPlus, FiSearch, FiSettings, FiMoreHorizontal, FiCheckCircle, FiUpload, FiRotateCcw } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import ActionPanelModal, { ActionPanelButton } from '../../components/Shared/ActionPanelModal'
 import StatusAlert from '../../components/Shared/StatusAlert'
@@ -118,7 +118,7 @@ const EmployeeSalary = () => {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader title="Employee Salary" description="Review employee pay, deductions, and allowances for each pay period." icon={FiDollarSign} />
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => { periodQuery.refetch(); registerQuery.refetch() }} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><FiRefreshCw className={registerQuery.isFetching || periodQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
+
           {canExportPayrollSummary ? <button type="button" onClick={() => setShowFinanceExport(true)} disabled={!period} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"><FiDownload />Export to Finance (CSV)</button> : null}
           {canManagePayrollSettings ? <button type="button" onClick={() => setShowPayrollSettings(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50"><FiSettings />Payroll Settings</button> : null}
           {canGenerate ? <button type="button" onClick={() => setShowGenerate(true)} disabled={!period} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50"><FiPlus />Create Payroll Draft</button> : null}

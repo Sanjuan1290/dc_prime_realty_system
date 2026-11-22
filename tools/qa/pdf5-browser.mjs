@@ -76,7 +76,7 @@ try {
   await accept(stale);await userRow(stale).getByRole('button',{name:'Delete invitation',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Delete Finance invitation?',exact:true});
   await dialog.getByRole('button',{name:'Delete invitation',exact:true}).click();await dialog.getByRole('alert').filter({hasText:'Only invitations that have not been accepted'}).waitFor();
   const [[stored]]=await db.query('SELECT must_change_password FROM finance_users WHERE id=?',[stale.id]);assert.equal(stored.must_change_password,0);
-  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await page.getByRole('button',{name:'Refresh',exact:true}).click();
+  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await nav('Dashboard').click();await nav('Users').click();
   await userRow(stale).getByText('Active',{exact:true}).waitFor();assert.equal(await userRow(stale).getByRole('button',{name:'Delete invitation',exact:true}).count(),0);
   const reportAfter=await api('/finance/reports?from=2026-11-01&to=2026-11-30');
   for(const key of ['opening_balance','money_in','money_out','closing_balance','net_change'])assert.equal(reportAfter[key],reportBefore[key]);

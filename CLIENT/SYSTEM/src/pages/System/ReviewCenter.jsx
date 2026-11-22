@@ -596,12 +596,12 @@ const ReviewCenter = () => {
   const visibleUnread = (notifications.data?.data || []).filter((item) => !item.read_at).length
   const hasUnreadNotifications = visibleUnread > 0 || (counts.notificationCountsAvailable !== false && Number(counts.unreadNotifications || 0) > 0)
   const notificationBusy = markRead.isPending || markAllRead.isPending
-  const refreshAll = async () => { await Promise.all([summary.refetch(), reviews.refetch(), approvals.refetch(), notifications.refetch()]) }
+
 
   if (actor.role && !REVIEW_CENTER_ROLES.has(actor.role)) return <Navigate to={`/portal/${actor.role}`} replace />
 
   return <main className="grid gap-6">
-    <div className="flex flex-wrap items-start justify-between gap-4"><PageHeader icon={FiShield} title={queueCopy.title} description={queueCopy.description} /><button type="button" onClick={refreshAll} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 font-black text-slate-700"><FiRefreshCw />Refresh</button></div>
+    <div className="flex flex-wrap items-start justify-between gap-4"><PageHeader icon={FiShield} title={queueCopy.title} description={queueCopy.description} /></div>
     {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={() => setNotice(null)} /> : null}
     {(counts.notificationCountsAvailable === false || counts.protectedCountsAvailable === false) ? <p role="status" className="text-sm text-amber-800">Some alert totals are temporarily unavailable. Your review queue is still accessible; retry Refresh or contact your system administrator if this persists.</p> : null}
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

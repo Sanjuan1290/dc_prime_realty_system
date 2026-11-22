@@ -1,4 +1,4 @@
-import { FiFilter, FiRefreshCw, FiSearch } from 'react-icons/fi'
+import { FiFilter, FiSearch } from 'react-icons/fi'
 
 const actionOptions = [
   { label: 'All Actions', value: 'all' },
@@ -39,13 +39,11 @@ const AuditLogFilters = ({
   to,
   setTo,
   onReset,
-  onRefresh,
-  isFetching,
 }) => {
   const isCustomRange = dateRange === 'custom'
   const gridColumns = isCustomRange
-    ? 'xl:grid-cols-[minmax(260px,1fr)_170px_170px_160px_150px_150px_auto_auto]'
-    : 'xl:grid-cols-[minmax(300px,1fr)_180px_180px_180px_auto_auto]'
+    ? 'xl:grid-cols-[minmax(260px,1fr)_170px_170px_160px_150px_150px_auto]'
+    : 'xl:grid-cols-[minmax(300px,1fr)_180px_180px_180px_auto]'
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -135,15 +133,7 @@ const AuditLogFilters = ({
           Reset
         </button>
 
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={isFetching}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+
       </div>
     </section>
   )

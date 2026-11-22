@@ -23,7 +23,7 @@ test('Lot Project workspace separates operational Dashboard from Reports', () =>
   assert.match(dashboard, /Needs Attention/)
   assert.match(dashboard, /Upcoming Dues/)
   assert.match(dashboard, /Quick Navigation/)
-  assert.match(dashboard, /Financial analytics moved to Reports/)
+  assert.doesNotMatch(dashboard, /Financial analytics moved to Reports/)
   assert.doesNotMatch(dashboard, /Seller Performance Details/)
   assert.doesNotMatch(dashboard, /Graph Date Filter/)
   assert.match(dashboard, />View Details<\/button>/)

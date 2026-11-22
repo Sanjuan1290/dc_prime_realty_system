@@ -9,10 +9,8 @@ import {
   FiDollarSign,
   FiEdit3,
   FiEye,
-  FiFileText,
   FiGrid,
   FiHome,
-  FiRefreshCw,
   FiShield,
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
@@ -205,15 +203,7 @@ const Dashboard = () => {
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setShowDetails(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"><FiEye className="h-4 w-4" />View Details</button>
           <button type="button" onClick={() => setShowEdit(true)} disabled={isDocumentsLoading || isTemplatesLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiEdit3 className="h-4 w-4" />Edit Project</button>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+
         </div>
       </section>
 
@@ -313,15 +303,6 @@ const Dashboard = () => {
             ))}
           </div>
 
-          <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 p-4">
-            <div className="flex items-start gap-3">
-              <FiFileText className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
-              <div>
-                <p className="font-black text-blue-950">Financial analytics moved to Reports</p>
-                <p className="mt-1 text-sm font-semibold text-blue-800">Sales, collections, penalties, cancellations, inventory values, seller performance, commissions, and charts are now under the Reports tab.</p>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 

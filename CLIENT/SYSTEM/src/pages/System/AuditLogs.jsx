@@ -8,7 +8,6 @@ import {
   FiDatabase,
   FiDownload,
   FiPlus,
-  FiRefreshCw,
   FiTrash2,
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
@@ -311,15 +310,7 @@ const AuditLogs = () => {
         />
 
         {(auditTab === 'active' || !canBrowseArchive) ? <div className="flex flex-col gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+
 
           {canExport ? <button type="button" onClick={() => setShowExportModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-white px-5 text-sm font-black text-blue-700 shadow-sm transition hover:bg-blue-50"><FiDownload className="h-4 w-4" />Export Audit Report</button> : null}
 
@@ -381,8 +372,6 @@ const AuditLogs = () => {
         to={to}
         setTo={(value) => { setTo(value); setPage(1) }}
         onReset={resetFilters}
-        onRefresh={refetch}
-        isFetching={isFetching}
       />
 
       {linkedReviewId ? <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-semibold text-blue-900">

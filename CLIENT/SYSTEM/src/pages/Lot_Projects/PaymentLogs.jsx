@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { FiActivity, FiRefreshCw, FiSearch } from 'react-icons/fi'
+import { FiActivity, FiSearch } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import { useFetch } from '../../utils/useFetch'
@@ -98,10 +98,7 @@ const PaymentLogs = () => {
     setAlert({ type: 'info', message: 'Audit log filters reset.' })
   }
 
-  const refreshLogs = () => {
-    setAlert({ type: 'info', message: 'Refreshing payment logs...' })
-    refetch()
-  }
+
 
   return (
     <main className="flex flex-col gap-6">
@@ -118,14 +115,7 @@ const PaymentLogs = () => {
           icon={FiActivity}
         />
 
-        <button
-          type="button"
-          onClick={refreshLogs}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
-        >
-          <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">

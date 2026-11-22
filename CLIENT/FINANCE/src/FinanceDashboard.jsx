@@ -1,117 +1,58 @@
-import {useId, useState} from 'react';
-import {FiArrowDownLeft, FiArrowRight, FiArrowUpRight, FiBarChart2} from 'react-icons/fi';
-import FinanceActualTotals, {FinanceTotalsNote} from './FinanceActualTotals.jsx';
-import FinanceDateFilter from './FinanceDateFilter.jsx';
+import {FiArrowDownLeft, FiArrowRight, FiArrowUpRight, FiBarChart2, FiFileText, FiList, FiShield, FiTrendingUp} from 'react-icons/fi';
 import {Notice, Spinner} from './FinanceFeedback.jsx';
-import {FinanceTrendChart} from './FinanceReportCharts.jsx';
 import {financeMoney} from './financeFormat.js';
-import {financeBucketLabel, financeDate, financeDayCount, financePeriodLabel} from './financePeriods.js';
-
-const countFormat = new Intl.NumberFormat('en-PH');
+import {financeDate, financePeriodLabel} from './financePeriods.js';
 
 function CashTile({icon: Icon, label, value, hint, tone = ''}) {
-  return (
-    <div className={`tile finance-metric finance-metric-${tone}`}>
-      <div className="finance-metric-heading"><span>{label}</span><Icon aria-hidden="true" /></div>
-      <strong>{financeMoney(value)}</strong>
-      <small>{hint}</small>
-    </div>
-  );
+  return <div className={`tile finance-metric finance-metric-${tone}`}>
+    <div className="finance-metric-heading"><span>{label}</span><Icon aria-hidden="true" /></div>
+    <strong>{value == null ? '—' : financeMoney(value)}</strong>
+    <small>{hint}</small>
+  </div>;
 }
 
 export default function FinanceDashboard({
-  range, onRangeChange, dashboard, transactions, loading, onOpenReports, onOpenTransactions, onViewTransaction,
+  range, dashboard, loading, canAdmin, onOpenReports, onOpenTransactions, onOpenImports, onOpenAudit,
 }) {
-  const [draft, setDraft] = useState(range);
-  const categoriesId = useId();
-  const hasDraft = draft.preset !== range.preset || draft.from !== range.from || draft.to !== range.to;
-  const canApply = hasDraft && financeDayCount(draft.from, draft.to) > 0;
-  const topCategories = dashboard?.categories.slice(0, 4) ?? [];
+  const shortcuts = [
+    {label:'Transactions', hint:'Find payments and review entries.', icon:FiList, action:onOpenTransactions},
+    {label:'Reports', hint:'Explore cash flow, charts and date ranges.', icon:FiBarChart2, action:onOpenReports},
+    ...(canAdmin ? [
+      {label:'Imports', hint:'Bring in HR and Company Finances payments.', icon:FiFileText, action:onOpenImports},
+      {label:'Audit Logs', hint:'Review Finance account activity.', icon:FiShield, action:onOpenAudit},
+    ] : []),
+  ];
 
-  return (
-    <section className="page-stack finance-dashboard">
-      <form className="finance-filter-form" onSubmit={event => {
-        event.preventDefault();
-        if (canApply) onRangeChange(draft);
-      }}>
-        <FinanceDateFilter title="Dashboard Date Filter" range={draft} onChange={setDraft} />
-        {hasDraft && <div className="finance-filter-actions">
-          <button className="btn primary" disabled={loading || !canApply}>Apply dates</button>
-        </div>}
-      </form>
-
-      {!dashboard && loading && <div className="finance-report-status" role="status"><Spinner label="Loading dashboard…" /></div>}
-      {dashboard && <div className={'page-stack finance-report-results' + (loading ? ' is-loading' : '')} aria-busy={loading}>
-        <div className="finance-content-heading">
-          <div><h2>Cash overview</h2><p>{financePeriodLabel(dashboard.from, dashboard.to)}</p></div>
-          <button type="button" className="btn" onClick={onOpenReports}>
-            <FiBarChart2 aria-hidden="true" /> Open Reports
-          </button>
-        </div>
-        <div className="finance-dashboard-summary">
-          <CashTile icon={FiArrowDownLeft} label="Money in" value={dashboard.money_in} hint="Gross income, including undo entries" tone="income" />
-          <CashTile icon={FiArrowUpRight} label="Money out" value={dashboard.money_out} hint="Gross expenses, including reversed payroll" tone="expense" />
-          <CashTile icon={FiBarChart2} label="Net cash change" value={dashboard.net_change} hint="Gross money in minus gross money out"
-            tone={Number(dashboard.net_change) < 0 ? 'expense' : 'net'} />
-          <FinanceActualTotals report={dashboard}/>
-        </div>
-        <dl className="finance-overview-strip">
-          <div><dt>Opening balance</dt><dd>{financeMoney(dashboard.opening_balance)}</dd></div>
-          <div><dt>Posted transactions in this period</dt><dd>{countFormat.format(dashboard.period_count)}</dd></div>
-        </dl>
-        <FinanceTotalsNote report={dashboard}/>
-
-        {dashboard.period_count === 0 ? (
-          <Notice type="info" title="No posted transactions in this period">
-            Your opening balance carries forward. Choose another date range to see more activity.
-          </Notice>
-        ) : (
-          <>
-            <div className="finance-dashboard-insights">
-              <section className="panel finance-chart-panel">
-                <div className="finance-card-heading"><h2>Cash flow</h2><p>{financeBucketLabel(dashboard.bucket_size)} gross money in and out, including payroll corrections</p></div>
-                <div className="chart-legend"><span className="chart-income">Money in</span><span className="chart-expense">Money out</span></div>
-                <div className="finance-chart-scroll"><FinanceTrendChart series={dashboard.series} /></div>
-              </section>
-              <section className="panel finance-chart-panel">
-                <div className="finance-card-heading"><h2>Top categories</h2><p>Largest gross totals, including payroll corrections</p></div>
-                <ul className="finance-top-categories">
-                  {topCategories.map(category => <li key={category.kind + '/' + category.id} tabIndex={0} aria-describedby={`${categoriesId}-${category.kind}-${category.id}`}>
-                    <div className="finance-category-total">
-                      <span>{category.name}</span><strong>{financeMoney(category.amount)}</strong>
-                    </div>
-                    <div className={`finance-category-meter ${category.kind}`} aria-hidden="true">
-                      <span style={{width: `${100 * Number(category.amount) / Number(topCategories[0].amount)}%`}} />
-                    </div>
-                    <span className="finance-category-kind">{category.kind === 'income' ? 'Income' : 'Expense'}</span>
-                    <span role="tooltip" id={`${categoriesId}-${category.kind}-${category.id}`} className="finance-category-hover-tip">{category.name} · {financeMoney(category.amount)} · {countFormat.format(category.count)} {category.count === 1 ? 'transaction' : 'transactions'}</span>
-                  </li>)}
-                </ul>
-              </section>
-            </div>
-            <section className="panel finance-chart-panel">
-              <div className="finance-content-heading">
-                <div className="finance-card-heading"><h2>Recent transactions</h2><p>Latest posted entries in this period</p></div>
-                <button type="button" className="btn" onClick={onOpenTransactions}>View transactions <FiArrowRight aria-hidden="true" /></button>
-              </div>
-              <div className="table-wrap finance-analysis-table">
-                <table aria-label="Recent posted transactions">
-                  <thead><tr><th>Date</th><th>Transaction</th><th>Category</th><th>Type</th><th className="align-right">Amount</th></tr></thead>
-                  <tbody>{transactions.map(row => (
-                    <tr key={row.id}>
-                      <td>{financeDate(row.transaction_date)}</td>
-                      <td><button type="button" className="text-btn" onClick={() => onViewTransaction(row.id)}>{row.description}</button></td>
-                      <td>{row.category_name}</td><td><span className={'pill ' + row.kind}>{row.kind}</span></td>
-                      <td className="align-right">{financeMoney((row.kind === 'expense' ? '-' : '') + row.amount)}</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
-              </div>
-              {transactions.length === 0 && <p className="muted">No recent entries to display.</p>}
-            </section>
-          </>
-        )}
-      </div>}
+  return <section className="page-stack finance-dashboard" aria-label="Finance dashboard">
+    <div className="finance-content-heading">
+      <div><h2>This month at a glance</h2><p>{financePeriodLabel(range.from, range.to)}</p></div>
+    </div>
+    {!dashboard && loading && <div className="finance-report-status" role="status"><Spinner label="Loading dashboard…" /></div>}
+    {dashboard && <div className="page-stack finance-report-results" aria-busy={loading}>
+      <div className="finance-dashboard-summary">
+        <CashTile icon={FiTrendingUp} label="Available balance" value={dashboard.closing_balance}
+          hint={`As of ${financeDate(dashboard.to)}`} tone="balance" />
+        <CashTile icon={FiArrowDownLeft} label="Actual money in" value={dashboard.actual_money_in}
+          hint="Income this month, excluding reversed entries" tone="income" />
+        <CashTile icon={FiArrowUpRight} label="Actual money out" value={dashboard.actual_money_out}
+          hint="Expenses this month, excluding reversed entries" tone="expense" />
+      </div>
+      {Number(dashboard.closing_balance) < 0 && <Notice type="warning" title="Balance needs attention">
+        Recorded expenses exceed the available cash. Open Reports to review the cash flow and Transactions to check the entries.
+      </Notice>}
+      {dashboard.period_count === 0 && <Notice type="info" title="No transactions this month">
+        Your previous balance carries forward. Open Reports to review another period.
+      </Notice>}
+    </div>}
+    <section className="panel finance-quick-nav" aria-label="Finance quick navigation">
+      <div className="finance-card-heading"><h2>Quick navigation</h2><p>Open the Finance area you need.</p></div>
+      <div className="finance-quick-links">
+        {shortcuts.map(({label, hint, icon: Icon, action}) => <button type="button" key={label} onClick={action}>
+          <Icon className="finance-shortcut-icon" aria-hidden="true" />
+          <span><strong>{label}</strong><small>{hint}</small></span>
+          <FiArrowRight aria-hidden="true" />
+        </button>)}
+      </div>
     </section>
-  );
+  </section>;
 }

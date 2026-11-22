@@ -88,7 +88,16 @@ input,select,textarea{min-height:44px;border-color:#cbd7e4;border-radius:10px;pa
 .finance-content-heading h2, .finance-card-heading h2 {margin:0;color:#19324d;font-size:18px;line-height:1.35}
 .finance-content-heading p, .finance-card-heading p {margin:4px 0 0;font-size:12px;color:var(--muted)}
 .finance-dashboard-summary, .finance-report-summary {display:grid;gap:12px}
-.finance-dashboard-summary {grid-template-columns:repeat(4,minmax(0,1fr))}
+.finance-dashboard-summary {grid-template-columns:repeat(3,minmax(0,1fr))}
+.finance-quick-nav {margin:0}
+.finance-quick-links {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}
+.finance-quick-links button {display:flex;align-items:center;gap:14px;min-width:0;padding:18px;border:1px solid var(--line);border-radius:12px;background:#f8fafc;color:#19324d;text-align:left}
+.finance-quick-links button:hover {background:#edf4fa;border-color:#b6c9dc}
+.finance-quick-links button>span {flex:1;min-width:0}
+.finance-quick-links strong,.finance-quick-links small {display:block;overflow-wrap:anywhere}
+.finance-quick-links small {margin-top:4px;font-size:12px;color:var(--muted)}
+.finance-quick-links svg {flex-shrink:0}
+.finance-quick-links .finance-shortcut-icon {width:21px;height:21px;color:#315b83}
 .finance-report-summary {grid-template-columns:repeat(4,minmax(0,1fr))}
 .finance-metric {min-width:0;padding:16px 17px}
 .finance-metric-heading {display:flex;gap:8px;align-items:center;justify-content:space-between;color:#485d75;font-size:12px;font-weight:650}
@@ -170,7 +179,8 @@ input,select,textarea{min-height:44px;border-color:#cbd7e4;border-radius:10px;pa
   .finance-breakdown-filter {grid-template-columns:minmax(0,1fr);grid-template-areas:"intro" "fields" "actions"}
 }
 @media (max-width: 650px) {
-  .finance-dashboard-summary, .finance-report-summary {grid-template-columns:repeat(2,minmax(0,1fr))}
+  .finance-dashboard-summary,.finance-quick-links {grid-template-columns:minmax(0,1fr)}
+  .finance-report-summary {grid-template-columns:repeat(2,minmax(0,1fr))}
   .finance-date-filter, .finance-breakdown-filter {padding:13px}
   .finance-date-fields {grid-template-columns:repeat(2,minmax(0,1fr))}
   .finance-date-fields .finance-filter-field:first-child {grid-column:1/-1}

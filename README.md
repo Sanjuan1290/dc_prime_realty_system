@@ -40,3 +40,5 @@ For verification without loading private .env files, use **node tools/qa/check-p
 The fresh-start schemas under DATABASES/FRESH_START are for new empty databases, not upgrades of existing live databases. The invitation columns, import undo support and new HR permissions have additive startup upgrades and separately reviewable SQL migrations. Existing business data and passwords are preserved.
 
 See [current implementation and test evidence](QA_REPORTS/2026-11-18-payroll-undo-and-connected-fixes.md) for payroll undo, release, audit, document and export changes and their publication status. Historical batch documents describe earlier states and are not active deployment gates.
+
+The [PDF 6 interface report](QA_REPORTS/2026-11-22-pdf6-dashboard-and-interface.md) covers the compact Finance dashboard and removal of header Refresh controls, Realty salary summaries, seller breakdowns and duplicate project-report UI.

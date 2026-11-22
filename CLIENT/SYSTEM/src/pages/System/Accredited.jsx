@@ -9,7 +9,7 @@ import ReadOnlyNotice from "../../components/Shared/ReadOnlyNotice";
 import SignedCopyUploadModal from "../../components/Shared/SignedCopyUploadModal";
 import useCurrentUser from "../../utils/useCurrentUser";
 import { FaUserPlus } from "react-icons/fa";
-import { FiCalendar, FiDownload, FiExternalLink, FiFileText, FiHome, FiEye, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
+import { FiCalendar, FiDownload, FiExternalLink, FiFileText, FiHome, FiEye, FiLoader, FiPrinter, FiSearch, FiUsers, FiX } from "react-icons/fi";
 import { formatDateTime } from "../../utils/formatDateTime";
 import {useFetch as fetchApi, useFetchPost as postApi, getDoubleCheckNotice} from "../../utils/useFetch";
 import { PERMISSIONS, hasPermission } from "../../config/permissions";
@@ -898,7 +898,7 @@ const Accredited = () => {
   const roleBasePath = `/portal/${actor?.role || "super_admin"}`;
   const location = useLocation();
   const initialDirectoryFilters = new URLSearchParams(location.search);
-  const queryClient = useQueryClient();
+
   const [search, setSearch] = useState(() => initialDirectoryFilters.get('sellerSearch') || '');
   const [roleFilter, setRoleFilter] = useState(() => initialDirectoryFilters.get('sellerRole') || 'all');
   const [statusFilter, setStatusFilter] = useState(() => initialDirectoryFilters.get('sellerStatus') || 'all');
@@ -1024,7 +1024,7 @@ const Accredited = () => {
             <label className="relative block"><FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="text" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search sellers..." className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
             <select value={roleFilter} onChange={(event) => { setRoleFilter(event.target.value); setPage(1); }} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"><option value="all">All Roles</option>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"><option value="all">All Status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
-            <button type="button" onClick={() => queryClient.invalidateQueries({ queryKey: ["accredited"] })} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"><FiRefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />Refresh</button>
+
           </div>
         </div>
 

@@ -4,6 +4,8 @@ Live React/Vite application at /finance in the combined Cloudflare Pages build. 
 
 Pages: dashboard, transactions, categories, audit history, user invitations, imports and reconciliation. New invited users must choose their own password before entering the app. Administrators choose a salary/Company Finances export, review its payments and confirm. Categories are automatic. Import history provides a reviewed Undo action; uploading the same file again restores payments. Role and password-setup restrictions are also enforced by the API.
 
+The dashboard shows a compact monthly summary of available balance and actual income/expenses, with quick navigation and empty-month or negative-balance notices. Reports contains the date filters, detailed charts and PDF export. Page-header Refresh controls have been removed; successful changes still reload their affected data.
+
 Before authentication, health GET requests retry within a three-minute cold-start deadline and respect the server's Retry-After interval. Repeated database-startup responses do not exhaust a fixed attempt count. Password submissions are never retried automatically. User-facing states distinguish connection delays, rate limits, provider security blocks and validation errors.
 
 Forms, controls, alerts and keyboard-accessible confirmation dialogs share consistent styling and motion, with responsive history cards and reduced-motion support.

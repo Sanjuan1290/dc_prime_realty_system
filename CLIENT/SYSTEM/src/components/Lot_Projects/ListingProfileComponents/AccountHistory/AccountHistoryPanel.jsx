@@ -1,7 +1,7 @@
 import { formatPhilippineDateTime, formatPhilippineCalendarDate } from '../../../../utils/formatDateTime'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiArrowRight, FiClock, FiRefreshCw, FiShield, FiTrash2, FiUser } from 'react-icons/fi'
+import { FiArrowRight, FiClock, FiShield, FiTrash2, FiUser } from 'react-icons/fi'
 import { useNavigate } from 'react-router-dom'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetch } from '../../../../utils/useFetch'
@@ -27,11 +27,7 @@ const AccountHistoryPanel = ({ projectSlug, listingId, canPermanentlyDelete = fa
   })
   const accounts = query.data?.data || []
 
-  const refresh = async () => {
-    setNotice({ type: 'loading', message: 'Refreshing account history...' })
-    try { await query.refetch(); setNotice({ type: 'success', message: 'Account history refreshed.' }) }
-    catch (error) { setNotice({ type: 'error', message: error?.message || 'Failed to refresh account history.' }) }
-  }
+
 
   const openAccount = (account) => {
     const basePath = `/portal/lot-projects/${projectSlug}/listings/${listingId}`
@@ -52,7 +48,7 @@ const AccountHistoryPanel = ({ projectSlug, listingId, canPermanentlyDelete = fa
           <div className="flex items-center gap-2"><FiClock className="text-blue-600" /><h2 className="text-xl font-black text-slate-950">Buyer Account History</h2></div>
           <p className="mt-1 text-sm font-semibold text-slate-500">Open an account to view only that buyer's profile, payments, SOA, documents, and commissions.</p>
         </div>
-        <button type="button" onClick={refresh} disabled={query.isFetching} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"><FiRefreshCw className={query.isFetching ? 'animate-spin' : ''} /> Refresh</button>
+
       </div>
 
       {query.isLoading ? <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-sm font-black text-slate-600">Loading buyer account history...</div> : null}
