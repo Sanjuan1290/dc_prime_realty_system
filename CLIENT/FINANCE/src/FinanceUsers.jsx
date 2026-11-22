@@ -2,6 +2,7 @@ import {useState} from 'react';
 import {Dialog,Notice,Spinner} from './FinanceFeedback.jsx';
 import {api} from './api.js';
 import {financeDateTime} from './financeFormat.js';
+import Pagination from '../../shared/Pagination.jsx';
 
 const blank={email:'',display_name:'',role:'viewer'};
 const roles={viewer:'Viewer',accountant:'Accountant',admin:'Admin'};
@@ -20,10 +21,13 @@ export default function FinanceUsers({users,currentUserId,onChanged,onAccessChan
   const [form,setForm]=useState(blank),[busy,setBusy]=useState('');
   const [message,setMessage]=useState(null),[dialogError,setDialogError]=useState('');
   const [search,setSearch]=useState(''),[role,setRole]=useState(''),[status,setStatus]=useState('');
+  const [page,setPage]=useState(1),[pageSize,setPageSize]=useState(10);
   const [editing,setEditing]=useState(null),[removing,setRemoving]=useState(null);
   const searchTerm=search.trim().toLowerCase();
   const shown=users.filter(user=>(!searchTerm||[user.display_name,user.email].some(value=>value.toLowerCase().includes(searchTerm)))&&
     (!role||role===user.role)&&(!status||status===statusOf(user)));
+  const currentPage=Math.min(page,Math.max(1,Math.ceil(shown.length/pageSize)));
+  const pageRows=shown.slice((currentPage-1)*pageSize,currentPage*pageSize);
 
   const send=async(id=null)=>{
     setBusy(id?'resend-'+id:'invite');
@@ -98,16 +102,16 @@ export default function FinanceUsers({users,currentUserId,onChanged,onAccessChan
       <div><button className="btn primary" disabled={Boolean(busy)}>{busy==='invite'?<Spinner label="Sending…"/>:'Send account invitation'}</button></div>
     </form>
     <div className="filters finance-admin-filters">
-      <label>Search accounts<input type="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Name or email"/></label>
-      <label>Role<select value={role} onChange={event=>setRole(event.target.value)}><option value="">All roles</option>
+      <label>Search accounts<input type="search" value={search} onChange={event=>{setSearch(event.target.value);setPage(1)}} placeholder="Name or email"/></label>
+      <label>Role<select value={role} onChange={event=>{setRole(event.target.value);setPage(1)}}><option value="">All roles</option>
         {Object.entries(roles).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
-      <label>Status<select value={status} onChange={event=>setStatus(event.target.value)}><option value="">All statuses</option>
+      <label>Status<select value={status} onChange={event=>{setStatus(event.target.value);setPage(1)}}><option value="">All statuses</option>
         {Object.entries(accountStatus).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
     </div>
     <div className="table-wrap"><table>
       <thead><tr><th>Account</th><th>Role</th><th>Status</th><th>Invitation · Philippine Time</th><th>Actions</th></tr></thead>
       <tbody>{!shown.length&&<tr><td colSpan={5} className="empty">No Finance accounts match your filters.</td></tr>}
-        {shown.map(user=>{
+        {pageRows.map(user=>{
           const state=statusOf(user);
           return <tr key={user.id}>
             <td><strong>{user.display_name}</strong><span className="cell-secondary">{user.email}</span></td>
@@ -124,6 +128,7 @@ export default function FinanceUsers({users,currentUserId,onChanged,onAccessChan
         })}
       </tbody>
     </table></div>
+    <Pagination label="Finance users pagination" page={currentPage} pageSize={pageSize} total={shown.length} disabled={Boolean(busy)} onPageChange={setPage} onPageSizeChange={size=>{setPageSize(size);setPage(1)}}/>
     {removing&&<Dialog title="Delete Finance invitation?" description={removing.display_name} busy={busy==='delete'} danger onClose={()=>setRemoving(null)}>
       <p>This removes the invitation for <strong>{removing.email}</strong>. Their temporary password will no longer work. You can invite them again later.</p>
       {dialogError&&<Notice type="error">{dialogError}</Notice>}

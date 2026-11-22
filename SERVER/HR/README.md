@@ -2,6 +2,8 @@
 
 Render root: SERVER/HR. Build: npm install. Start: npm start. Readiness: /api/v1/health. Liveness: /api/v1/live.
 
+Audit history accepts `page` and `page_size` (1–100; default 50), returns an available last page when a requested page is beyond the results, and includes `filter_options.modules` / `filter_options.actions` for the dropdowns. Existing audit permissions and date filters still apply.
+
 Production is supported. Set NODE_ENV=production, HR_DB_HOST, HR_DB_PORT, HR_DB_USER, HR_DB_PASSWORD, HR_DB_NAME=dc_prime_hr_db, HR_DB_TLS=true, HR_JWT_SECRET (32+ random characters), HR_COOKIE_SECURE=true, and HR_CORS_ORIGIN=https://dc-prime-realty.pages.dev. See [.env.example](.env.example).
 
 The service binds its port before checking the database. The connection, initial query and additive access grants share a bounded startup deadline (HR_DB_STARTUP_TIMEOUT_MS, default 30000). Hosted database connections require verified TLS. Startup idempotently registers the new audit and finalized receipt permissions for existing HR administrator/payroll manager roles. The equivalent SQL is [20261116_live_reports.sql](migrations/20261116_live_reports.sql).

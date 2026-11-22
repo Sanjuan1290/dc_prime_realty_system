@@ -42,3 +42,5 @@ The fresh-start schemas under DATABASES/FRESH_START are for new empty databases,
 See [current implementation and test evidence](QA_REPORTS/2026-11-18-payroll-undo-and-connected-fixes.md) for payroll undo, release, audit, document and export changes and their publication status. Historical batch documents describe earlier states and are not active deployment gates.
 
 The [PDF 6 interface report](QA_REPORTS/2026-11-22-pdf6-dashboard-and-interface.md) covers the compact Finance dashboard and removal of header Refresh controls, Realty salary summaries, seller breakdowns and duplicate project-report UI.
+
+The [PDF 7 report](QA_REPORTS/2026-11-22-pdf7-pagination-attendance-and-buyer-links.md) covers list pagination, HR audit dropdowns, attendance export/event controls, and buyer-link routing into `/system`.

@@ -1,3 +1,4 @@
+import Pagination from '../../../../shared/Pagination.jsx'
 import { HR_FEATURE_FLAGS } from '../../config/featureFlags'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -41,6 +42,9 @@ const EmployeeSalary = () => {
   const [department, setDepartment] = useState('all')
   const [payrollStatus, setPayrollStatus] = useState('all')
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const changeFilter = (setter, value) => { setter(value); setPage(1) }
   const [showGenerate, setShowGenerate] = useState(false)
   const [showPayrollSettings, setShowPayrollSettings] = useState(false)
   const [showFinanceExport, setShowFinanceExport] = useState(false)
@@ -77,6 +81,8 @@ const EmployeeSalary = () => {
   })
 
   const rows = registerQuery.data?.data || []
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)))
+  const pageRows = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize)
   const period = periodQuery.data?.data || null
   const departmentRows = departmentsQuery.data?.data || []
   const departments = useMemo(() => Array.from(new Set(departmentRows.map((row) => row.department_snapshot).filter(Boolean))).sort((a, b) => a.localeCompare(b)), [departmentRows])
@@ -141,11 +147,11 @@ const EmployeeSalary = () => {
 
       <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="grid gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-5">
-          <label className="block"><span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Month</span><input type="month" value={month} onChange={(event) => { setMonth(event.target.value); setDepartment('all') }} className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold" /></label>
-          <label className="block"><span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Payroll Period</span><select value={periodType} onChange={(event) => { setPeriodType(event.target.value); setDepartment('all') }} className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold"><option value="first_half">1–15</option><option value="second_half">16–End of Month</option></select></label>
-          <label className="block"><span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Department</span><select value={department} onChange={(event) => setDepartment(event.target.value)} className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold"><option value="all">All Departments</option>{departments.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-          <label className="block"><span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Payroll Status</span><select value={payrollStatus} onChange={(event) => setPayrollStatus(event.target.value)} className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold"><option value="all">All Statuses</option><option value="draft">Draft</option><option value="finalized">Finalized</option><option value="corrected">Corrected</option><option value="released">Released</option><option value="cancelled">Cancelled</option></select></label>
-          <label className="block"><span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Search Employee</span><span className="relative block"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, code, position..." className="h-10 w-full rounded-xl border border-slate-300 pl-10 pr-3 text-sm font-semibold" /></span></label>
+          <label className="block"><span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Month</span><input type="month" value={month} onChange={(event) => { changeFilter(setMonth, event.target.value); setDepartment('all') }} className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold" /></label>
+          <label className="block"><span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Payroll Period</span><select value={periodType} onChange={(event) => { changeFilter(setPeriodType, event.target.value); setDepartment('all') }} className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold"><option value="first_half">1–15</option><option value="second_half">16–End of Month</option></select></label>
+          <label className="block"><span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Department</span><select value={department} onChange={(event) => changeFilter(setDepartment, event.target.value)} className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold"><option value="all">All Departments</option>{departments.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+          <label className="block"><span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Payroll Status</span><select value={payrollStatus} onChange={(event) => changeFilter(setPayrollStatus, event.target.value)} className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold"><option value="all">All Statuses</option><option value="draft">Draft</option><option value="finalized">Finalized</option><option value="corrected">Corrected</option><option value="released">Released</option><option value="cancelled">Cancelled</option></select></label>
+          <label className="block"><span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Search Employee</span><span className="relative block"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => changeFilter(setSearch, event.target.value)} placeholder="Name, code, position..." className="h-10 w-full rounded-xl border border-slate-300 pl-10 pr-3 text-sm font-semibold" /></span></label>
         </div>
 
         <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -159,7 +165,7 @@ const EmployeeSalary = () => {
             <tbody className="divide-y divide-slate-100">
               {registerQuery.isLoading ? <tr><td colSpan={9} className="px-5 py-16 text-center font-semibold text-slate-500">Loading employee salary...</td></tr> : null}
               {!registerQuery.isLoading && !rows.length ? <tr><td colSpan={9} className="px-5 py-16 text-center"><p className="font-black text-slate-800">No payroll generated for this period</p><p className="mt-1 text-sm font-semibold text-slate-500">Generate Draft Payroll to calculate employee salary from Attendance and effective compensation.</p></td></tr> : null}
-              {rows.map((row) => <tr key={row.employee_payroll_id} className="align-top hover:bg-slate-50">
+              {pageRows.map((row) => <tr key={row.employee_payroll_id} className="align-top hover:bg-slate-50">
                 <td className="px-4 py-4"><p className="font-black text-slate-950">{row.employee_name_snapshot}</p><p className="mt-1 font-mono text-xs font-bold text-blue-700">{row.employee_code || `Employee #${row.employee_id}`}</p><p className="mt-1 text-xs font-semibold text-slate-500">{row.department_snapshot || '—'}</p></td>
                 <td className="px-4 py-4 font-semibold text-slate-700">{row.position_snapshot || '—'}</td>
                 <td className="px-4 py-4 font-black text-slate-950">{money(row.half_month_basic)}</td>
@@ -176,6 +182,7 @@ const EmployeeSalary = () => {
             </tbody>
           </table>
         </div>
+        <Pagination label="Payroll pagination" page={currentPage} pageSize={pageSize} total={rows.length} disabled={registerQuery.isFetching} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} />
       </section>
 
       {actionsPayroll ? <ActionPanelModal

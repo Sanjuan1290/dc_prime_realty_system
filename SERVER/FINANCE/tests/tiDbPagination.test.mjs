@@ -16,6 +16,27 @@ for(const [name,fn] of [['audit',listAudit],['imports',listImportBatches]]) {
     const pool={execute:()=>assert.fail('Invalid pages must not run SQL')};
     for(const page of ['1; DROP TABLE finance_users','1.5','NaN','0','-1','100001']) await assert.rejects(fn({page},pool),{code:'INVALID_PAGE'});
   });
+  test(`${name}: selectable page sizes use the matching offset and preserve the total`,async()=>{
+    const pool={execute:async sql=>{
+      if(sql.startsWith('SELECT COUNT'))return [[{total:23}]];
+      assert.match(sql,/LIMIT 10 OFFSET 10$/);
+      return [[{id:'page-two',recorded_epoch:Date.parse('2026-11-18T02:00:00Z')/1000}]];
+    }};
+    const result=await fn({page:'2',page_size:'10'},pool);
+    assert.equal(result.page_size,10);assert.equal(result.total,23);assert.equal(result.page,2);
+  });
+  test(`${name}: a page beyond the last record resolves to the last available page`,async()=>{
+    const pool={execute:async sql=>{
+      if(sql.startsWith('SELECT COUNT'))return [[{total:23}]];
+      assert.match(sql,/LIMIT 10 OFFSET 20$/);
+      return [[]];
+    }};
+    const result=await fn({page:'999',page_size:'10'},pool);assert.equal(result.page,3);
+  });
+  test(`${name}: invalid page sizes are rejected before SQL`,async()=>{
+    const pool={execute:()=>assert.fail('Invalid sizes must not run SQL')};
+    for(const page_size of ['0','-1','101','1.5','NaN','Infinity','10;DROP TABLE finance_users'])await assert.rejects(fn({page_size},pool),{code:'INVALID_PAGE'});
+  });
 }
 test('audit timestamps use Manila once and audit details hide credentials',async()=>{
  const pool={execute:async sql=>sql.startsWith('SELECT COUNT')?[[{total:1}]]:[[{id:1,recorded_epoch:Date.parse('2026-11-18T02:00:00Z')/1000,metadata_json:JSON.stringify({password:'private',amount:'7500.00'})}]]};

@@ -2,6 +2,8 @@
 
 Render root: SERVER/FINANCE. Build: npm install. Start: npm start. Readiness: /api/v1/health. Liveness: /api/v1/live.
 
+Import history and audit history accept `page_size` from 1 to 100 (defaults remain 20 and 50). Counts match the filtered records, and requests beyond the last page return the last available page. The frontend uses 10/20/50-row controls. Deploy this API before publishing the updated pagination controls.
+
 Set NODE_ENV=production, TIDB_HOST, TIDB_PORT, TIDB_USERNAME, TIDB_PASSWORD, TIDB_DATABASE=dc_prime_finance_db, TIDB_SSL=true, FINANCE_COOKIE_SECURE=true, and FINANCE_ALLOWED_ORIGINS=https://dc-prime-realty.pages.dev. See [.env.example](.env.example). Previous FINANCE_STAGING_ENABLED, FINANCE_PRODUCTION_ENABLED and FINANCE_IMPORTS_ENABLED flags no longer gate production operation.
 
 The API binds its port before checking the database. Its probe and invitation schema upgrade share DATABASE_STARTUP_TIMEOUT_MS (default 30000). The upgrade adds missing invitation/undo fields, extends category names to 200 characters, and creates a single-row import mutex. Existing accounts, passwords and ledger records are preserved. If the database user cannot ALTER, apply [07_user_invitations.sql](migrations/07_user_invitations.sql) once before deployment, and apply [08_import_undo.sql](migrations/08_import_undo.sql) for import undo support. Startup upgrades are idempotent.

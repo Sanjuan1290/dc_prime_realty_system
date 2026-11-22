@@ -130,8 +130,8 @@ export async function getDashboard(query={},pool=getPool()) {
   return getFinanceReport({from,to},pool);
 }
 export async function listAudit(query={},pool=getPool()) {
-  const page=Number(query.page??1);
-  if(!Number.isSafeInteger(page)||page<1||page>100000) throw problem('INVALID_PAGE','Invalid page.');
+  const requestedPage=Number(query.page??1),pageSize=Number(query.page_size??50);
+  if(!Number.isSafeInteger(requestedPage)||requestedPage<1||requestedPage>100000||!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>100) throw problem('INVALID_PAGE','Choose a valid page and size.');
   const filters=[],params=[];
   if(query.actor) {
     filters.push('a.actor_user_id=?');
@@ -148,12 +148,12 @@ export async function listAudit(query={},pool=getPool()) {
   if(from){filters.push('UNIX_TIMESTAMP(a.created_at)>=?');params.push(manilaMidnight(from));}
   if(to){filters.push('UNIX_TIMESTAMP(a.created_at)<?');params.push(manilaMidnight(to)+86400);}
   const where=filters.length?' WHERE '+filters.join(' AND '):'';
-  const pageSize=50;
+  const [[count]]=await pool.execute('SELECT COUNT(*) AS total FROM finance_audit_logs a'+where,params.length?params:undefined);
+  const page=Math.min(requestedPage,Math.max(1,Math.ceil(Number(count.total)/pageSize)));
   const [rows]=await pool.execute(`SELECT a.id,a.actor_user_id,u.display_name AS actor_name,a.action,a.entity_type,a.entity_id,a.metadata_json,
     UNIX_TIMESTAMP(a.created_at) AS recorded_epoch
     FROM finance_audit_logs a LEFT JOIN finance_users u ON u.id=a.actor_user_id${where}
     ORDER BY a.id DESC LIMIT ${pageSize} OFFSET ${(page-1)*pageSize}`,params.length?params:undefined);
-  const [[count]]=await pool.execute('SELECT COUNT(*) AS total FROM finance_audit_logs a'+where,params.length?params:undefined);
   const redact=(value,key='')=>/password|token|secret|cookie|signature|bank|pin|account.?number|otp|verification.?code/i.test(key)?'[REDACTED]':Array.isArray(value)?value.map(v=>redact(v)):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,redact(v,k)])):value;
   const clock=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
   return {items:rows.map(({recorded_epoch,...row})=>{

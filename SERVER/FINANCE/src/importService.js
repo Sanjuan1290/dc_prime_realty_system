@@ -67,9 +67,10 @@ export async function previewImport(body,actor,options={}){
   });
 }
 export async function listImportBatches(query={},pool=getPool()){
-  const page=Number(query.page??1),pageSize=20;
-  if(!Number.isSafeInteger(page)||page<1||page>10000)invalid('INVALID_PAGE','Choose a valid import history page.');
+  const requestedPage=Number(query.page??1),pageSize=Number(query.page_size??20);
+  if(!Number.isSafeInteger(requestedPage)||requestedPage<1||requestedPage>10000||!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>100)invalid('INVALID_PAGE','Choose a valid import history page and size.');
   const [[count]]=await pool.execute("SELECT COUNT(*) AS total FROM finance_import_batches WHERE status IN ('committed','undone')");
+  const page=Math.min(requestedPage,Math.max(1,Math.ceil(Number(count.total)/pageSize)));
   const [rows]=await pool.execute(`SELECT b.id,b.source_system,b.file_name,b.file_sha256,b.status,b.source_from,b.source_to,b.total_rows,b.selected_money_in,b.selected_money_out,b.committed_at,b.result_json,b.undone_at,b.undo_reason,b.undo_result_json,u.display_name AS imported_by
     FROM finance_import_batches b LEFT JOIN finance_users u ON u.id=b.committed_by
     WHERE b.status IN ('committed','undone') ORDER BY b.committed_at DESC,b.id DESC LIMIT ${pageSize} OFFSET ${(page-1)*pageSize}`);

@@ -7,6 +7,7 @@ import {resolve,extname,sep} from 'node:path';
 import {proxy} from '../../CLIENT/shared/proxy.js';
 import {onRequest as portal} from '../../CLIENT/functions/portal.js';
 import {onRequest as portalChild} from '../../CLIENT/functions/portal/[[path]].js';
+import {onRequest as buyerForm} from '../../CLIENT/functions/buyer-form/[[path]].js';
 import {onRequest as systemPage} from '../../CLIENT/functions/system/[[path]].js';
 import {onRequest as hrPage} from '../../CLIENT/functions/hr/[[path]].js';
 import {onRequest as financePage} from '../../CLIENT/functions/finance/[[path]].js';
@@ -43,6 +44,7 @@ const server=createServer(async(req,res)=>{
     // Exercise the deployed Pages handlers, including legacy redirects, rather
     // than teaching this adapter an independent copy of their routing rules.
     const handler=url.pathname==='/portal'?portal:url.pathname.startsWith('/portal/')?portalChild:
+      url.pathname==='/buyer-form'||url.pathname.startsWith('/buyer-form/')?buyerForm:
       [['system',systemPage],['hr',hrPage],['finance',financePage]].find(([app])=>url.pathname===`/${app}`||url.pathname.startsWith(`/${app}/`))?.[1];
     if(handler){
       const result=await handler({request:new Request(url),next:()=>null,env:{ASSETS:{fetch:async target=>{

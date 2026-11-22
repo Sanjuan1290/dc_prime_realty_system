@@ -12,7 +12,8 @@ const {login,changePassword,sessionHash}=await import('../../SERVER/FINANCE/src/
 const db=getPool(),[[server]]=await db.query('SELECT @@port AS port,@@datadir AS datadir');
 assert.equal(server.port,13307);assert.equal(server.datadir.toLowerCase().replaceAll('\\','/').replace(/\/$/,''),resolve('QA_REPORTS/.runtime/mysql').toLowerCase().replaceAll('\\','/'));
 const base='http://127.0.0.1:4179',headers={origin:base,'x-requested-with':'dcprime-finance'},out=resolve('QA_REPORTS/evidence/pdf5');mkdirSync(out,{recursive:true});
-async function invite(name){let password;const user=await createUser({email:'qa-'+randomUUID()+'@qa.invalid',display_name:name,role:'viewer'},{id:1},{checkSettings:()=>({}),mailer:async data=>{password=data.password}});return {...user,password}}
+const userFixtureTag='PDF5 '+randomUUID().slice(0,8);
+async function invite(name){let password;const user=await createUser({email:'qa-'+randomUUID()+'@qa.invalid',display_name:userFixtureTag+' '+name,role:'viewer'},{id:1},{checkSettings:()=>({}),mailer:async data=>{password=data.password}});return {...user,password}}
 async function accept(user){const session=await login(user.email,user.password);await changePassword({financeUser:{id:user.id},financeSessionHash:sessionHash(session.token),body:{current_password:user.password,new_password:'Accepted-QA-only-password-2026!',confirm_password:'Accepted-QA-only-password-2026!'}})}
 const pending=await invite('Pending Invitation QA'),expired=await invite('Expired Invitation QA'),accepted=await invite('Accepted Account QA'),stale=await invite('Accepted During Review QA');
 await accept(accepted);await db.query('UPDATE finance_users SET temporary_password_expires_at=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 DAY) WHERE id=?',[expired.id]);
@@ -55,7 +56,7 @@ try {
   assert.deepEqual((await api('/finance/transactions/'+entry.id)).original_import,record.original_import);
   await page.screenshot({path:resolve(out,'transaction-details.png'),animations:'disabled'});await dialog.getByRole('button',{name:'Close',exact:true}).click();
  });
- await nav('Users').click();await userRow(pending).waitFor();
+ await nav('Users').click();await page.getByLabel('Search accounts').fill(userFixtureTag);await userRow(pending).waitFor();
  await check('Only unaccepted invitations offer Delete; cancellation preserves the account',async()=>{
   await userRow(pending).getByRole('button',{name:'Delete invitation',exact:true}).waitFor();await userRow(expired).getByRole('button',{name:'Delete invitation',exact:true}).waitFor();
   assert.equal(await userRow(accepted).getByRole('button',{name:'Delete invitation',exact:true}).count(),0);
@@ -76,7 +77,7 @@ try {
   await accept(stale);await userRow(stale).getByRole('button',{name:'Delete invitation',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Delete Finance invitation?',exact:true});
   await dialog.getByRole('button',{name:'Delete invitation',exact:true}).click();await dialog.getByRole('alert').filter({hasText:'Only invitations that have not been accepted'}).waitFor();
   const [[stored]]=await db.query('SELECT must_change_password FROM finance_users WHERE id=?',[stale.id]);assert.equal(stored.must_change_password,0);
-  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await nav('Dashboard').click();await nav('Users').click();
+  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await nav('Dashboard').click();await nav('Users').click();await page.getByLabel('Search accounts').fill(userFixtureTag);
   await userRow(stale).getByText('Active',{exact:true}).waitFor();assert.equal(await userRow(stale).getByRole('button',{name:'Delete invitation',exact:true}).count(),0);
   const reportAfter=await api('/finance/reports?from=2026-11-01&to=2026-11-30');
   for(const key of ['opening_balance','money_in','money_out','closing_balance','net_change'])assert.equal(reportAfter[key],reportBefore[key]);

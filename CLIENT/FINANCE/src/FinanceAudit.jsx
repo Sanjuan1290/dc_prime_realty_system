@@ -3,30 +3,32 @@ import AuditEventDetails from '../../shared/AuditEventDetails.jsx';
 import {api} from './api.js';
 import {Notice,Spinner} from './FinanceFeedback.jsx';
 import {financeActionLabel,financeActions,financeDateTime} from './financeFormat.js';
+import Pagination from '../../shared/Pagination.jsx';
 
 const emptyFilters={from:'',to:'',actor:'',action:''};
 
 export default function FinanceAudit({users,refreshKey,onViewTransaction}){
   const [form,setForm]=useState(emptyFilters),[filters,setFilters]=useState(emptyFilters);
   const [page,setPage]=useState(1),[report,setReport]=useState(null),[loading,setLoading]=useState(true);
+  const [pageSize,setPageSize]=useState(10);
   const [error,setError]=useState(''),[retry,setRetry]=useState(0),[event,setEvent]=useState(null);
   useEffect(()=>{
     let current=true;
     const params=new URLSearchParams(Object.entries(filters).filter(([,value])=>value));
     params.set('page',String(page));
+    params.set('page_size',String(pageSize));
     setLoading(true);
     setError('');
     api('/finance/audit?'+params).then(data=>{if(current)setReport(data)}).catch(err=>{
       if(current){setReport(null);setError(err.message)}
     }).finally(()=>{if(current)setLoading(false)});
     return ()=>{current=false};
-  },[filters,page,retry,refreshKey]);
+  },[filters,page,pageSize,retry,refreshKey]);
 
   const apply=event=>{event.preventDefault();setPage(1);setFilters({...form})};
   const change=event=>setForm({...form,[event.target.name]:event.target.value});
   const selectedActions=[...new Set([...Object.keys(financeActions),...(report?.items||[]).map(row=>row.action)])]
     .sort((a,b)=>financeActionLabel(a).localeCompare(financeActionLabel(b)));
-  const pageCount=Math.max(1,Math.ceil((report?.total||0)/(report?.page_size||50)));
   const format=row=>financeDateTime(row.recorded_at_utc||row.created_at,{local:!row.recorded_at_utc});
 
   return <section className="panel" aria-busy={loading}>
@@ -58,11 +60,7 @@ export default function FinanceAudit({users,refreshKey,onViewTransaction}){
         </tr>)}
       </tbody>
     </table></div>}
-    {report&&pageCount>1&&<div className="pagination">
-      <button className="btn" type="button" disabled={loading||page===1} onClick={()=>setPage(value=>value-1)}>Previous</button>
-      <span>Page {page} of {pageCount}</span>
-      <button className="btn" type="button" disabled={loading||page>=pageCount} onClick={()=>setPage(value=>value+1)}>Next</button>
-    </div>}
+    {report&&<Pagination label="Finance audit pagination" page={report.page} pageSize={pageSize} total={report.total} disabled={loading} onPageChange={setPage} onPageSizeChange={size=>{setPageSize(size);setPage(1)}}/>}
     {event&&<AuditEventDetails event={event} onClose={()=>setEvent(null)}/>}
   </section>;
 }

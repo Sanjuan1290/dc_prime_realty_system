@@ -4,6 +4,7 @@ import {financeMoney as peso,sumPayments,financeDateTime} from './financeFormat.
 import {ImportBreakdown,ImportRecordRows} from './ImportRecords.jsx';
 import {api} from './api.js';
 import {Dialog,Notice,Spinner} from './FinanceFeedback.jsx';
+import Pagination from '../../shared/Pagination.jsx';
 
 const MAX_BYTES=2*1024*1024;
 const json=value=>{try{return typeof value==='string'?JSON.parse(value):value||{}}catch{return {}}};
@@ -16,16 +17,17 @@ function Summary({income,expense,label='Payments in this file'}){return <div cla
 export default function FinanceImport({onLedgerChanged,onViewTransaction,refreshKey=0}){
   const inputId=useId(),input=useRef(null),working=useRef(false),undoVersion=useRef(0);
   const [file,setFile]=useState(null),[preview,setPreview]=useState(null),[history,setHistory]=useState({items:[],total:0,page_size:20}),[page,setPage]=useState(1);
+  const [pageSize,setPageSize]=useState(10);
   const [busy,setBusy]=useState(''),[loadingHistory,setLoadingHistory]=useState(true),[historyError,setHistoryError]=useState(''),[message,setMessage]=useState(null),[dragging,setDragging]=useState(false);
   const [confirmImport,setConfirmImport]=useState(false),[undo,setUndo]=useState(null),[reason,setReason]=useState('');
   const historyVersion=useRef(0),receiptVersion=useRef(0);
   const [receipt,setReceipt]=useState(null);
   const reload=useCallback(async()=>{
     const version=++historyVersion.current;setLoadingHistory(true);setHistoryError('');
-    try{const result=await api(`/finance/imports?page=${page}`);if(version===historyVersion.current)setHistory(result)}
+    try{const result=await api(`/finance/imports?page=${page}&page_size=${pageSize}`);if(version===historyVersion.current)setHistory(result)}
     catch(error){if(version===historyVersion.current)setHistoryError(error.message);throw error}
     finally{if(version===historyVersion.current)setLoadingHistory(false)}
-  },[page]);
+  },[page,pageSize]);
   useEffect(()=>{reload().catch(()=>{});return ()=>{historyVersion.current++}},[reload,refreshKey]);
   const run=async(name,action)=>{
     if(working.current)return;working.current=true;setBusy(name);setMessage(null);
@@ -122,7 +124,7 @@ export default function FinanceImport({onLedgerChanged,onViewTransaction,refresh
     <section className="panel import-history"><div className="section-heading"><div className="section-icon"><FiClock aria-hidden="true"/></div><div><h2>Import history</h2><p>Review completed imports or undo one when you need to.</p></div></div>
       {historyError&&<Notice type="error" title="History could not be loaded">{historyError}</Notice>}
       {loadingHistory&&!history.items?.length?<div className="history-skeleton" role="status" aria-label="Loading import history">{[1,2,3].map(key=><div key={key}/>)}</div>:!history.items?.length?<div className="empty-state"><FiInbox aria-hidden="true"/><h3>No imports yet</h3><p>Your completed imports will appear here, with an option to undo.</p></div>:<div className="table-wrap"><table className="history-table"><thead><tr><th scope="col">File</th><th scope="col">Period</th><th scope="col">Payments</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead><tbody>{history.items.map(batch=>{const result=json(batch.result_json);return <tr key={batch.id}><td><div className="history-file"><FiFile aria-hidden="true"/><div><strong>{batch.file_name}</strong><span className="cell-secondary">{source(batch.source_system)} · {batch.imported_by||'Administrator'}</span></div></div></td><td data-label="Period">{date(batch.source_from)}<span className="cell-secondary">to {date(batch.source_to)}</span></td><td data-label="Payments"><strong>{result.imported||0} added</strong><span className="cell-secondary">{result.duplicate||0} skipped</span></td><td data-label="Status"><span className={`pill import-state ${batch.status==='undone'?'undone':'committed'}`}>{batch.status==='undone'?<FiRotateCcw aria-hidden="true"/>:<FiCheckCircle aria-hidden="true"/>}{batch.status==='undone'?'Undone':'Imported'}</span><span className="cell-secondary">{financeDateTime(batch.undone_at||batch.committed_at)}</span></td><td><button className="text-btn" type="button" disabled={Boolean(busy)||Boolean(undo)} onClick={()=>openReceipt(batch)}>View details</button>{batch.status==='committed'?<button className="btn undo-button" type="button" disabled={Boolean(busy)||Boolean(undo)} onClick={()=>reviewUndo(batch)} aria-label={`Undo import ${batch.file_name}`}><FiRotateCcw aria-hidden="true"/>Undo import</button>:<span className="muted undo-complete">History preserved</span>}</td></tr>})}</tbody></table></div>}
-      {history.total>history.page_size&&<div className="pagination"><button className="btn" type="button" disabled={page===1||loadingHistory} onClick={()=>setPage(current=>current-1)}>Previous</button><span>Page {page} of {Math.ceil(history.total/history.page_size)}</span><button className="btn" type="button" disabled={page*history.page_size>=history.total||loadingHistory} onClick={()=>setPage(current=>current+1)}>Next</button></div>}
+      <Pagination label="Import history pagination" page={history.page||page} pageSize={pageSize} total={history.total} disabled={loadingHistory||Boolean(busy)} onPageChange={setPage} onPageSizeChange={size=>{setPageSize(size);setPage(1)}}/>
     </section>
 
     {confirmImport&&<Dialog title={allDuplicates?'Record import receipt':'Confirm import'} description={file?.name} wide busy={busy==='import'} onClose={()=>setConfirmImport(false)}><Notice type="info">{allDuplicates

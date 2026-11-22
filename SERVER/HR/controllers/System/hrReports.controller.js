@@ -45,16 +45,19 @@ export async function exportSalaryFinance(req,res,next){
 
 export async function listHrAudit(req,res,next){
   try{
-    const page=Number(req.query.page||1),limit=50;
-    if(!Number.isSafeInteger(page)||page<1||page>10000)throw Object.assign(new Error('Choose a valid page.'),{statusCode:400});
+    const requestedPage=Number(req.query.page??1),limit=Number(req.query.page_size??50);
+    if(!Number.isSafeInteger(requestedPage)||requestedPage<1||requestedPage>10000||!Number.isSafeInteger(limit)||limit<1||limit>100)throw Object.assign(new Error('Choose a valid page and size.'),{statusCode:400});
     const conditions=[],params=[];
     if(req.query.from||req.query.to){const {from,to}=range(req.query);conditions.push('recorded_at>=FROM_UNIXTIME(?) AND recorded_at<FROM_UNIXTIME(?)');params.push(Date.parse(from+'T00:00:00+08:00')/1000,Date.parse(to+'T00:00:00+08:00')/1000+86400);}
     for(const key of ['module','action'])if(req.query[key]){const value=String(req.query[key]);if(value.length>100)throw Object.assign(new Error('Filter is too long.'),{statusCode:400});conditions.push(`${key}=?`);params.push(value);}
     const where=conditions.length?' WHERE '+conditions.join(' AND '):'';
     const [[count]]=await db.query('SELECT COUNT(*) AS total FROM hr_audit_logs'+where,params);
+    const page=Math.min(requestedPage,Math.max(1,Math.ceil(Number(count.total)/limit)));
     const [rows]=await db.query(`SELECT id,actor_name_snapshot,action,module,entity_type,entity_id,details_json,UNIX_TIMESTAMP(recorded_at) AS recorded_epoch FROM hr_audit_logs${where} ORDER BY id DESC LIMIT ${limit} OFFSET ${(page-1)*limit}`,params);
     const formatter=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
     const items=rows.map(({recorded_epoch,...row})=>({...row,recorded_at:formatter.format(new Date(Number(recorded_epoch)*1000))}));
-    res.set('Cache-Control','no-store').json({items,total:Number(count.total),page,page_size:limit});
+    const [options]=await db.query('SELECT DISTINCT module,action FROM hr_audit_logs ORDER BY module,action');
+    const filter_options={modules:[...new Set(options.map(row=>row.module).filter(Boolean))],actions:[...new Set(options.map(row=>row.action).filter(Boolean))]};
+    res.set('Cache-Control','no-store').json({items,total:Number(count.total),page,page_size:limit,filter_options});
   }catch(e){next(e);}
 }

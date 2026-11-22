@@ -511,21 +511,21 @@ const Attendance = () => {
                           {event.notes ? <p><span className="font-black text-slate-700">Notes:</span> {event.notes}</p> : null}
                         </div>
 
-                        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                        <div className="mt-4 grid grid-cols-1 gap-2">
                           <button
                             type="button"
                             onClick={() => openCompanyEvent(event)}
-                            className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-black text-white transition hover:bg-violet-700"
+                            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-xs font-black text-white transition hover:bg-violet-700"
                           >
-                            <FiEdit2 />Edit Whole Event
+                            <FiEdit2 className="shrink-0" aria-hidden="true" /><span>Edit Whole Event</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => confirmRemoveCompanyEvent(event)}
                             disabled={deleteEventMutation.isPending}
-                            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 text-xs font-black text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+                            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700 transition hover:bg-red-100 disabled:opacity-50"
                           >
-                            <FiTrash2 />Remove Company Event
+                            <FiTrash2 className="shrink-0" aria-hidden="true" /><span>Remove Company Event</span>
                           </button>
                         </div>
 
@@ -663,7 +663,7 @@ const Attendance = () => {
       </section>
 
       {showSettings ? <AttendanceSettingsModal settings={attendanceSettings} onClose={() => setShowSettings(false)} onSaved={(message) => setAlert({ type: 'success', message })} /> : null}
-      {showExport ? <AttendanceExportModal attendanceSettings={attendanceSettings} onClose={() => setShowExport(false)} /> : null}
+      {showExport ? <AttendanceExportModal onClose={() => setShowExport(false)} /> : null}
       {showScanner ? <BarcodeScanner title={action === 'time_in' ? 'Scan Barcode for Time In' : 'Scan Barcode for Time Out'} onDetected={(code) => { const digits = String(code || '').replace(/\D/g, '').slice(0, 10); setShowScanner(false); setBarcode(digits); submitScan(digits) }} onClose={() => setShowScanner(false)} /> : null}
       {showCorrection ? <AttendanceCorrectionModal record={correctionRecord} employees={employees} defaultDate={selectedDate} onClose={() => setShowCorrection(false)} onSaved={(message) => { setAlert({ type: 'success', message }); invalidateAttendance() }} /> : null}
       {showEvent ? <AttendanceEventModal event={eventRecord} employees={employees} attendanceSettings={attendanceSettings} defaultDate={selectedDate} onClose={() => setShowEvent(false)} onSaved={(message) => { setAlert({ type: 'success', message }); invalidateAttendance() }} /> : null}

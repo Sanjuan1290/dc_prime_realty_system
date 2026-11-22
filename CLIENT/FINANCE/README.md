@@ -6,6 +6,8 @@ Pages: dashboard, transactions, categories, audit history, user invitations, imp
 
 The dashboard shows a compact monthly summary of available balance and actual income/expenses, with quick navigation and empty-month or negative-balance notices. Reports contains the date filters, detailed charts and PDF export. Page-header Refresh controls have been removed; successful changes still reload their affected data.
 
+Import history, Audit Logs and Users show record ranges, page counts and 10/20/50-row controls, including empty lists. Imports and audit events are paged by the API; user filtering applies to the complete account list before pagination. Filters and page-size changes return to the first page. Deleting the last invitation on a page moves the list to a valid remaining page.
+
 Before authentication, health GET requests retry within a three-minute cold-start deadline and respect the server's Retry-After interval. Repeated database-startup responses do not exhaust a fixed attempt count. Password submissions are never retried automatically. User-facing states distinguish connection delays, rate limits, provider security blocks and validation errors.
 
 Forms, controls, alerts and keyboard-accessible confirmation dialogs share consistent styling and motion, with responsive history cards and reduced-motion support.
