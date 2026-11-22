@@ -1,3 +1,4 @@
+import {applyAttendanceCorrection,invalidAttendanceClockRange,invalidProvidedClockTime} from '../../../services/attendanceCorrection.service.js';
 import { db } from '../../../db/connect.js';
 import { writeAuditLog } from '../auditLogs.controller.js';
 import { buildEmployeeNameSql, cleanText, dateOnly, nullableText, timeOnly } from './employeeModule.shared.js';
@@ -9,7 +10,7 @@ import {
   normalizeClockTime,
 } from './attendanceLite.shared.js';
 import { isValidAttendanceBarcode } from './attendanceBarcode.shared.js';
-import { getAttendanceShift, isValidOvernightAttendance } from '../../../services/nightShiftTime.service.js';
+import { isValidOvernightAttendance } from '../../../services/nightShiftTime.service.js';
 
 const dayTypes = new Set(['regular', 'double_pay', 'regular_holiday', 'special_holiday']);
 const eventTreatments = new Set(['full_day', 'custom_time', 'record_only']);
@@ -24,9 +25,7 @@ const normalizeTreatment = (value) => eventTreatments.has(String(value || '')) ?
 const normalizeEmployeeIds = (value) => Array.from(new Set((Array.isArray(value) ? value : []).map(Number).filter(Boolean)));
 // Earlier Time Out is permitted only as next-day Time Out, within 16 hours.
 const isEventTimeOutBeforeTimeIn = (timeIn, timeOut) => Boolean(timeIn && timeOut && timeOut < timeIn);
-const invalidAttendanceClockRange = (timeIn, timeOut) => Boolean(timeIn && timeOut && !getAttendanceShift(timeIn, timeOut));
-const invalidProvidedClockTime = (value) => value !== null && value !== undefined
-  && String(value).trim() !== '' && !timeOnly(value);
+
 const previousDate = (day) => new Date(Date.parse(`${day}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
 
 const getEmployeeByBarcode = async (connection, barcode) => {
@@ -1215,6 +1214,10 @@ export const createManualAttendance = async (req, res) => {
       await connection.rollback();
     } catch {}
 
+    if ([1205, 1213, 8005].includes(Number(error.errno))) {
+      return res.status(409).json({message:'Another attendance request changed this employee/date. No changes were saved by this request. Reload before trying again.'});
+    }
+
     return res
       .status(error.statusCode || 500)
       .json({
@@ -1227,274 +1230,22 @@ export const createManualAttendance = async (req, res) => {
 
 export const correctAttendanceRecord = async (req, res) => {
   const connection = await db.getConnection();
-
   try {
     await ensureAttendanceLiteSchema(connection);
-
-    const attendanceId =
-      Number(
-        req.params.attendanceId
-      );
-
-    const actualTimeIn =
-      timeOnly(
-        req.body.actual_time_in
-      );
-
-    const actualTimeOut =
-      timeOnly(
-        req.body.actual_time_out
-      );
-
-    const reason =
-      cleanText(
-        req.body.reason
-      );
-
-    if ([req.body.actual_time_in, req.body.actual_time_out].some(invalidProvidedClockTime)) {
-      return res.status(400).json({ message: 'Enter valid Time In and Time Out clock times.' });
-    }
-
-    if (!attendanceId) {
-      return res.status(400).json({
-        message:
-          'Invalid attendance record.',
-      });
-    }
-
-    if (!reason) {
-      return res.status(400).json({
-        message:
-          'A reason is required when correcting attendance.',
-      });
-    }
-
-    if (
-      !actualTimeIn &&
-      actualTimeOut
-    ) {
-      return res.status(400).json({
-        message:
-          'Time Out cannot be saved without a Time In.',
-      });
-    }
-
-    if (
-      invalidAttendanceClockRange(
-        actualTimeIn,
-        actualTimeOut
-      )
-    ) {
-      return res.status(400).json({
-        message:
-          'Time In and Time Out must be within 16 hours. For an overnight shift, enter the next-day Time Out clock time.',
-      });
-    }
-
+    const attendanceId = Number(req.params.attendanceId);
+    if (!Number.isSafeInteger(attendanceId) || attendanceId < 1) return res.status(400).json({ message: 'Invalid attendance record.' });
     await connection.beginTransaction();
-
-    const [rows] =
-      await connection.query(`
-        SELECT
-          a.*,
-          e.employee_code,
-          ${buildEmployeeNameSql('e')} AS full_name
-
-        FROM employee_attendance_records a
-
-        INNER JOIN employees e
-          ON e.employee_id =
-            a.employee_id
-
-        WHERE
-          a.employee_attendance_id = ?
-
-        LIMIT 1
-        FOR UPDATE
-      `, [
-        attendanceId,
-      ]);
-
-    const attendance =
-      rows[0];
-
-    if (!attendance) {
-      throw Object.assign(
-        new Error(
-          'Attendance record not found.'
-        ),
-        {
-          statusCode: 404,
-        }
-      );
-    }
-
-    if (
-      !attendance.attendance_event_id &&
-      !actualTimeIn
-    ) {
-      throw Object.assign(
-        new Error(
-          'Time In is required for non-event attendance records.'
-        ),
-        {
-          statusCode: 400,
-        }
-      );
-    }
-
-    const previousTimeIn =
-      timeOnly(
-        attendance.actual_time_in
-      );
-
-    const previousTimeOut =
-      timeOnly(
-        attendance.actual_time_out
-      );
-
-    const timeInChanged =
-      previousTimeIn !==
-      actualTimeIn;
-
-    const timeOutChanged =
-      previousTimeOut !==
-      actualTimeOut;
-
-    if (
-      !timeInChanged &&
-      !timeOutChanged
-    ) {
-      throw Object.assign(
-        new Error(
-          'No attendance time changes were made.'
-        ),
-        {
-          statusCode: 400,
-        }
-      );
-    }
-
-    await connection.query(`
-      UPDATE employee_attendance_records
-      SET
-        actual_time_in = ?,
-
-        time_in_source =
-          CASE
-            WHEN ?
-              THEN 'admin'
-            ELSE time_in_source
-          END,
-
-        actual_time_out = ?,
-
-        time_out_source =
-          CASE
-            WHEN ?
-              THEN 'admin'
-            ELSE time_out_source
-          END,
-
-        notes = ?,
-        source = 'manual',
-        updated_by_user_id = ?
-
-      WHERE employee_attendance_id = ?
-    `, [
-      actualTimeIn,
-      timeInChanged ? 1 : 0,
-      actualTimeOut,
-      timeOutChanged ? 1 : 0,
-      reason,
-      req.authUser?.id || null,
-      attendanceId,
-    ]);
-
-    await connection.query(`
-      INSERT INTO employee_attendance_corrections (
-        employee_attendance_id,
-        previous_time_in,
-        new_time_in,
-        previous_time_out,
-        new_time_out,
-        reason,
-        changed_by_user_id
-      )
-      VALUES (
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?
-      )
-    `, [
-      attendanceId,
-      previousTimeIn,
-      actualTimeIn,
-      previousTimeOut,
-      actualTimeOut,
-      reason,
-      req.authUser?.id || null,
-    ]);
-
-    await writeAuditLog(
-      connection,
-      req,
-      {
-        actor: req.authUser,
-        action: 'update',
-        module: 'Attendance',
-        entityType:
-          'employee_attendance',
-        entityId:
-          String(attendanceId),
-
-        entityLabel:
-          `${attendance.employee_code} - ${dateOnly(attendance.attendance_date)}`,
-
-        title:
-          'Corrected attendance time',
-
-        description:
-          `Attendance time was corrected for ${attendance.full_name}. Reason: ${reason}`,
-
-        metadata: {
-          employeeId: attendance.employee_id,
-          employeeName: attendance.full_name,
-          employeeCode: attendance.employee_code,
-          attendanceDate: dateOnly(attendance.attendance_date),
-          previousTimeIn,
-          actualTimeIn,
-          previousTimeOut,
-          actualTimeOut,
-          reason,
-        },
-      }
-    );
-
+    const [rows] = await connection.query(`SELECT a.*,e.employee_code,${buildEmployeeNameSql('e')} AS full_name
+      FROM employee_attendance_records a INNER JOIN employees e ON e.employee_id=a.employee_id
+      WHERE a.employee_attendance_id=? LIMIT 1 FOR UPDATE`,[attendanceId]);
+    if (!rows[0]) throw Object.assign(new Error('Attendance record not found.'),{statusCode:404});
+    await applyAttendanceCorrection(connection,req,rows[0],req.body);
     await connection.commit();
-
-    return res.json({
-      success: true,
-      message:
-        'Attendance corrected successfully.',
-    });
+    return res.json({success:true,message:'Attendance corrected successfully.'});
   } catch (error) {
-    try {
-      await connection.rollback();
-    } catch {}
-
-    return res
-      .status(error.statusCode || 500)
-      .json({
-        message: getErrorMessage(error),
-      });
-  } finally {
-    connection.release();
-  }
+    try { await connection.rollback(); } catch {}
+    return res.status(error.statusCode || 500).json({message:getErrorMessage(error)});
+  } finally { connection.release(); }
 };
 
 export const deleteAttendanceRecord = async (req, res) => {

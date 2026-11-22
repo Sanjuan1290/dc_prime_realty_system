@@ -65,11 +65,12 @@ const fetchHr = async (path, options = {}, asBlob = false) => {
     if (/signed-receipts(?:\/|$)/.test(pathname)) {
       throw new ApiError('Signed receipts require Batch 9.', {code:'HR_SIGNED_RECEIPTS_DISABLED'})
     }
-    if (options.confirmationHandled === 'technical' && !['/employees/employee-code-preview','/employees/barcode-preview','/attendance/scan'].includes(pathname) && !KIOSK_MUTATION_PATHS.has(pathname)) {
+    if (options.confirmationHandled === 'technical' && !['/employees/employee-code-preview','/employees/barcode-preview','/attendance/scan','/attendance/bulk-time-out/preview'].includes(pathname) && !KIOSK_MUTATION_PATHS.has(pathname)) {
       throw new ApiError('Technical confirmation is unavailable for this HR action.', {code:'HR_CONFIRMATION_REQUIRED'})
     }
     const verifiedUndo = options.confirmationHandled === 'payroll-undo' && /^\/employee-payroll\/payrolls\/[1-9]\d*\/undo\/(request|confirm)$/.test(pathname)
-    if (!KIOSK_MUTATION_PATHS.has(pathname) && options.confirmationHandled !== 'technical' && !verifiedUndo) {
+    const previewedBulkTimeOut = options.confirmationHandled === 'bulk-time-out' && pathname==='/attendance/bulk-time-out' && method==='POST'
+    if (!KIOSK_MUTATION_PATHS.has(pathname) && options.confirmationHandled !== 'technical' && !verifiedUndo && !previewedBulkTimeOut) {
       if (typeof window === 'undefined' || !window.confirm('Confirm this HR change?')) {
         throw new ApiError('Changes cancelled.', {status:499,code:'REVIEW_CANCELLED'})
       }
