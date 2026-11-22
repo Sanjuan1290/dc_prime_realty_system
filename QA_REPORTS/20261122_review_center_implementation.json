@@ -18,7 +18,7 @@
     {
       "database": "SYSTEM",
       "file": "SERVER/SYSTEM/migrations/20261122_review_center_batches.sql",
-      "apply": "Once, before deploying the updated System API and UI",
+      "apply": "Run before deploying the updated System API and UI; safe to rerun after a partial attempt",
       "effect": "Adds parent/row review and case relationships, batch submission uniqueness, per-row decisions and returned protected approval status. Existing records and snapshots are retained.",
       "productionApplied": false
     },
@@ -46,13 +46,15 @@
       "node tools/qa/run-pdf10.mjs",
       "node --test tools/qa/bulk-time-out.e2e.test.mjs",
       "node SERVER/SYSTEM/scripts/check-local-imports.mjs",
-      "git diff --check"
+      "git diff --check",
+      "node tools/qa/check-project.mjs --system-only",
+      "node --test SERVER/SYSTEM/tests/reviewBatchMigrationTiDB20261122.test.mjs tools/qa/review-migration.e2e.test.mjs"
     ],
-    "unitTestTotal": 1956,
+    "unitTestTotal": 1958,
     "unitSuites": [
       {
         "name": "system",
-        "passed": 1782,
+        "passed": 1784,
         "failed": 0,
         "evidence": "QA_REPORTS/evidence/system-unit.log"
       },
@@ -192,7 +194,7 @@
     "No automatic deployment or production database writes were performed. Production Render cold-start behavior still requires verification after deployment.",
     "Missing original historical values remain unavailable. Existing historical per-listing bulk reviews are preserved; new bulk operations use parent batching."
   ],
-  "updatedFileCount": 101,
+  "updatedFileCount": 103,
   "updatedFiles": [
     "CLIENT/HR/src/components/System/employeeComponents/AttendanceSettingsModal.jsx",
     "CLIENT/HR/src/components/System/employeeComponents/KioskPasswordSettings.jsx",
@@ -271,6 +273,7 @@
     "SERVER/SYSTEM/tests/phase89AuditIntegration.test.js",
     "SERVER/SYSTEM/tests/postActionReviewCorrectionFlow20261005.test.js",
     "SERVER/SYSTEM/tests/reviewAllActionsVersionIntegrity20261019.test.js",
+    "SERVER/SYSTEM/tests/reviewBatchMigrationTiDB20261122.test.mjs",
     "SERVER/SYSTEM/tests/reviewCenterActorRoot20261011.test.js",
     "SERVER/SYSTEM/tests/reviewCenterCountsScope20261011.test.js",
     "SERVER/SYSTEM/tests/reviewCenterNotificationReadAll20261011.test.js",
@@ -294,6 +297,157 @@
     "tools/qa/pdf10-common.mjs",
     "tools/qa/pdf10-review.e2e.test.mjs",
     "tools/qa/pdf10-security.e2e.test.mjs",
+    "tools/qa/review-migration.e2e.test.mjs",
     "tools/qa/run-pdf10.mjs"
-  ]
+  ],
+  "migrationCompatibilityFix": {
+    "cause": "TiDB validates references against the table schema before a multi-change ALTER. The original migration referenced a new column from a constraint in the same statement.",
+    "change": "Separate column, index and foreign-key statements. Each change checks information_schema first. No stored procedures, data rewrites or foreign-key-check bypasses.",
+    "source": "https://docs.pingcap.com/tidb/stable/sql-statement-alter-table/",
+    "validation": {
+      "localDatabase": "MySQL 8, guarded disposable QA server at port 13307",
+      "migrationChecks": 7,
+      "databaseScenarios": [
+        {
+          "name": "fresh schema",
+          "status": "PASS",
+          "completionChecks": [
+            {
+              "migration_check": "review_batch_columns",
+              "installed": 9,
+              "expected": 9
+            },
+            {
+              "migration_check": "review_batch_indexes",
+              "installed": 5,
+              "expected": 5
+            },
+            {
+              "migration_check": "review_batch_foreign_keys",
+              "installed": 3,
+              "expected": 3
+            },
+            {
+              "migration_check": "review_batch_returned_state",
+              "installed": 1,
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "name": "interrupted after the first column",
+          "status": "PASS",
+          "completionChecks": [
+            {
+              "migration_check": "review_batch_columns",
+              "installed": 9,
+              "expected": 9
+            },
+            {
+              "migration_check": "review_batch_indexes",
+              "installed": 5,
+              "expected": 5
+            },
+            {
+              "migration_check": "review_batch_foreign_keys",
+              "installed": 3,
+              "expected": 3
+            },
+            {
+              "migration_check": "review_batch_returned_state",
+              "installed": 1,
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "name": "interrupted after all columns",
+          "status": "PASS",
+          "completionChecks": [
+            {
+              "migration_check": "review_batch_columns",
+              "installed": 9,
+              "expected": 9
+            },
+            {
+              "migration_check": "review_batch_indexes",
+              "installed": 5,
+              "expected": 5
+            },
+            {
+              "migration_check": "review_batch_foreign_keys",
+              "installed": 3,
+              "expected": 3
+            },
+            {
+              "migration_check": "review_batch_returned_state",
+              "installed": 1,
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "name": "interrupted after indexes and one foreign key",
+          "status": "PASS",
+          "completionChecks": [
+            {
+              "migration_check": "review_batch_columns",
+              "installed": 9,
+              "expected": 9
+            },
+            {
+              "migration_check": "review_batch_indexes",
+              "installed": 5,
+              "expected": 5
+            },
+            {
+              "migration_check": "review_batch_foreign_keys",
+              "installed": 3,
+              "expected": 3
+            },
+            {
+              "migration_check": "review_batch_returned_state",
+              "installed": 1,
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "name": "completed migration",
+          "status": "PASS",
+          "completionChecks": [
+            {
+              "migration_check": "review_batch_columns",
+              "installed": 9,
+              "expected": 9
+            },
+            {
+              "migration_check": "review_batch_indexes",
+              "installed": 5,
+              "expected": 5
+            },
+            {
+              "migration_check": "review_batch_foreign_keys",
+              "installed": 3,
+              "expected": 3
+            },
+            {
+              "migration_check": "review_batch_returned_state",
+              "installed": 1,
+              "expected": 1
+            }
+          ]
+        }
+      ],
+      "systemUnitTestsPassed": 1784,
+      "liveTiDBTested": false
+    },
+    "completionChecks": {
+      "columns": 9,
+      "namedIndexes": 5,
+      "foreignKeys": 3,
+      "returnedApprovalState": 1
+    },
+    "productionApplied": false
+  }
 }
