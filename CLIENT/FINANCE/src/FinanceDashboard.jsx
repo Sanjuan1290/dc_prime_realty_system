@@ -12,13 +12,15 @@ function CashTile({icon: Icon, label, value, hint, tone = ''}) {
 }
 
 export default function FinanceDashboard({
-  range, dashboard, loading, canAdmin, onOpenReports, onOpenTransactions, onOpenImports, onOpenAudit,
+  range, dashboard, loading, canAdmin, canImport, onOpenReports, onOpenTransactions, onOpenImports, onOpenAudit,
 }) {
   const shortcuts = [
     {label:'Transactions', hint:'Find payments and review entries.', icon:FiList, action:onOpenTransactions},
     {label:'Reports', hint:'Explore cash flow, charts and date ranges.', icon:FiBarChart2, action:onOpenReports},
-    ...(canAdmin ? [
+    ...(canImport ? [
       {label:'Imports', hint:'Bring in HR and Company Finances payments.', icon:FiFileText, action:onOpenImports},
+    ] : []),
+    ...(canAdmin ? [
       {label:'Audit Logs', hint:'Review Finance account activity.', icon:FiShield, action:onOpenAudit},
     ] : []),
   ];

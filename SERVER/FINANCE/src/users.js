@@ -3,6 +3,7 @@ import {getPool,withTransaction} from './db.js';
 import {hashPassword} from './passwords.js';
 import {audit} from './ledger.js';
 import {problem} from './domain.js';
+import {assertNotSelfAccessChange} from './userAccessPolicy.js';
 import {invitationSettings,sendInvitation,invitationFailure} from './invitationEmail.js';
 export async function listUsers(){const [rows]=await getPool().execute('SELECT id,email,display_name,role,is_active,must_change_password,invitation_sent_at,temporary_password_expires_at,created_at FROM finance_users ORDER BY id');return rows;}
 const temporaryPassword=()=>randomBytes(24).toString('base64url');
@@ -46,6 +47,7 @@ export async function updateUser(id,body,actor) {
     }
     const [[user]]=await conn.execute('SELECT id,role,is_active,must_change_password FROM finance_users WHERE id=? FOR UPDATE',[id]);
     if(!user) throw problem('NOT_FOUND','Finance account not found.',404);
+    assertNotSelfAccessChange(user.id,actor.id);
     const before={role:user.role,is_active:Boolean(Number(user.is_active))};
     const after={role:role??before.role,is_active:active??before.is_active};
     if(before.role===after.role&&before.is_active===after.is_active) return {id:String(id),...after};

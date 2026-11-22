@@ -62,7 +62,7 @@ app.use(prefix,(req,res,next)=>process.env.FINANCE_READ_ONLY==='true'&&['POST','
 app.get(`${prefix}/dashboard`,wrap(async(req,res)=>res.json(await getDashboard(req.query))));
 app.get(`${prefix}/reports`,wrap(async(req,res)=>res.json(await getFinanceReport(req.query))));
 app.get(`${prefix}/transactions`,wrap(async(req,res)=>res.json(await listTransactions(req.query))));
-app.get(`${prefix}/transactions/:id`,wrap(async(req,res)=>res.json(await getTransaction(req.params.id,{includeImport:req.financeUser.role==='admin'}))));
+app.get(`${prefix}/transactions/:id`,wrap(async(req,res)=>res.json(await getTransaction(req.params.id,{includeImport:['admin','accountant'].includes(req.financeUser.role)}))));
 app.post(`${prefix}/transactions`,requireRole('admin','accountant'),wrap(async(req,res)=>res.status(201).json(await postTransaction(req.body,req.financeUser))));
 app.post(`${prefix}/transactions/:id/void`,requireRole('admin'),wrap(async(req,res)=>res.json(await voidTransaction(req.params.id,req.body?.reason,req.financeUser))));
 app.post(`${prefix}/transactions/:id/correct`,requireRole('admin'),wrap(async(req,res)=>res.status(201).json(await correctTransaction(req.params.id,req.body,req.financeUser))));
@@ -75,11 +75,12 @@ app.get(`${prefix}/audit`,requireRole('admin'),wrap(async(req,res)=>res.json(awa
 app.get(`${prefix}/reconciliation`,requireRole('admin'),wrap(async(req,res)=>res.json(await getFinanceReconciliation(req.query))));
 // Imports are live; administrators can explicitly pause them independently.
 const requireImportEnabled=(req,res,next)=>process.env.FINANCE_IMPORTS_READ_ONLY!=='true'?next():next(problem('IMPORT_DISABLED','Imports are temporarily paused by your administrator.',503));
-// Imports retain admin access, preview validation and an atomic commit.
-app.get(`${prefix}/imports`,requireRole('admin'),wrap(async(req,res)=>res.json(await listImportBatches(req.query))));
-app.get(`${prefix}/imports/:id`,requireRole('admin'),wrap(async(req,res)=>res.json(await getImportDetails(req.params.id))));
-app.post(`${prefix}/imports/preview`,requireRole('admin'),requireImportEnabled,wrap(async(req,res)=>res.status(201).json(await previewImport(req.body,req.financeUser))));
-app.post(`${prefix}/imports/:id/commit`,requireRole('admin'),requireImportEnabled,wrap(async(req,res)=>res.json(await commitImport(req.params.id,req.financeUser))));
+// Admins and Accountants can preview, import and review import history.
+// Undo remains Admin-only because it reverses previously posted imported payments.
+app.get(`${prefix}/imports`,requireRole('admin','accountant'),wrap(async(req,res)=>res.json(await listImportBatches(req.query))));
+app.get(`${prefix}/imports/:id`,requireRole('admin','accountant'),wrap(async(req,res)=>res.json(await getImportDetails(req.params.id))));
+app.post(`${prefix}/imports/preview`,requireRole('admin','accountant'),requireImportEnabled,wrap(async(req,res)=>res.status(201).json(await previewImport(req.body,req.financeUser))));
+app.post(`${prefix}/imports/:id/commit`,requireRole('admin','accountant'),requireImportEnabled,wrap(async(req,res)=>res.json(await commitImport(req.params.id,req.financeUser))));
 app.get(`${prefix}/imports/:id/undo-preview`,requireRole('admin'),wrap(async(req,res)=>res.json(await previewUndoImport(req.params.id))));
 app.post(`${prefix}/imports/:id/undo`,requireRole('admin'),wrap(async(req,res)=>res.json(await undoImport(req.params.id,req.body,req.financeUser))));
 app.get(`${prefix}/users`,requireRole('admin'),wrap(async(req,res)=>res.json({users:await listUsers()})));
@@ -104,4 +105,3 @@ if(process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1]
   catch(e){console.error(e.code||e.message);process.exitCode=1;}
 }
 export default app;
-

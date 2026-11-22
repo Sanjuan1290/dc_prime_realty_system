@@ -46,7 +46,7 @@ export default function App(){
     const receiveResetLink=()=>{const token=new URLSearchParams(window.location.hash.slice(1)).get('reset-password');if(token){setResetToken(token);window.history.replaceState(null,'',window.location.pathname+window.location.search)}};
     receiveResetLink();window.addEventListener('hashchange',receiveResetLink);return()=>window.removeEventListener('hashchange',receiveResetLink);
   },[]);
-  const canWrite=user?.role==='admin'||user?.role==='accountant';const canAdmin=user?.role==='admin';
+  const canWrite=user?.role==='admin'||user?.role==='accountant';const canAdmin=user?.role==='admin';const canImport=canWrite;
   const refresh=useCallback(async()=>{
     if(!user||user.must_change_password)return;
     const version=++requestVersion.current;
@@ -88,7 +88,7 @@ export default function App(){
   if(user===undefined)return <main className="login-shell"><p>Connecting to Finance…</p></main>;
   if(!user)return <Login initialError={sessionError} onLogin={value=>{setSessionError(null);setUser(value);}}/>;
   if(user.must_change_password)return <PasswordSetup user={user} onChanged={setUser} onSignOut={async()=>{await api('/auth/logout',{method:'POST'});setUser(null)}}/>;
-  const tabs=[{id:'overview',label:'Dashboard',icon:FiGrid},{id:'transactions',label:'Transactions',icon:FiList},{id:'reports',label:'Reports',icon:FiBarChart2},{id:'categories',label:'Categories',icon:FiBookOpen},...(canAdmin?[{id:'audit',label:'Audit Logs',icon:FiShield},{id:'users',label:'Users',icon:FiUserPlus},{id:'imports',label:'Imports',icon:FiBookOpen}]:[])];
+  const tabs=[{id:'overview',label:'Dashboard',icon:FiGrid},{id:'transactions',label:'Transactions',icon:FiList},{id:'reports',label:'Reports',icon:FiBarChart2},{id:'categories',label:'Categories',icon:FiBookOpen},...(canImport?[{id:'imports',label:'Imports',icon:FiBookOpen}]:[]),...(canAdmin?[{id:'audit',label:'Audit Logs',icon:FiShield},{id:'users',label:'Users',icon:FiUserPlus}]:[])];
   return <div className="app-shell"><aside className="sidebar"><div className="sidebar-brand"><span className="brand-mark">D&C</span><div><strong>Prime Finance</strong><small>Independent Management</small></div></div><nav aria-label="Finance navigation">{tabs.map(t=><button key={t.id} type="button" aria-current={tab===t.id?'page':undefined} className={tab===t.id?'nav-item active':'nav-item'} onClick={()=>{setTab(t.id);setNotice('');setEntry(null);setPrompt(null);}}><t.icon/>{t.label}</button>)}</nav><div className="sidebar-bottom"><div>{user.display_name}<small>{user.role}</small></div><button type="button" className="nav-item" onClick={async()=>{try{await api('/auth/logout',{method:'POST'});}finally{setUser(null);}}}><FiLogOut/>Sign out</button></div></aside>
   <main className="main" aria-busy={loading}><header className="topbar"><div><div className="eyebrow">D&C Prime Realty / Finance</div><h1>{tabs.find(t=>t.id===tab)?.label}</h1><p>{{overview:'Track cash received, payments made and your current balance.',transactions:'Review posted payments and trace every correction.',categories:'Organize income and expenses for consistent reporting.',audit:'Review account activity and changes to the ledger.',users:'Invite colleagues and manage their Finance access.',imports:'Bring salary and Company Finances payments into your ledger.',reports:'Review cash movement, balances, and category totals.'}[tab]}</p></div><div className="top-actions">{canWrite&&(tab==='overview'||tab==='transactions')&&<button className="btn primary" type="button" onClick={()=>setEntry({...inputDefault,transaction_date:today()})}><FiPlus/>New entry</button>}</div></header>
   {loading&&(tab!=='overview'||dashboard)&&<div className="loading-bar" role="status"><Spinner label="Updating Finance…"/></div>}
@@ -99,7 +99,7 @@ export default function App(){
       setPage(1);setRange({from:next.from,to:next.to});setKind(next.kind);setStatus(next.status);setSource(next.source);setCategoryId(next.category_id);
     }}/>}
   {tab==='overview'&&<FinanceDashboard range={dashboardRange}
-    dashboard={dashboard} loading={loading} canAdmin={canAdmin}
+    dashboard={dashboard} loading={loading} canAdmin={canAdmin} canImport={canImport}
     onOpenReports={()=>setTab('reports')} onOpenImports={()=>setTab('imports')} onOpenAudit={()=>setTab('audit')}
     onOpenTransactions={()=>{
       setRange({from:dashboardRange.from,to:dashboardRange.to});setPage(1);setKind('all');setStatus('posted');setSource('all');setCategoryId('');setTab('transactions');
@@ -108,9 +108,9 @@ export default function App(){
   {tab==='categories'&&<div className="panel"><h2>Income and expense categories</h2><p className="muted">Organize manual entries and imported payments. Imports use source categories automatically. Historical transactions stay available when a category is disabled.</p>{canAdmin&&<form className="inline-form" onSubmit={e=>{e.preventDefault();mutate('/finance/categories',categoryInput).then(ok=>{if(ok)setCategoryInput({kind:'expense',name:''});});}}><select aria-label="Category type" value={categoryInput.kind} onChange={e=>setCategoryInput(x=>({...x,kind:e.target.value}))}><option value="expense">Expense</option><option value="income">Income</option></select><input aria-label="Category name" placeholder="Category name" maxLength={90} required value={categoryInput.name} onChange={e=>setCategoryInput(x=>({...x,name:e.target.value}))}/><button className="btn primary" disabled={busy}>Add category</button></form>}<div className="category-list">{categories.map(c=><div className="category" key={c.id}><span className={'pill '+c.kind}>{c.kind}</span><strong>{c.name}</strong><small>{Number(c.is_active)?'Active':'Inactive'}</small>{canAdmin&&<button className="btn" disabled={busy} onClick={()=>mutate(`/finance/categories/${c.id}`,{is_active:!Number(c.is_active)},'PATCH')}>{Number(c.is_active)?'Disable':'Enable'}</button>}
     {canAdmin&&Number(c.can_delete)===1&&<button type="button" className="text-btn text-danger" disabled={busy} onClick={()=>setPrompt({type:'category',id:c.id,name:c.name})}>Delete</button>}</div>)}</div></div>}
   {tab==='reports'&&<FinanceReports categories={categories} initialRange={dashboardRange}/>}
-  {tab==='imports'&&canAdmin&&<FinanceImport onLedgerChanged={refresh} onViewTransaction={setTransactionId}/>}
+  {tab==='imports'&&canImport&&<FinanceImport canUndo={canAdmin} onLedgerChanged={refresh} onViewTransaction={setTransactionId}/>}
   {tab==='audit'&&canAdmin&&<FinanceAudit users={users} onViewTransaction={setTransactionId}/>}
-  {tab==='users'&&canAdmin&&<FinanceUsers users={users} currentUserId={user.id} onChanged={refresh} onAccessChanged={()=>{setTab('overview');api('/auth/me').then(result=>setUser(result.user)).catch(()=>setUser(null))}}/>}
+  {tab==='users'&&canAdmin&&<FinanceUsers users={users} currentUserId={user.id} onChanged={refresh}/>}
   {transactionId&&<FinanceTransactionDetails key={transactionId} id={transactionId} onClose={()=>setTransactionId(null)}/>}
   {entry&&<Dialog label="Finance entry" title={entry.mode==='correct'?'Correct transaction':'New cash transaction'} onClose={()=>setEntry(null)} busy={busy}><EntryForm key={entry.mode?`correct-${entry.original_id}`:'create'} categories={categories} initial={entry} busy={busy} correcting={entry.mode==='correct'} onCancel={()=>setEntry(null)} onSubmit={v=>mutate(entry.mode==='correct'?`/finance/transactions/${entry.original_id}/correct`:'/finance/transactions',v)}/></Dialog>}
   {prompt?.type==='void'&&<Dialog label="Void transaction" title={`Void transaction #${prompt.id}`} onClose={()=>setPrompt(null)} busy={busy} danger><p>This keeps an audit record and removes the amount from the posted balance.</p><form onSubmit={e=>{e.preventDefault();mutate(`/finance/transactions/${prompt.id}/void`,{reason:e.currentTarget.reason.value});}}><label>Reason<textarea name="reason" minLength={5} maxLength={500} required/></label><div className="action-row"><button className="btn" type="button" disabled={busy} onClick={()=>setPrompt(null)}>Cancel</button><button className="btn danger" disabled={busy}>Confirm void</button></div></form></Dialog>}
@@ -122,4 +122,3 @@ export default function App(){
   </Dialog>}
   </main></div>;
 }
-

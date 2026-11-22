@@ -17,7 +17,7 @@ const statusOf=(user)=>{
   return 'pending';
 };
 
-export default function FinanceUsers({users,currentUserId,onChanged,onAccessChanged}){
+export default function FinanceUsers({users,currentUserId,onChanged}){
   const [form,setForm]=useState(blank),[busy,setBusy]=useState('');
   const [message,setMessage]=useState(null),[dialogError,setDialogError]=useState('');
   const [search,setSearch]=useState(''),[role,setRole]=useState(''),[status,setStatus]=useState('');
@@ -56,10 +56,6 @@ export default function FinanceUsers({users,currentUserId,onChanged,onAccessChan
     setMessage(null);
     try {
       await api('/finance/users/'+editing.id,{method:'PATCH',data:{role:editing.role,is_active:editing.is_active}});
-      if(String(editing.id)===String(currentUserId)&&(!editing.is_active||editing.role!=='admin')){
-        onAccessChanged();
-        return;
-      }
       setEditing(null);
       setMessage({type:'success',text:'Finance access updated.'});
       await onChanged();
@@ -119,7 +115,7 @@ export default function FinanceUsers({users,currentUserId,onChanged,onAccessChan
             <td>{user.invitation_sent_at?financeDateTime(user.invitation_sent_at):state==='pending'?'Awaiting delivery':'—'}
               {['pending','expired'].includes(state)&&user.temporary_password_expires_at&&
                 <span className="cell-secondary">Expires {financeDateTime(user.temporary_password_expires_at)}</span>}</td>
-            <td><button type="button" className="text-btn" disabled={Boolean(busy)} onClick={()=>edit(user)}>Edit access</button>
+            <td>{String(user.id)===String(currentUserId)?<span className="muted" title="Ask another Finance Admin to change your access.">Your account</span>:<button type="button" className="text-btn" disabled={Boolean(busy)} onClick={()=>edit(user)}>Edit access</button>}
               {['pending','expired'].includes(state)&&<button type="button" className="text-btn cell-secondary" disabled={Boolean(busy)} onClick={()=>send(user.id)}>
                 {busy==='resend-'+user.id?'Sending…':'Resend invitation'}</button>}
               {Number(user.must_change_password)!==0&&String(user.id)!==String(currentUserId)&&
