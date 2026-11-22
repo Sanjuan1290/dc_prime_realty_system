@@ -125,14 +125,11 @@ test('Accounting Head correction skips self-review and goes to Auditor', () => {
   assert.match(paymentUi, /Accounting Head corrections skip self-review and go directly to the Auditor/);
 });
 
-test('System Admin correction is restricted to the exact Auditor-approved payment case', () => {
-  assert.match(paymentController, /\['system_admin','super_admin'\]\.includes\(actor\.role\) && auditCaseId/);
-  assert.match(paymentController, /auditCase\.status !== 'pending_system_admin_correction'/);
-  assert.match(paymentController, /auditCase\.entity_type !== 'lot_project_payment'/);
-  assert.match(paymentController, /String\(auditCase\.entity_id\) !== String\(existingPayment\.lot_project_payment_id\)/);
-  assert.match(paymentController, /authorizationType: 'audit_case'/);
-  assert.match(paymentController, /status='correction_required'/);
-  assert.doesNotMatch(paymentController, /status='pending_auditor_recheck'/);
+test("Both owners use the exact assigned payment case and independent verification", ()=>{
+ assert.ok(paymentController.includes('getPendingAuditCorrectionCase(connection'));
+ assert.ok(paymentController.includes("entityType:'lot_project_payment',entityId:existingPayment.lot_project_payment_id,actor"));
+ assert.ok(paymentController.includes('contextReviewId!==Number(auditCase.operational_review_id)'));
+ assert.ok(paymentController.includes('advanceAuditCaseToRecheck(connection'));
 });
 
 test('Super Admin remains emergency fallback with password and email code only', () => {
@@ -161,8 +158,8 @@ test('Review Center preserves Batches 1-3 endpoints and adds Batch 4 protected-c
   ]) assert.ok(workflowRouter.includes(route), route);
   assert.ok(workflowRouter.includes('/protected-changes'));
   assert.ok(!workflowRouter.includes('/audit-cases/:caseId/correction-applied'), 'generic correction acknowledgement route must stay removed; domain controllers apply exact corrections');
-  assert.match(reviewCenterUi, /Internal Notifications/);
-  assert.match(reviewCenterUi, /Protected Approvals/);
+  assert.doesNotMatch(reviewCenterUi, /Internal Notifications/);
+  assert.match(reviewCenterUi, /Approval Queue/);
   assert.match(systemLayout, /Review Center/);
 });
 

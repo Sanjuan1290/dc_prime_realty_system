@@ -16,16 +16,6 @@ test('Review Details never accesses counts, which belongs to Review Center list'
   assert.doesNotMatch(details, /\bcounts\b/)
 })
 
-test('Review Center owns the summary counts and availability warning', () => {
-  assert.match(center, /const counts = summary\.data\?\.data \|\| \{\}/)
-  assert.match(center, /counts\.notificationCountsAvailable === false \|\| counts\.protectedCountsAvailable === false/)
-  assert.match(center, /Some alert totals are temporarily unavailable/)
-  assert.equal((source.match(/Some alert totals are temporarily unavailable/g) || []).length, 1)
-})
+test("Review Center owns compact task summaries without notification counters", ()=>{assert.ok(center.includes('const counts=summary.data?.data||{}'));assert.ok(center.includes('counts.pendingReviewTasks'));assert.ok(!center.includes('unreadNotifications'))});
 
-test('Review Center keeps scoped actorRoot for review and notification navigation', () => {
-  assert.match(center, /const actorRoot = actor\.role \? `\/portal\/\$\{actor\.role\}` : ''/)
-  assert.match(center, /navigate\(`\$\{actorRoot\}\/review-center\/reviews\/\$\{row\.operational_review_id\}`\)/)
-})
-
-
+test("Review Center keeps role-scoped review navigation", ()=>{assert.ok(center.includes("root='/portal/'+actor.role"));assert.ok(center.includes("navigate(root+'/review-center/reviews/'+row.operational_review_id)"))});

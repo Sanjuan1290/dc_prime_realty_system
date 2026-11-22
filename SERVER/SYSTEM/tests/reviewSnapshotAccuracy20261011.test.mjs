@@ -35,17 +35,7 @@ const auditConnection = (rows) => {
   };
 };
 
-test('listing edit captures the saved installment and cash prices plus derived pricing on both sides', () => {
-  assert.match(listings, /const storedListingReviewFinancials =/);
-  assert.match(listings, /const listingReviewFinancialsAfterEdit =/);
-  for (const key of pricingKeys) {
-    assert.match(listings.slice(listings.indexOf('const storedListingReviewFinancials'),listings.indexOf('const buildProtectedListingEditPayload')),new RegExp(`\\b${key}\\b`));
-  }
-  const edit = listings.slice(listings.indexOf('// Every governed change reaches the Auditor'), listings.indexOf('    await connection.commit();',listings.indexOf('// Every governed change reaches the Auditor')));
-  assert.match(edit, /const inventoryActionKey = 'listing.edit'/);
-  assert.match(edit, /\.\.\.storedListingReviewFinancials\(existingListing\)/);
-  assert.match(edit, /\.\.\.listingReviewFinancialsAfterEdit\(/);
-});
+test("Both listing edit paths capture actual saved prices and relationships", ()=>{const helper=src('SERVER/SYSTEM/services/listingReviewValues.service.js'),capture=src('SERVER/SYSTEM/services/listingReviewSnapshot.service.js');for(const key of pricingKeys)assert.ok(helper.includes(key),key);for(const value of ['captureListingReviewSnapshot(connection,existingListing.lot_project_listing_id)','...originalListingReviewSnapshot','...savedListingReviewSnapshot'])assert.ok(listings.includes(value),value);assert.ok(capture.includes('lot_project_listing_cadastral_lots'));assert.ok(capture.includes('lot_project_listing_documents'))});
 
 test('listing create, delete and governed listing review include financial values', () => {
   const create = listings.slice(listings.indexOf("actionKey: 'listing.create'"),listings.indexOf('    await connection.commit();',listings.indexOf("actionKey: 'listing.create'")));

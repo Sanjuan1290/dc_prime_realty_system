@@ -9,6 +9,7 @@ import { BULK_PREVIEW_PAGE_SIZES, bulkPreviewFields, filterBulkPreview, paginate
 
 const BulkEditListingsModal = ({ project, projectSlug, onClose, onSaved }) => {
   const inputRef = useRef(null)
+  const [submissionKey] = useState(()=>crypto.randomUUID())
   const [filename, setFilename] = useState('')
   const [rows, setRows] = useState([])
   const [preview, setPreview] = useState(null)
@@ -71,7 +72,7 @@ const BulkEditListingsModal = ({ project, projectSlug, onClose, onSaved }) => {
     if (reason.trim().length < 5) { setError('Please enter a clear reason (at least 5 characters).'); return }
     setBusy(true); setError('')
     try {
-      const result = await useFetchPost(`/projects/lot-projects/${projectSlug}/listing-bulk/apply`, { rows, filename, reason: reason.trim() }, { confirmationHandled: 'compact' })
+      const result = await useFetchPost(`/projects/lot-projects/${projectSlug}/listing-bulk/apply`, { rows, filename, submissionKey, reason: reason.trim() }, { confirmationHandled: 'compact' })
       if (result.approvalPending) { setPendingApproval(result); return }
       await onSaved(result)
     } catch (err) {

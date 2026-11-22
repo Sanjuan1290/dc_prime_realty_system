@@ -146,6 +146,7 @@ const getPaymentProofWorkflowContext = async (connection, req, paymentId) => {
 
   if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
     auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
       actor: req.authUser,
       auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
       entityType: 'lot_project_payment_proof',
@@ -519,6 +520,7 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
         auditCase: workflowContext.auditCase,
         actor: req.authUser,
         correctionSummary: `Updated payment proof files for ${context.payment.lot_project_payment_reference_id || `payment #${paymentId}`}.`,
+        beforeSnapshot: beforeSnapshot,
         afterSnapshot,
         metadata: { paymentId, proofIds: insertedIds, listingId: Number(context.payment.lot_project_listing_id) },
       });
@@ -749,6 +751,7 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
         auditCase: workflowContext.auditCase,
         actor: req.authUser,
         correctionSummary: `Removed incorrect payment proof ${proof.file_name} from ${context.payment.lot_project_payment_reference_id || `payment #${paymentId}`}.`,
+        beforeSnapshot: beforeSnapshot,
         afterSnapshot,
         metadata: { paymentId, proofId, listingId: Number(context.payment.lot_project_listing_id) },
       });

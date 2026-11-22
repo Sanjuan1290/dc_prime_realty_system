@@ -54,6 +54,8 @@ export const REVIEW_ACTIONS = Object.freeze({
   // Operations
   'listing.create': { department: 'operations', entityType: 'lot_project_listing', label: 'Listing creation', headApprovalBefore: false },
   'listing.edit': { department: 'operations', entityType: 'lot_project_listing', label: 'Listing edit', headApprovalBefore: false },
+  'listing.bulk_edit': { department: 'operations', entityType: 'lot_project_listing_bulk_batch', label: 'Bulk Listing Edit', headApprovalBefore: false },
+  'listing.bulk_protected_edit': { department: 'operations', entityType: 'lot_project_listing_bulk_batch', label: 'Protected Bulk Listing Edit', headApprovalBefore: true, batchApproval: true },
   'listing.delete': { department: 'operations', entityType: 'lot_project_listing', label: 'Listing deletion', headApprovalBefore: true },
   'listing.import': { department: 'operations', entityType: 'lot_project_listing_import', label: 'Listing import', headApprovalBefore: false },
   'listing.import_undo': { department: 'operations', entityType: 'lot_project_listing_import', label: 'Listing import undo', headApprovalBefore: false },

@@ -1,0 +1,299 @@
+{
+  "date": "2026-11-22",
+  "timezone": "Asia/Manila",
+  "status": "Implemented and validated locally",
+  "summary": [
+    "Complete saved listing snapshots include cadastral lots, persisted active/inactive document requirements, pricing, status, hold details and relevant cancellation/account values. Changed fields are the default comparison, with optional full forms and explicit unavailable historical values.",
+    "Every new individual operation creates one review. Every new bulk listing operation creates one parent review and, when required, one exact-payload Head approval. Existing bulk batch/row history is reused.",
+    "Batch rows use server pagination, search, changed-field filtering, sorting and individual results. Clean rows stay accepted; reported rows receive their own linked correction case. Pending rows prevent batch completion.",
+    "Head, Auditor and administrator workspaces have separate role tabs and compact counts. Review Center internal notification controls were removed; the main Notifications module and notification services remain available.",
+    "Assigned System Admin and Super Admin corrections require a reason, preserve original evidence, and submit the same case for independent Auditor verification. Failed verification returns that case; earlier attempts remain readable.",
+    "Controlled payment correction accepts matching Review ID and Audit Case ID together and enforces assignment, payment/project binding and existing verification permissions.",
+    "SOA installments show Remaining Due using existing scheduled totals and allocated payments. Commission details show actual Released cash as a percentage of total entitlement, excluding pending/eligible/unreleased retention.",
+    "Main System and project layouts show module breadcrumbs. HR kiosk regeneration locks all devices, stores only a bcrypt hash, displays the new password once for 15 seconds, and enforces server-side expiry after 14 days.",
+    "Audit-log schema initialization moved to startup so logging cannot implicitly commit a caller transaction. Batch writes, reviews, cases, histories, notifications and audit logs roll back together.",
+    "The existing Attendance bulk timeout adjustment continues to preserve Time In, isolate selected employees, recalculate eligible draft payroll and preserve finalized payroll and the 6 PM automatic timeout setting."
+  ],
+  "migrationRequirements": [
+    {
+      "database": "SYSTEM",
+      "file": "SERVER/SYSTEM/migrations/20261122_review_center_batches.sql",
+      "apply": "Once, before deploying the updated System API and UI",
+      "effect": "Adds parent/row review and case relationships, batch submission uniqueness, per-row decisions and returned protected approval status. Existing records and snapshots are retained.",
+      "productionApplied": false
+    },
+    {
+      "database": "HR",
+      "file": "SERVER/HR/migrations/20261122_kiosk_password_rotation.sql",
+      "apply": "Once, before deploying the updated HR API and UI",
+      "effect": "Adds hashed kiosk credential, generation, server expiry and rotation time to existing HR settings. The existing environment PIN works until the first rotation.",
+      "productionApplied": false
+    }
+  ],
+  "permissions": {
+    "newPermissions": [],
+    "notes": [
+      "Existing workflow view, department approval/return, audit review, case creation, system correction and final correction-verification permissions remain enforced on the backend.",
+      "System Admin and Super Admin share operational correction authority; explicit case assignment still applies. Only Super Admin can create/manage System Admin accounts.",
+      "Kiosk status and regeneration reuse the existing ATTENDANCE_MANAGE permission. Unauthenticated and viewer requests are denied."
+    ]
+  },
+  "validation": {
+    "database": "Disposable MySQL at 127.0.0.1:13307. Every mutating test verifies the port and exact workspace QA data directory first. Synthetic fixtures and test credentials only.",
+    "commands": [
+      "node tools/qa/check-project.mjs",
+      "node tools/qa/check-project.mjs --build",
+      "node tools/qa/run-pdf10.mjs",
+      "node --test tools/qa/bulk-time-out.e2e.test.mjs",
+      "node SERVER/SYSTEM/scripts/check-local-imports.mjs",
+      "git diff --check"
+    ],
+    "unitTestTotal": 1956,
+    "unitSuites": [
+      {
+        "name": "system",
+        "passed": 1782,
+        "failed": 0,
+        "evidence": "QA_REPORTS/evidence/system-unit.log"
+      },
+      {
+        "name": "hr",
+        "passed": 38,
+        "failed": 0,
+        "evidence": "QA_REPORTS/evidence/hr-unit.log"
+      },
+      {
+        "name": "hr-client",
+        "passed": 9,
+        "failed": 0,
+        "evidence": "QA_REPORTS/evidence/hr-client-unit.log"
+      },
+      {
+        "name": "finance",
+        "passed": 118,
+        "failed": 0,
+        "evidence": "QA_REPORTS/evidence/finance-unit.log"
+      },
+      {
+        "name": "website",
+        "passed": 9,
+        "failed": 0,
+        "evidence": "QA_REPORTS/evidence/website-unit.log"
+      }
+    ],
+    "apiTestTotal": 31,
+    "apiSuites": [
+      {
+        "name": "pdf10-review",
+        "passed": 11,
+        "failed": 0,
+        "evidence": "QA_REPORTS/evidence/pdf10-review-api.log"
+      },
+      {
+        "name": "pdf10-security",
+        "passed": 4,
+        "failed": 0,
+        "evidence": "QA_REPORTS/evidence/pdf10-security-api.log"
+      },
+      {
+        "name": "pdf10-atomic",
+        "passed": 3,
+        "failed": 0,
+        "evidence": "QA_REPORTS/evidence/pdf10-atomic-api.log"
+      },
+      {
+        "name": "bulk-time-out",
+        "passed": 13,
+        "failed": 0,
+        "evidence": "QA_REPORTS/evidence/bulk-time-out-api.log"
+      }
+    ],
+    "browserCheckTotal": 9,
+    "browserChecks": [
+      {
+        "name": "operations_head has separate role tabs and no internal notification controls on desktop and mobile",
+        "status": "PASS"
+      },
+      {
+        "name": "auditor has separate role tabs and no internal notification controls on desktop and mobile",
+        "status": "PASS"
+      },
+      {
+        "name": "system_admin has separate role tabs and no internal notification controls on desktop and mobile",
+        "status": "PASS"
+      },
+      {
+        "name": "super_admin has separate role tabs and no internal notification controls on desktop and mobile",
+        "status": "PASS"
+      },
+      {
+        "name": "Auditor batch details render only one page, support search/filter/pagination and compact comparison",
+        "status": "PASS"
+      },
+      {
+        "name": "saved protected cadastral change is highlighted by default and offers full-form comparison",
+        "status": "PASS"
+      },
+      {
+        "name": "Head inspects a 60-listing approval by pages, returns it, then approves the revised same request",
+        "status": "PASS"
+      },
+      {
+        "name": "returned Staff bulk reviews submit follow-up correction details on the same parent and preserve saved decimal values",
+        "status": "PASS"
+      },
+      {
+        "name": "kiosk warning cancellation leaves the credential unchanged; confirmed rotation locks another device and hides the password after 15 seconds",
+        "status": "PASS"
+      }
+    ],
+    "browserRuntimeErrors": [],
+    "viewportWidths": [
+      390,
+      768,
+      1440
+    ],
+    "screenshots": "QA_REPORTS/evidence/pdf10/",
+    "productionBuilds": [
+      {
+        "name": "build-website",
+        "exitCode": 0
+      },
+      {
+        "name": "build-system",
+        "exitCode": 0
+      },
+      {
+        "name": "build-finance",
+        "exitCode": 0
+      },
+      {
+        "name": "build-hr",
+        "exitCode": 0
+      }
+    ],
+    "systemImportCheck": "PASS: 213 source files",
+    "diffWhitespaceCheck": "PASS",
+    "keyApiScenarios": [
+      "Real 60- and 150-listing operations produce one parent each, exact immutable row evidence and individual audit logs.",
+      "58 clean rows plus 2 reported issues create exactly 2 cases; incomplete batches cannot close.",
+      "Concurrent identical bulk confirmations save once; concurrent identical protected submissions reuse one approval.",
+      "A failed correction returns to the same assigned case, retains both correction attempts, and closes only after independent verification.",
+      "An administrator cannot verify a correction; an Auditor without final verification permission is also denied.",
+      "Assigned Super Admin corrects a payment with both case/review IDs; unassigned owner, wrong review, missing reason and Auditor financial edit are denied.",
+      "Injected failure after two listing writes, after one row decision, and after child-case creation rolls back all affected data and evidence.",
+      "SOA returns exactly 67,638.84 for 108,819.42 scheduled less 41,180.58 allocated.",
+      "Rotating the kiosk password revokes three existing device sessions, rejects old credentials and the legacy PIN, hides plaintext from subsequent GET/audit data, and enforces expiry on the server.",
+      "Attendance tests preserve the 6 PM automatic timeout, Time In and finalized payroll; rollback failures and concurrent confirmation are covered."
+    ],
+    "temporaryQaServicesStopped": true
+  },
+  "remainingLimitations": [
+    "No automatic deployment or production database writes were performed. Production Render cold-start behavior still requires verification after deployment.",
+    "Missing original historical values remain unavailable. Existing historical per-listing bulk reviews are preserved; new bulk operations use parent batching."
+  ],
+  "updatedFileCount": 101,
+  "updatedFiles": [
+    "CLIENT/HR/src/components/System/employeeComponents/AttendanceSettingsModal.jsx",
+    "CLIENT/HR/src/components/System/employeeComponents/KioskPasswordSettings.jsx",
+    "CLIENT/HR/src/pages/Public/AttendanceKiosk.jsx",
+    "CLIENT/HR/src/utils/apiClient.js",
+    "CLIENT/SYSTEM/scripts/check-review-center-scope.mjs",
+    "CLIENT/SYSTEM/src/components/Lot_Projects/CommissionComponents/NetworkCompanyProfitPanel.jsx",
+    "CLIENT/SYSTEM/src/components/Lot_Projects/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal.jsx",
+    "CLIENT/SYSTEM/src/components/Lot_Projects/ListingComponents/BulkEditListingsModal.jsx",
+    "CLIENT/SYSTEM/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx",
+    "CLIENT/SYSTEM/src/components/Shared/BulkListingReviewPanel.jsx",
+    "CLIENT/SYSTEM/src/components/Shared/CommissionPaymentProgress.jsx",
+    "CLIENT/SYSTEM/src/components/Shared/ModuleBreadcrumb.jsx",
+    "CLIENT/SYSTEM/src/components/Shared/ProtectedApprovalDialog.jsx",
+    "CLIENT/SYSTEM/src/components/Shared/ReviewFormComparison.jsx",
+    "CLIENT/SYSTEM/src/layout/LotLayout.jsx",
+    "CLIENT/SYSTEM/src/layout/SystemLayout.jsx",
+    "CLIENT/SYSTEM/src/layout/adminLayout.jsx",
+    "CLIENT/SYSTEM/src/pages/Lot_Projects/ListingProfile.jsx",
+    "CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx",
+    "CLIENT/SYSTEM/src/utils/apiClient.js",
+    "CLIENT/SYSTEM/src/utils/moduleBreadcrumb.js",
+    "CLIENT/SYSTEM/src/utils/reviewSnapshotFormat.js",
+    "CLIENT/SYSTEM/vite.config.js",
+    "CLIENT/shared/financialProgress.js",
+    "QA_REPORTS/20261122_review_center_implementation.json",
+    "SERVER/HR/controllers/System/Employees/AttendanceKioskSettings.controller.js",
+    "SERVER/HR/controllers/System/Employees/AttendanceSimple.controller.js",
+    "SERVER/HR/middleware/attendanceKiosk.middleware.js",
+    "SERVER/HR/migrations/20261122_kiosk_password_rotation.sql",
+    "SERVER/HR/routers/System/attendance.routers.js",
+    "SERVER/HR/routers/attendanceKiosk.router.js",
+    "SERVER/HR/services/attendanceKioskCredential.service.js",
+    "SERVER/HR/tests/kioskCredentialRotation20261122.test.mjs",
+    "SERVER/SYSTEM/config/reviewActions.js",
+    "SERVER/SYSTEM/controllers/Lot_Projects/ListingProfile/ClientProfile.controller.js",
+    "SERVER/SYSTEM/controllers/Lot_Projects/ListingProfile/Documents.controller.js",
+    "SERVER/SYSTEM/controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js",
+    "SERVER/SYSTEM/controllers/Lot_Projects/ListingProfile/PaymentProofs.controller.js",
+    "SERVER/SYSTEM/controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js",
+    "SERVER/SYSTEM/controllers/Lot_Projects/ListingProfile/ReservationCorrection.controller.js",
+    "SERVER/SYSTEM/controllers/Lot_Projects/ListingProfile/SignedAcknowledgement.controller.js",
+    "SERVER/SYSTEM/controllers/Lot_Projects/Listings/ListingBulk.controller.js",
+    "SERVER/SYSTEM/controllers/Lot_Projects/Listings/Listings.controller.js",
+    "SERVER/SYSTEM/controllers/Lot_Projects/Settings/Settings.controller.js",
+    "SERVER/SYSTEM/controllers/Lot_Projects/_shared/lotProject.shared.js",
+    "SERVER/SYSTEM/controllers/System/auditLogs.controller.js",
+    "SERVER/SYSTEM/controllers/System/bulkReview.controller.js",
+    "SERVER/SYSTEM/controllers/System/sellerGroup.controller.js",
+    "SERVER/SYSTEM/controllers/System/users.controllers.js",
+    "SERVER/SYSTEM/controllers/System/workflow.controller.js",
+    "SERVER/SYSTEM/migrations/20261122_review_center_batches.sql",
+    "SERVER/SYSTEM/routers/System/workflow.routers.js",
+    "SERVER/SYSTEM/server.js",
+    "SERVER/SYSTEM/services/auditCaseAuthorization.service.js",
+    "SERVER/SYSTEM/services/auditCaseWorkflow.service.js",
+    "SERVER/SYSTEM/services/bulkListingReview.service.js",
+    "SERVER/SYSTEM/services/governedAction.service.js",
+    "SERVER/SYSTEM/services/listingReviewSnapshot.service.js",
+    "SERVER/SYSTEM/services/listingReviewValues.service.js",
+    "SERVER/SYSTEM/services/operationalReview.service.js",
+    "SERVER/SYSTEM/services/paymentCorrectionEvidence.service.js",
+    "SERVER/SYSTEM/services/protectedChange.service.js",
+    "SERVER/SYSTEM/tests/approvalAuditThroughBatch3_20261004.test.js",
+    "SERVER/SYSTEM/tests/approvalAuditWorkflow20261004.test.js",
+    "SERVER/SYSTEM/tests/auditCaseSystemAdminResponder20261023.test.mjs",
+    "SERVER/SYSTEM/tests/auditorReviewUxSellerView20261019.test.js",
+    "SERVER/SYSTEM/tests/batch6WorkflowFixes.test.js",
+    "SERVER/SYSTEM/tests/listingBulkContractProtection20261013.test.js",
+    "SERVER/SYSTEM/tests/listingBulkManagement20261013.test.js",
+    "SERVER/SYSTEM/tests/listingBulkPreviewTable20261013.test.js",
+    "SERVER/SYSTEM/tests/listingWorkbookRoutingAndNotifications20261013.test.js",
+    "SERVER/SYSTEM/tests/notificationReadAllConfirmationPolicy20261011.test.js",
+    "SERVER/SYSTEM/tests/paymentSafetyControlledCorrections.test.js",
+    "SERVER/SYSTEM/tests/pdf10FinancialReview20261122.test.mjs",
+    "SERVER/SYSTEM/tests/phase89AuditIntegration.test.js",
+    "SERVER/SYSTEM/tests/postActionReviewCorrectionFlow20261005.test.js",
+    "SERVER/SYSTEM/tests/reviewAllActionsVersionIntegrity20261019.test.js",
+    "SERVER/SYSTEM/tests/reviewCenterActorRoot20261011.test.js",
+    "SERVER/SYSTEM/tests/reviewCenterCountsScope20261011.test.js",
+    "SERVER/SYSTEM/tests/reviewCenterNotificationReadAll20261011.test.js",
+    "SERVER/SYSTEM/tests/reviewCenterPrebuildGate20261011.test.mjs",
+    "SERVER/SYSTEM/tests/reviewCenterRoleQueues20261006.test.js",
+    "SERVER/SYSTEM/tests/reviewCenterSidebarQueueBadge20261010.test.js",
+    "SERVER/SYSTEM/tests/reviewCenterTimezone20261011.test.mjs",
+    "SERVER/SYSTEM/tests/reviewDetailsPage20261006.test.js",
+    "SERVER/SYSTEM/tests/reviewExactFormOctober23.test.mjs",
+    "SERVER/SYSTEM/tests/reviewHistoryExclusive20261011.test.js",
+    "SERVER/SYSTEM/tests/reviewHistoryReadableSnapshots20261006.test.js",
+    "SERVER/SYSTEM/tests/reviewManualReturnRuntime20261011.test.js",
+    "SERVER/SYSTEM/tests/reviewNotificationAssignmentUi20261006.test.js",
+    "SERVER/SYSTEM/tests/reviewSnapshotAccuracy20261011.test.mjs",
+    "SERVER/SYSTEM/tests/reviewVisibilityNetworkCleanup20261006.test.js",
+    "SERVER/SYSTEM/tests/workflowSummaryResilience20261010.test.js",
+    "SERVER/SYSTEM/utils/documentRequirement.js",
+    "SERVER/SYSTEM/utils/requestIp.js",
+    "tools/qa/pdf10-atomic.e2e.test.mjs",
+    "tools/qa/pdf10-browser.mjs",
+    "tools/qa/pdf10-common.mjs",
+    "tools/qa/pdf10-review.e2e.test.mjs",
+    "tools/qa/pdf10-security.e2e.test.mjs",
+    "tools/qa/run-pdf10.mjs"
+  ]
+}

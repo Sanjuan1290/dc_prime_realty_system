@@ -17,6 +17,7 @@ export const resolveDocumentRequiredFlag = (document = {}, fallback = 1) => {
     document.template_document_list_is_required,
     document.document_is_required,
     document.is_required,
+    document.isRequired,
   ];
 
   const value = candidates.find((candidate) => candidate !== undefined && candidate !== null && candidate !== '');

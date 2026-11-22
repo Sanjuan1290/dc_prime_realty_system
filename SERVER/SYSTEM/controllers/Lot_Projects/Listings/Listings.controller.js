@@ -1,3 +1,4 @@
+import {captureListingReviewSnapshot} from '../../../services/listingReviewSnapshot.service.js';
 import { isOwnerAdministrator } from '../../../config/permissions.js';
 import {
   db,
@@ -126,16 +127,6 @@ import { getReviewActionLabel } from '../../../config/reviewActions.js';
 // Department Head even though the operation and audit log were successful.
 // This mapper is also used for creates/deletes, so every listing review shows
 // the same vocabulary and retains the original values at the moment of saving.
-const storedListingReviewFinancials = (listing = {}) => ({
-  installmentPricePerSqm: Number(listing.lot_project_listing_installment_price_per_sqm ?? listing.lot_project_listing_price_per_sqm ?? 0),
-  cashPricePerSqm: Number(listing.lot_project_listing_cash_price_per_sqm ?? listing.lot_project_listing_price_per_sqm ?? 0),
-  netSellingPrice: Number(listing.lot_project_listing_net_selling_price ?? 0),
-  legalMiscRate: Number(listing.lot_project_listing_lmf_rate ?? 0),
-  legalMiscAmount: Number(listing.lot_project_listing_lmf_amount ?? 0),
-  tcp: Number(listing.lot_project_listing_tcp ?? 0),
-  reservationFee: Number(listing.lot_project_listing_reservation_fee ?? 0),
-  annualInterestRate: Number(listing.annual_interest_rate ?? 0),
-});
 
 const listingReviewFinancialsAfterEdit = ({ installmentPricePerSqm, cashPricePerSqm, installmentPricing, legalMiscRate, reservationFee, annualInterestRate }) => ({
   installmentPricePerSqm,
@@ -1478,6 +1469,7 @@ export const updateLotProjectListing = async (req, res) => {
       { forUpdate: true }
     );
     const currentClientProfileId = Number(currentAccount?.lot_project_client_profile_id || 0);
+    const originalListingReviewSnapshot=await captureListingReviewSnapshot(connection,existingListing.lot_project_listing_id);
     const statusTransitionAction = String(req.body.statusTransitionAction || '').trim().toLowerCase() || null;
     const cancellationPermission = cancellationPermissionForAction(statusTransitionAction);
     const isCancellationAction = Boolean(cancellationPermission);
@@ -1601,6 +1593,7 @@ export const updateLotProjectListing = async (req, res) => {
       }
       if (['system_admin','super_admin'].includes(req.authUser?.role) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0) {
         protectedAuditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
           actor: req.authUser,
           auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
           entityType: governance.entityType,
@@ -1622,6 +1615,7 @@ export const updateLotProjectListing = async (req, res) => {
     if (isInventoryEditable && !isCancellationAction) {
       if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
         inventoryAuditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
           actor: req.authUser,
           auditCaseId: req.body?.auditCaseId,
           entityType: 'lot_project_listing',
@@ -2499,6 +2493,8 @@ export const updateLotProjectListing = async (req, res) => {
       },
     });
 
+    const savedListingReviewSnapshot=await captureListingReviewSnapshot(connection,existingListing.lot_project_listing_id,{accountId:currentAccount?.lot_project_account_id});
+
     // Every governed change reaches the Auditor (and the Head first when Staff
     // acted without a pre-approval, which governance does not allow here).
     let governedReview = null;
@@ -2513,6 +2509,7 @@ export const updateLotProjectListing = async (req, res) => {
         lotType: existingListing.lot_project_listing_unit_type,
         lotAreaSqm: Number(existingListing.lot_project_listing_area_sqm || 0),
         ...storedListingReviewFinancials(existingListing),
+        ...originalListingReviewSnapshot,
       };
       const governedAfterSnapshot = {
         projectSlug: slug,
@@ -2529,12 +2526,14 @@ export const updateLotProjectListing = async (req, res) => {
         cancellationReason: req.body.cancellationReason || null,
         authorizationType: governance.authorizationType,
         approvalRequestId: governance.approvalRequestId || null,
+        ...savedListingReviewSnapshot,
       };
       governedReview = protectedAuditCase
         ? await advanceAuditCaseToRecheck(connection, {
             auditCase: protectedAuditCase,
             actor: req.authUser,
             correctionSummary: String(req.body?.correctionSummary || req.body?.reason || 'Corrected protected listing details from the Audit Case.').trim(),
+            beforeSnapshot: governedBeforeSnapshot,
             afterSnapshot: governedAfterSnapshot,
             metadata: { actionKey: governedActionKey },
           })
@@ -2569,6 +2568,7 @@ export const updateLotProjectListing = async (req, res) => {
         ...storedListingReviewFinancials(existingListing),
         ...(reviewCadastralDiff ? { cadastralLots: reviewCadastralDiff.before } : {}),
         ...(reviewDocumentsDiff ? { documentRequirements: reviewDocumentsDiff.before } : {}),
+        ...originalListingReviewSnapshot,
       };
       const afterSnapshot = {
         projectSlug: slug,
@@ -2583,6 +2583,7 @@ export const updateLotProjectListing = async (req, res) => {
         ...(reviewCadastralDiff ? { cadastralLots: reviewCadastralDiff.after } : {}),
         ...(reviewDocumentsDiff ? { documentRequirements: reviewDocumentsDiff.after } : {}),
         documentRequirementsChanged: listingDocumentSyncResult?.skipped === false,
+        ...savedListingReviewSnapshot,
       };
       if (inventoryAuditCase) {
         inventoryReview = await advanceAuditCaseToRecheck(connection, {
@@ -2590,6 +2591,7 @@ export const updateLotProjectListing = async (req, res) => {
           actor: req.authUser,
           correctionSummary: String(req.body?.correctionSummary || req.body?.reason || 'Corrected listing details from the Audit Case.').trim(),
           afterSnapshot,
+          beforeSnapshot,
           metadata: { actionKey: inventoryActionKey },
         });
       } else if (returnedInventoryReview) {
@@ -3141,3 +3143,4 @@ export const deleteLotProjectListing = async (req, res) => {
 
 
 
+import {storedListingReviewFinancials} from '../../../services/listingReviewValues.service.js';

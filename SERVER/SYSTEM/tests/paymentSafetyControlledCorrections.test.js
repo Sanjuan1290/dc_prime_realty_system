@@ -83,28 +83,7 @@ test('recorded payment edits and voids use granular permissions plus governed He
   assert.match(paymentsUi, /Email Verification Code/);
 });
 
-test('System Admin Audit Case authorization is not shadowed by an unrelated operational review ID', () => {
-  const authorizationStart = paymentsController.indexOf('const requirePaymentCorrectionVerification');
-  const workflowStart = paymentsController.indexOf('const completePaymentCorrectionWorkflow', authorizationStart);
-  const authorization = paymentsController.slice(authorizationStart, workflowStart);
-  const staffGateStart = authorization.indexOf("if (actor.role === 'accounting_staff') {");
-  const auditCaseStart = authorization.indexOf("if (['system_admin','super_admin'].includes(actor.role) && auditCaseId)");
-  assert.ok(staffGateStart >= 0 && auditCaseStart > staffGateStart, 'Staff returned-review handling must finish before owner Audit Case authorization');
-  const staffGate = authorization.slice(staffGateStart, auditCaseStart);
-  assert.match(staffGate, /const returnedReviewId = Number\(req\.body\.reviewId \|\| req\.body\.review_id \|\| 0\)/);
-  assert.match(staffGate, /status='returned_for_correction'/);
-  assert.match(staffGate, /This returned-review correction is no longer valid for your account/);
-  assert.match(staffGate, /Accounting Staff can correct a recorded payment only after the Accounting Head returns its review for correction/);
-
-  const requestStart = paymentsController.indexOf('export const requestLotProjectPaymentCorrectionCode');
-  const requestEnd = paymentsController.indexOf('export const previewLotProjectListingPayment', requestStart);
-  const request = paymentsController.slice(requestStart, requestEnd);
-  const returnedStart = request.indexOf("if (actor.role === 'accounting_staff') {");
-  const ownerCaseStart = request.indexOf('if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId');
-  assert.ok(returnedStart >= 0 && ownerCaseStart > returnedStart, 'Correction-code preflight must scope returned reviews to Accounting Staff before checking Audit Cases');
-  assert.match(request.slice(returnedStart, ownerCaseStart), /status='returned_for_correction'/);
-  assert.match(request.slice(ownerCaseStart), /auditCase\.status !== 'pending_system_admin_correction'/);
-});
+test("Explicit payment cases take priority and exact references remain bound", ()=>{const start=paymentsController.indexOf('const requirePaymentCorrectionVerification'),end=paymentsController.indexOf('const completePaymentCorrectionWorkflow',start),auth=paymentsController.slice(start,end);assert.ok(auth.indexOf('if(requestedCaseId)')<auth.indexOf("if (actor.role === 'accounting_staff')"));assert.ok(auth.includes('contextReviewId!==Number(auditCase.operational_review_id)'));assert.ok(auth.includes('getPendingAuditCorrectionCase'));assert.ok(auth.includes("status='returned_for_correction'"));});
 
 test('voiding a payment retains the row as Cancelled instead of physically deleting financial history', () => {
   const start = paymentsController.indexOf('export const deleteLotProjectListingPayment');

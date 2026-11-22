@@ -38,11 +38,11 @@ test('guard accepts the corrected source and rejects a reintroduced undefined co
 })
 
 
-test('guard rejects accidental notification or History feature removals', () => {
+test('guard rejects internal notification reintroduction and missing role history', () => {
   const source = fs.readFileSync(reviewFile, 'utf8')
   const variants = [
-    [source.replace('Mark All as Read', 'Read notifications'), 'bulk-read'],
-    [source.replace('>Review History</button>', '>History &amp; Tracking</button>'), 'History'],
+    [source.replace('Correction Center', 'Mark All as Read'), 'bulk-read'],
+    [source.replace("['history','Review History']", "['history','Tracking']"), 'History'],
   ]
   for (const [broken, label] of variants) {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'dcprime-review-feature-'))

@@ -14,7 +14,7 @@ test('Review Center opens a dedicated review route instead of rendering the over
   const details = read('CLIENT/SYSTEM/src/pages/System/ReviewDetailsPage.jsx')
 
   assert.match(app, /review-center\/reviews\/:reviewId/)
-  assert.match(center, /navigate\(`\$\{actorRoot\}\/review-center\/reviews\/\$\{row\.operational_review_id\}`\)/)
+  assert.ok(center.includes("navigate(root+'/review-center/reviews/'+row.operational_review_id)"))
   assert.doesNotMatch(center, /selectedReviewId/)
   assert.match(details, /<ReviewDetails/)
 })
@@ -38,8 +38,8 @@ test('Dedicated review page preserves Head, Auditor and correction actions', () 
   for (const label of [
     'Confirm — No Mistake',
     'Return for Correction',
-    'Open Audit Case',
-    'Resolve with Notes',
+    'Report Issue',
+    'Verified & Closed',
     'Resolved by',
     'Correct &amp; Confirm',
     'Correct &amp; Resubmit',

@@ -59,6 +59,7 @@ export const authorizeGovernedAction = async (connection, {
   let requestId = Number(approvalRequestId || 0) || null;
   if (!requestId) {
     const request = await createProtectedChangeRequest(connection, {
+      reuseEntityRequest: Boolean(definition.batchApproval),
       actor,
       actionKey,
       department,

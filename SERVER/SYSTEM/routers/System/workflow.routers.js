@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 import {returnCorrectedAuditCase} from '../../controllers/System/workflow.controller.js';
+import {getBulkReviewRows,getBulkReviewRowDetails,reviewBulkRows,getBulkApprovalRows} from '../../controllers/System/bulkReview.controller.js';
 import {
   listOperationalReviews,getReviewCenterSummary,getOperationalReview,getOperationalReviewProofContent,getOperationalReviewRecordPreview,getOperationalReviewSignedReceiptContent,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,resubmitManualReviewCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,markAllInternalNotificationsRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,resolveAuditCaseByAdmin,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
 } from '../../controllers/System/workflow.controller.js';
@@ -23,6 +24,9 @@ router.use(authenticateUser);
 router.get('/reviews',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),listOperationalReviews);
 router.get('/summary',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getReviewCenterSummary);
 router.get('/reviews/:id',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getOperationalReview);
+router.get('/reviews/:id/bulk-rows',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getBulkReviewRows);
+router.get('/reviews/:id/bulk-rows/:rowId',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getBulkReviewRowDetails);
+router.post('/reviews/:id/bulk-rows/decision',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_AUDIT_REVIEW),reviewBulkRows);
 router.get('/reviews/:id/proofs/:proofId/content',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getOperationalReviewProofContent);
 router.get('/reviews/:id/record-preview',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getOperationalReviewRecordPreview);
 router.get('/reviews/:id/signed-receipts/:fileId/content',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getOperationalReviewSignedReceiptContent);
@@ -39,6 +43,7 @@ router.post('/audit-cases/:caseId/head-response',requireReviewCenterRole,require
 router.post('/audit-cases/:caseId/reassign-responder',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),reassignAuditCaseResponder);
 router.post('/audit-cases/:caseId/resolve',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_AUDIT_CASE_RESOLVE),resolveAuditCase);
 router.get('/protected-changes',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),listProtectedChangeRequests);
+router.get('/protected-changes/:requestId/bulk-rows',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getBulkApprovalRows);
 router.post('/protected-changes/:requestId/review',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_APPROVE_PROTECTED_CHANGE),reviewProtectedChangeRequest);
 router.get('/notifications',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),listInternalNotifications);
 router.patch('/notifications/read-all',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),markAllInternalNotificationsRead);

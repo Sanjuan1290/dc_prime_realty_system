@@ -48,7 +48,7 @@ test('Staff recommended defaults include Review Center view but no reviewer perm
 
 test('returned correction UI tells Staff why it was returned and how to resubmit', () => {
   const center = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');
-  assert.match(center, /My Correction Queue/);
+  assert.match(center, /Returned Requests/);
   assert.match(center, /Correction required — action needed/);
   assert.match(center, /What needs to be corrected/);
   assert.match(center, /latestCorrectionRequest\.message/);

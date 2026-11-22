@@ -56,10 +56,7 @@ test('unrelated review decisions and arbitrary workflow mutations remain blocked
   }
 })
 
-test('Review Center calls bulk and individual read with PATCH and technical policy', () => {
-  assert.match(reviewSource, /useFetchPatch\('\/workflow\/notifications\/read-all', \{\}, \{ confirmationHandled: 'technical' \}\)/)
-  assert.match(reviewSource, /useFetchPatch\(`\/workflow\/notifications\/\$\{id\}\/read`, \{\}, \{ confirmationHandled: 'technical' \}\)/)
-})
+test("Review Center no longer calls notification mutations; technical policy remains available", ()=>{assert.ok(!reviewSource.includes('Mark All as Read'));assert.ok(!reviewSource.includes('Mark as Read'))});
 
 test('technical mutation guard remains in front of fetch', () => {
   assert.ok(apiSource.indexOf('await requireMutationConfirmation({') < apiSource.indexOf('const response = await fetch(url, {'))

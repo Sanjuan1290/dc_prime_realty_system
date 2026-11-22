@@ -1296,6 +1296,7 @@ export const editGroup = async (req, res) => {
     let rateReturnedReview = null;
     if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       networkAuditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
         auditCaseId: req.body?.auditCaseId,
         entityType: 'seller_group',
@@ -1303,6 +1304,7 @@ export const editGroup = async (req, res) => {
       });
       if (!networkAuditCase) {
         rateAuditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
           actor: req.authUser,
           auditCaseId: req.body?.auditCaseId,
           entityType: 'seller_group_project_rates',
@@ -1424,6 +1426,7 @@ export const editGroup = async (req, res) => {
         auditCase: networkAuditCase,
         actor: req.authUser,
         correctionSummary: String(req.body?.correctionSummary || 'Corrected Network details from the Audit Case.').trim(),
+        beforeSnapshot: beforeNetwork,
         afterSnapshot: afterNetwork,
         metadata: { actionKey: 'network.edit' },
       });
@@ -1474,6 +1477,7 @@ export const editGroup = async (req, res) => {
           auditCase: rateAuditCase,
           actor: req.authUser,
           correctionSummary: String(req.body?.correctionSummary || 'Corrected Network project rates from the Audit Case.').trim(),
+          beforeSnapshot: beforeRates,
           afterSnapshot: afterRates,
           metadata: { actionKey: 'network.rates.update' },
         });
@@ -1540,6 +1544,7 @@ export const toggleGroupStatus = async (req, res) => {
     let returnedReview = null;
     if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
         auditCaseId: req.body?.auditCaseId,
         entityType: 'seller_group',
@@ -1585,6 +1590,7 @@ export const toggleGroupStatus = async (req, res) => {
         auditCase,
         actor: req.authUser,
         correctionSummary: String(req.body?.correctionSummary || 'Corrected Network status from the Audit Case.').trim(),
+        beforeSnapshot: beforeSnapshot,
         afterSnapshot,
         metadata: { actionKey: 'network.status' },
       });
@@ -2363,6 +2369,7 @@ export const updateGroupProjectPool = async (req, res) => {
     let governance = null;
     if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
         auditCaseId: req.body?.auditCaseId,
         entityType: 'seller_group_project_rates',
@@ -2423,6 +2430,7 @@ export const updateGroupProjectPool = async (req, res) => {
           auditCase,
           actor: req.authUser,
           correctionSummary: String(req.body?.correctionSummary || 'Corrected Network project rates from the Audit Case.').trim(),
+          beforeSnapshot: beforeSnapshot,
           afterSnapshot,
           metadata: { actionKey: 'network.rates.update' },
         })

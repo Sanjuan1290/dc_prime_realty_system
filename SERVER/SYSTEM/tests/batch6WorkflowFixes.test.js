@@ -86,7 +86,7 @@ test('Super Admin emergency change goes to the Auditor without a fake Head revie
   assert.equal(insert.params.at(-1), 'emergency_super_admin');
 });
 
-test('Head change on a record with an open Staff review becomes Correct & Confirm', async () => {
+test('A separate Head operation keeps the original Staff review and creates its own review', async () => {
   const open = { operational_review_id: 77, review_number: 'REV-00000077', status: 'pending_head_review', claimed_by_user_id: null, initiated_by_user_id: 3, after_snapshot_json: { amount: 100 } };
   const connection = fakeConnection([
     withApprovalTypeColumn,
@@ -96,9 +96,9 @@ test('Head change on a record with an open Staff review becomes Correct & Confir
     actor: { id: 4, role: 'accounting_head' }, actionKey: 'payment.edit', department: 'accounting',
     entityType: 'lot_project_payment', entityId: 5, afterSnapshot: { amount: 120 },
   });
-  assert.deepEqual([result.reviewId, result.status, result.headCorrected], [77, 'pending_auditor_review', true]);
-  assert.ok(connection.calls.some((call) => /approval_type = 'head_corrected'/.test(call.sql)));
-  assert.ok(!connection.calls.some((call) => /INSERT INTO operational_reviews/.test(call.sql)), 'no second review');
+  assert.deepEqual([result.reviewId, result.status, result.headCorrected], [41, 'pending_auditor_review', undefined]);
+  assert.ok(connection.calls.some((call) => /INSERT INTO operational_reviews/.test(call.sql)));
+  assert.ok(!connection.calls.some((call) => /UPDATE operational_reviews[\s\S]*after_snapshot_json/.test(call.sql)), 'prior review evidence is immutable');
 });
 
 test('all review and case stages leave records editable without querying a review lock', async () => {
@@ -166,7 +166,7 @@ test('Review Center makes post-action checks explicit and keeps correction contr
   assert.match(page, /Correct &amp; Confirm/);
   assert.match(page, /resolve-with-notes/);
   assert.match(page, /canApplyAuditCorrection/);
-  assert.match(page, /approvalStatus/);
+  assert.match(page, /Approval Queue/);
 });
 
 

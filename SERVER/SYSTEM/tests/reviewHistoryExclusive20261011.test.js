@@ -95,16 +95,4 @@ test('Queue remains unchanged, and filtering History by status operates before p
   assert.deepEqual(queries[1].params, [...queue.params, ...history.params, ...queue.params, 'closed', 10, 0])
 })
 
-test('Client names History correctly and never temporarily displays queue rows as History', () => {
-  assert.match(client, />Review History<\/button>/)
-  assert.doesNotMatch(client, /History &amp; Tracking/)
-  assert.match(client, /Needs My Action/)
-  assert.match(client, /reviewScope === 'history' \? 'View Details' : 'Review'/)
-  assert.match(client, /reviewScope === 'history' \? <select aria-label="Filter History by status"/)
-  assert.doesNotMatch(client, /placeholderData:\s*\(previous\) => previous/)
-  assert.doesNotMatch(client, /Waiting on you/)
-})
-
-
-
-
+test("Role history uses a separate account-aware query without previous queue rows", ()=>{const client=read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');assert.ok(client.includes("['history','Review History']"));assert.ok(client.includes("params.set('scope','history')"));assert.ok(client.includes("['workflow-reviews',actor.id,actor.role,params.toString()]"));assert.ok(!client.includes('placeholderData:'))});

@@ -401,7 +401,8 @@ const insertAuditLog = async (connection, req, payload = {}) => {
 };
 
 export const writeAuditLog = async (connection = db, req, payload = {}) => {
-  await ensureAuditLogTable(connection);
+  // Schema initialization belongs to startup. DDL here implicitly commits the
+  // caller's MySQL transaction and can leave a bulk operation partially saved.
   await insertAuditLog(connection, req, payload);
 };
 

@@ -167,8 +167,8 @@ test('Review Center exposes the required Head, Auditor, case, correction, approv
     '/reviews/:id/auditor-verify', '/reviews/:id/audit-case', '/audit-cases/:caseId/head-response',
     '/audit-cases/:caseId/resolve', '/protected-changes', '/notifications',
   ]) assert.ok(workflowRouter.includes(route), route);
-  assert.match(reviewCenterUi, /Protected Approvals/);
-  assert.match(reviewCenterUi, /Internal Notifications/);
+  assert.match(reviewCenterUi, /Approval Queue/);
+  assert.doesNotMatch(reviewCenterUi, /Internal Notifications/);
   assert.match(systemLayout, /Review Center/);
 });
 

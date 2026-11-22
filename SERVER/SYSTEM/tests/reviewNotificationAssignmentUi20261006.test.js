@@ -19,13 +19,7 @@ test('workflow notifications only surface review-linked items currently assigned
   assert.match(controller, /const access = notificationVisibilityWhere\(req\.authUser\)/)
 })
 
-test('workflow query caches are account-aware so one role never sees another account cached queue', () => {
-  const center = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx')
-  assert.match(center, /\['workflow-summary', actor\.id \|\| 0, actor\.role \|\| ''\]/)
-  assert.match(center, /\['workflow-reviews', actor\.id \|\| 0, actor\.role \|\| '', reviewScope, status, reviewPage\]/)
-  assert.match(center, /\['workflow-notifications', actor\.id \|\| 0, actor\.role \|\| '', notificationPage\]/)
-  assert.match(center, /\['workflow-review', actor\.id \|\| 0, actor\.role \|\| '', reviewId\]/)
-})
+test("Role queues and detail caches include account identity without Review Center notifications", ()=>{const center=read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');assert.ok(center.includes("['workflow-summary',actor.id,actor.role]"));assert.ok(center.includes("['workflow-reviews',actor.id,actor.role,params.toString()]"));assert.ok(center.includes("['workflow-review', actor.id || 0, actor.role || '', reviewId]"));assert.ok(!center.includes("['workflow-notifications'"))});
 
 test('review details never render raw JSON blocks and use user-facing Network rate cards', () => {
   const center = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx')

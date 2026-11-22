@@ -13,10 +13,10 @@ test('sidebar uses the count of Needs My Action reviews, not notification totals
   assert.match(hook, /\/workflow\/reviews\?scope=queue&limit=1&page=1/);
   assert.match(hook, /query\.data\?\.pagination\?\.total/);
   assert.doesNotMatch(hook, /\/workflow\/summary|unreadNotifications|pendingProtectedChanges/);
-  assert.match(controller, /const history = scope === 'history' \? reviewHistoryWhere\(req\.authUser\) : null/);
+  assert.ok(controller.includes("['history','cases'].includes(scope) ? reviewHistoryWhere(req.authUser) : null"));
   assert.match(controller, /sql: `\(\$\{history\.sql\}\) AND NOT \(\$\{queue\.sql\}\)`/);
   assert.match(controller, /pagination: \{ page, limit, total:/);
-  assert.match(center, /scope=\$\{reviewScope\}/);
+  assert.ok(center.includes("params.set('scope','history')"));
 });
 
 test('badge is account scoped, permission gated, and refreshed on changes and focus', () => {

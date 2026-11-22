@@ -1,16 +1,28 @@
 import { buildReviewPayloadHash } from './operationalReview.service.js';
 import { createInternalNotifications, notifyDepartmentHeads } from './internalNotification.service.js';
 import { DEPARTMENT_HEAD_ROLE } from '../config/permissions.js';
+import {writeAuditLog} from '../controllers/System/auditLogs.controller.js';
 
 const requestNumber=(id)=>`APR-${String(id).padStart(8,'0')}`;
 const json=(value)=>JSON.stringify(value ?? null);
 
-export const createProtectedChangeRequest=async(connection,{actor,actionKey,department,projectId=null,entityType,entityId,entityLabel=null,payload,reason,expiresHours=24})=>{
+export const createProtectedChangeRequest=async(connection,{actor,actionKey,department,projectId=null,entityType,entityId,entityLabel=null,payload,reason,expiresHours=24,reuseEntityRequest=false})=>{
   if(!actor?.id)throw Object.assign(new Error('Authenticated requester is required.'),{statusCode:401});
   const expectedHead=DEPARTMENT_HEAD_ROLE[department]; if(!expectedHead)throw Object.assign(new Error('Invalid approval department.'),{statusCode:400});
   if(actor.role===expectedHead)return {directHeadApproval:true,status:'approved',reviewedByHeadUserId:actor.id};
   const cleanReason=String(reason||'').trim(); if(cleanReason.length<5)throw Object.assign(new Error('Enter a clear reason for this protected change.'),{statusCode:400});
   const payloadHash=buildReviewPayloadHash(payload);
+  if(reuseEntityRequest){
+    const [requests]=await connection.query("SELECT * FROM protected_change_requests WHERE requested_by_user_id=? AND action_key=? AND entity_type=? AND entity_id=? AND status IN ('pending','approved','returned') AND expires_at>NOW() ORDER BY protected_change_request_id DESC LIMIT 1 FOR UPDATE",[actor.id,actionKey,entityType,String(entityId)]);
+    const prior=requests[0];
+    if(prior){
+      if(prior.request_payload_hash===payloadHash&&prior.status!=='returned')return {requestId:Number(prior.protected_change_request_id),requestNumber:prior.request_number,status:prior.status,reused:true};
+      await writeAuditLog(connection,null,{actor,action:'update',module:'Review Center',entityType:'protected_change_request',entityId:String(prior.protected_change_request_id),entityLabel:prior.request_number,title:'Resubmitted bulk approval',metadata:{before:{payload:prior.request_payload_json,status:prior.status,note:prior.head_note},after:{payload,status:'pending'},reason:cleanReason}});
+      await connection.query("UPDATE protected_change_requests SET status='pending',request_payload_json=?,request_payload_hash=?,reason=?,reviewed_by_head_user_id=NULL,head_note=NULL,reviewed_at=NULL WHERE protected_change_request_id=?",[json(payload),payloadHash,cleanReason,prior.protected_change_request_id]);
+      await notifyDepartmentHeads(connection,{department,projectId,reviewId:null,title:`Bulk approval resubmitted · ${prior.request_number}`,message:cleanReason});
+      return {requestId:Number(prior.protected_change_request_id),requestNumber:prior.request_number,status:'pending',reused:true};
+    }
+  }
   await connection.query("UPDATE protected_change_requests SET status='expired' WHERE requested_by_user_id=? AND action_key=? AND entity_type=? AND entity_id=? AND status='pending' AND expires_at<=NOW()",[actor.id,actionKey,entityType,String(entityId)]);
   const [existing]=await connection.query("SELECT protected_change_request_id,request_number,status FROM protected_change_requests WHERE requested_by_user_id=? AND action_key=? AND entity_type=? AND entity_id=? AND request_payload_hash=? AND status IN ('pending','approved') AND expires_at>NOW() ORDER BY protected_change_request_id DESC LIMIT 1 FOR UPDATE",[actor.id,actionKey,entityType,String(entityId),payloadHash]);
   if(existing[0])return {requestId:Number(existing[0].protected_change_request_id),requestNumber:existing[0].request_number,status:existing[0].status,reused:true};
@@ -26,15 +38,19 @@ export const createProtectedChangeRequest=async(connection,{actor,actionKey,depa
 
 export const getProtectedChangeForUpdate=async(connection,id)=>{const [rows]=await connection.query('SELECT * FROM protected_change_requests WHERE protected_change_request_id=? LIMIT 1 FOR UPDATE',[Number(id)]);return rows[0]||null;};
 
-export const approveProtectedChange=async(connection,{requestId,actor,approve=true,note=''})=>{
+export const approveProtectedChange=async(connection,{requestId,actor,approve=true,note='',decision=null})=>{
   const row=await getProtectedChangeForUpdate(connection,requestId); if(!row)throw Object.assign(new Error('Approval request not found.'),{statusCode:404});
   if(row.status!=='pending')throw Object.assign(new Error('This approval request is no longer pending.'),{statusCode:409});
   const [[expiry]] = await connection.query('SELECT (expires_at <= NOW()) AS expired FROM protected_change_requests WHERE protected_change_request_id=?',[row.protected_change_request_id]);
   if(Number(expiry?.expired)===1){await connection.query("UPDATE protected_change_requests SET status='expired' WHERE protected_change_request_id=?",[row.protected_change_request_id]);throw Object.assign(new Error('This approval request has expired.'),{statusCode:409});}
   if(actor?.role!==DEPARTMENT_HEAD_ROLE[row.department])throw Object.assign(new Error(`Only the ${row.department} Head can review this request.`),{statusCode:403});
+    if(Number(actor.id)===Number(row.requested_by_user_id))throw Object.assign(new Error('An independent Head must review this request.'),{statusCode:403});
   if(row.lot_project_id && !Number(actor.all_projects_access||actor.admin_all_projects||0)){const [scope]=await connection.query('SELECT 1 FROM user_project_access WHERE user_id=? AND lot_project_id=? LIMIT 1',[actor.id,row.lot_project_id]);if(!scope.length)throw Object.assign(new Error('This approval request is outside your project scope.'),{statusCode:403});}
-  const next=approve?'approved':'rejected';await connection.query('UPDATE protected_change_requests SET status=?,reviewed_by_head_user_id=?,head_note=?,reviewed_at=NOW() WHERE protected_change_request_id=?',[next,actor.id,String(note||'').trim()||null,row.protected_change_request_id]);
-  await createInternalNotifications(connection,{userIds:[row.requested_by_user_id],type:approve?'protected_change_approved':'protected_change_rejected',title:`${approve?'Approved':'Rejected'} · ${row.request_number}`,message:String(note||'').trim()||`${row.request_number} was ${next}.`});
+  const next=decision==='return'?'returned':approve?'approved':'rejected';
+  if(['returned','rejected'].includes(next)&&String(note||'').trim().length<5)throw Object.assign(new Error('Explain the return or rejection (at least 5 characters).'),{statusCode:400});
+  await writeAuditLog(connection,null,{actor,action:next==='approved'?'approve':next==='returned'?'return':'reject',module:'Review Center',entityType:'protected_change_request',entityId:String(row.protected_change_request_id),entityLabel:row.request_number,title:`Head decision: ${next}`,metadata:{before:{status:row.status,payload:row.request_payload_json},after:{status:next,note:String(note||'').trim()}}});
+  await connection.query('UPDATE protected_change_requests SET status=?,reviewed_by_head_user_id=?,head_note=?,reviewed_at=NOW() WHERE protected_change_request_id=?',[next,actor.id,String(note||'').trim()||null,row.protected_change_request_id]);
+    await createInternalNotifications(connection,{userIds:[row.requested_by_user_id],type:`protected_change_${next}`,title:`${next[0].toUpperCase()+next.slice(1)} · ${row.request_number}`,message:String(note||'').trim()||`${row.request_number} was ${next}.`});
   return {...row,status:next,reviewed_by_head_user_id:actor.id};
 };
 

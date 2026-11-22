@@ -61,8 +61,8 @@ test('review queue remains authoritative and SQL errors are not sent to the brow
   assert.match(source, /notificationCountsAvailable\s*\?\s*Math.max\(0, unreadNotifications - unreadActionNotifications\)\s*:\s*0/);
   assert.match(source, /logWorkflowSummaryError\('review_queue_count', error, req.authUser\)/);
   assert.match(source, /Unable to load the Review Center summary\. Please try again\./);
-  assert.match(reviewCenter, /counts\.notificationCountsAvailable === false \? '—'/);
-  assert.match(reviewCenter, /counts\.protectedCountsAvailable === false \? '—'/);
+  assert.ok(!reviewCenter.includes('Unread Notifications'));
+  assert.ok(reviewCenter.includes('counts.pendingProtectedChanges'));
 });
 
 

@@ -30,7 +30,7 @@ const fakeConnection = (handlers = []) => {
 
 const approvalTypeColumn = [/information_schema\.COLUMNS/, () => [[{ ok: 1 }]]];
 
-test('same Staff edit before Head check refreshes the existing Review instead of creating a duplicate', async () => {
+test('A later Staff operation creates a separate review before Head checking', async () => {
   const open = {
     operational_review_id: 44,
     review_number: 'REV-00000044',
@@ -60,15 +60,15 @@ test('same Staff edit before Head check refreshes the existing Review instead of
     afterSnapshot: { name: 'North Star Network', status: 'active' },
   });
 
-  assert.equal(result.reviewId, 44);
+  assert.equal(result.reviewId, 91);
   assert.equal(result.status, 'pending_head_review');
-  assert.equal(result.refreshed, true);
-  assert.ok(connection.calls.some((call) => /revision=revision\+1/.test(call.sql)));
-  assert.ok(!connection.calls.some((call) => /INSERT INTO operational_reviews/.test(call.sql)), 'must reuse the open review');
-  assert.ok(connection.calls.some((call) => /record_updated_before_head_check/.test(String(call.params))));
+  assert.equal(result.refreshed, undefined);
+  assert.ok(!connection.calls.some((call) => /revision=revision\+1/.test(call.sql)));
+  assert.ok(connection.calls.some((call) => /INSERT INTO operational_reviews/.test(call.sql)), 'one review per operation');
+  assert.ok(!connection.calls.some((call) => /record_updated_before_head_check/.test(String(call.params))));
 });
 
-test('Staff edit after Head check reopens the same Review for Head review of the latest values', async () => {
+test('A later Staff operation creates a separate review without reopening prior evidence', async () => {
   const open = {
     operational_review_id: 45,
     review_number: 'REV-00000045',
@@ -91,10 +91,10 @@ test('Staff edit after Head check reopens the same Review for Head review of the
     actionKey: 'network.edit', department: 'marketing', entityType: 'seller_group', entityId: 8,
     afterSnapshot: { status: 'inactive' },
   });
-  assert.equal(result.reviewId, 45);
+  assert.equal(result.reviewId, 91);
   assert.equal(result.status, 'pending_head_review');
-  assert.equal(result.reopenedForHeadReview, true);
-  assert.ok(connection.calls.some((call) => /record_changed_after_head_check/.test(String(call.params))));
+  assert.equal(result.reopenedForHeadReview, undefined);
+  assert.ok(!connection.calls.some((call) => /record_changed_after_head_check/.test(String(call.params))));
 });
 
 test('returned reviews and active Audit Cases never lock edits', async () => {
@@ -105,26 +105,13 @@ test('returned reviews and active Audit Cases never lock edits', async () => {
   assert.equal(connection.calls.length, 0);
 });
 
-test('Audit correction owner is System Admin normally, but Super Admin for a Super Admin direct entry', async () => {
-  assert.equal(getAuditCorrectionRole({ approval_type: 'staff_entry', initiated_by_role: 'marketing_staff' }), 'system_admin');
-  assert.equal(getAuditCorrectionRole({ approval_type: 'emergency_super_admin', initiated_by_role: 'super_admin' }), 'super_admin');
-
-  const superCase = {
-    audit_case_id: 4,
-    operational_review_id: 9,
-    status: 'pending_system_admin_correction',
-    entity_type: 'seller_group',
-    entity_id: '8',
-    approval_type: 'emergency_super_admin',
-    initiated_by_role: 'super_admin',
-  };
-  const connection = fakeConnection([[/FROM audit_cases c/, () => [[superCase]]]]);
-  await assert.rejects(
-    getPendingAuditCorrectionCase(connection, { auditCaseId: 4, entityType: 'seller_group', entityId: 8, actor: { id: 2, role: 'system_admin' } }),
-    /must be corrected by Super Admin/
-  );
-  const allowed = await getPendingAuditCorrectionCase(connection, { auditCaseId: 4, entityType: 'seller_group', entityId: 8, actor: { id: 1, role: 'super_admin' } });
-  assert.equal(allowed.correction_role, 'super_admin');
+test("Audit correction authorization enforces assignment for both owner roles", async()=>{
+ const row={audit_case_id:4,operational_review_id:9,status:'pending_system_admin_correction',review_status:'correction_required',entity_type:'seller_group',entity_id:'8',assigned_responder_user_id:2,opened_by_auditor_user_id:8};
+ const connection=fakeConnection([[/FROM audit_cases c/,()=>[[row]]]]);
+ const args={auditCaseId:4,entityType:'seller_group',entityId:8,correctionReason:'Supported by saved evidence.'};
+ for(const role of ['system_admin','super_admin'])assert.ok(await getPendingAuditCorrectionCase(connection,{...args,actor:{id:2,role}}));
+ await assert.rejects(getPendingAuditCorrectionCase(connection,{...args,actor:{id:1,role:'super_admin'}}),{statusCode:403});
+ await assert.rejects(getPendingAuditCorrectionCase(connection,{...args,actor:{id:2,role:'system_admin'},correctionReason:''}),{statusCode:400});
 });
 
 test('Review Center explains correction ownership and gives original Staff a Correct & Resubmit action', async () => {

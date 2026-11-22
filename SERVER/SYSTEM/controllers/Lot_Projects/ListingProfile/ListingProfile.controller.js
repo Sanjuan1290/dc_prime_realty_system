@@ -1143,6 +1143,7 @@ export const requestLotProjectListingCommissionAdjustmentCode = async (req, res)
 
     if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
         auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
         entityType: 'lot_project_commission_account',
@@ -1249,6 +1250,7 @@ export const adjustLotProjectListingCommission = async (req, res) => {
 
     if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
         auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
         entityType: 'lot_project_commission_account',
@@ -1400,6 +1402,7 @@ export const adjustLotProjectListingCommission = async (req, res) => {
         auditCase: authorization.auditCase,
         actor,
         correctionSummary: `Adjusted commission for ${context.listing.lot_project_listing_unit_id}: ${reason}`,
+        beforeSnapshot: {projectSlug:req.params.projectSlug,listingId:context.listing.lot_project_listing_id,accountId:entityId,groupRate:Number(context.currentRows.reduce((sum,row)=>sum+Number(row.rate||0),0).toFixed(4)),hierarchy:context.currentRows},
         afterSnapshot: { projectSlug: req.params.projectSlug, listingId: context.listing.lot_project_listing_id, accountId: entityId, groupRate: adjustment.groupRate, hierarchy: updatedRows },
         metadata: { accountId: entityId, listingId: context.listing.lot_project_listing_id },
       });

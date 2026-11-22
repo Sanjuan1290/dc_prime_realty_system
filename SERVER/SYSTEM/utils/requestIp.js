@@ -16,9 +16,9 @@ export const normalizeIpAddress = (value) => {
 };
 
 export const getRequestIpAddress = (req = {}) => normalizeIpAddress(
-  req.ip
-    || req.socket?.remoteAddress
-    || req.connection?.remoteAddress
+  req?.ip
+    || req?.socket?.remoteAddress
+    || req?.connection?.remoteAddress
     || null
 );
 

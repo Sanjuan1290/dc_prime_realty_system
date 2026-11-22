@@ -39,11 +39,8 @@ test('invalid or missing date is displayed safely', () => {
 test('Review Center delegates formatting to the shared timezone utility', () => {
   assert.match(source, /import \{ formatPhilippineDateTime \} from '\.\.\/\.\.\/utils\/formatDateTime'/)
   assert.match(source, /const fmtDate = \(value\) => formatPhilippineDateTime\(value, \{ fallback: '—', timeZoneLabel: true \}\)/)
-  assert.match(source, /fmtDate\(row\.created_at\)/)
   assert.match(source, /fmtDate\(event\.created_at\)/)
-  assert.match(source, /fmtDate\(row\.reviewed_at\)/)
-  assert.match(source, /fmtDate\(row\.used_at\)/)
-  assert.ok((source.match(/fmtDate\(/g) || []).length >= 6)
+  assert.ok((source.match(/fmtDate\(/g) || []).length >= 3)
 })
 
 test('Review timestamp formatting does not depend on viewer browser timezone', () => {

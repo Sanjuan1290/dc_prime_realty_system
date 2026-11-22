@@ -56,19 +56,4 @@ test('Bulk Edit runs on a project-scoped page instead of an overlay modal, and w
   assert.match(listings, /\/listings\/bulk-edit/)
 })
 
-test('Internal Notifications uses server pagination, account-specific cache and retains global mark-all-read', () => {
-  const ui = read('../../../CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx')
-  const server = read('../controllers/System/workflow.controller.js')
-  assert.match(ui, /const \[notificationPage, setNotificationPage\] = useState\(1\)/)
-  assert.match(ui, /notificationPageSize = 10/)
-  assert.match(ui, /'workflow-notifications', actor\.id \|\| 0, actor\.role \|\| '', notificationPage/)
-  assert.match(ui, /workflow\/notifications\?limit=\$\{notificationPageSize\}&page=\$\{notificationPage\}/)
-  assert.match(ui, /notifications\.data\?\.pagination\?\.total/)
-  assert.match(ui, /Internal Notifications pages/)
-  assert.match(ui, /Mark All as Read/)
-  assert.match(server, /const \{ page,limit \} = pageValues\(req\.query\)/)
-  assert.match(server, /LIMIT \? OFFSET \?/)
-  assert.match(server, /markVisibleInternalNotificationsRead/)
-})
-
-
+test("Notification APIs retain pagination while Review Center omits their controls", ()=>{const ui=read('../../../CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx'),server=read('../controllers/System/workflow.controller.js');for(const label of ['Internal Notifications','Mark All as Read','workflow-notifications'])assert.ok(!ui.includes(label));assert.ok(server.includes('LIMIT ? OFFSET ?'));assert.ok(server.includes('markVisibleInternalNotificationsRead'))});

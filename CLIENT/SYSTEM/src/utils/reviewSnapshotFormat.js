@@ -24,7 +24,22 @@ const IDENTITY_KEYS = ['projectId', 'lot_project_id', 'listingId', 'lot_project_
 
 export const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
 export const isEmptyValue = (value) => value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length)
-export const sameValue = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+const canonicalSnapshotValue = value => Array.isArray(value) ? value.map(canonicalSnapshotValue) : isPlainObject(value) ? Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonicalSnapshotValue(value[key])])) : value
+export const sameValue = (a, b) => (a === undefined || b === undefined) ? a === b : JSON.stringify(canonicalSnapshotValue(a)) === JSON.stringify(canonicalSnapshotValue(b))
+export const savedSnapshotChangeSummary = (before,after,isHidden=()=>false) => {
+  let changedFields=0,unavailableFields=0
+  const walk=(left,right)=>{
+    for(const key of new Set([...Object.keys(left),...Object.keys(right)])){
+      if(isHidden(key))continue
+      if(!Object.hasOwn(left,key)||!Object.hasOwn(right,key)){unavailableFields++;continue}
+      if(isPlainObject(left[key])&&isPlainObject(right[key]))walk(left[key],right[key])
+      else if(!sameValue(left[key],right[key]))changedFields++
+    }
+  }
+  const left=isPlainObject(before)?before:{},right=isPlainObject(after)?after:{}
+  walk(left,right)
+  return {changedFields,unavailableFields,complete:isPlainObject(before)&&isPlainObject(after)&&Object.keys(left).length>0&&Object.keys(right).length>0&&unavailableFields===0}
+}
 
 export const parseSnapshotValue = (value) => {
   if (!value) return null

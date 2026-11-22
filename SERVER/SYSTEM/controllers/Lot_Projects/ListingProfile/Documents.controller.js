@@ -39,6 +39,7 @@ import {
   resubmitReturnedOperationalReview,
 } from '../../../services/operationalReview.service.js';
 import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js';
+import {captureListingReviewSnapshot} from '../../../services/listingReviewSnapshot.service.js';
 
 const normalizeUploadedDocumentFiles = (body = {}) => {
   const rawFiles = Array.isArray(body.files)
@@ -266,20 +267,13 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
 
     await connection.beginTransaction();
 
-    const [beforeRows] = await connection.query(
-      `SELECT document_id, lot_project_listing_document_is_required AS is_required,
-              lot_project_listing_document_responsible_party AS responsible_party,
-              lot_project_listing_document_status AS status
-       FROM lot_project_listing_documents
-       WHERE lot_project_id = ? AND lot_project_listing_id = ?
-       ORDER BY document_id`,
-      [project.lot_project_id, listing.lot_project_listing_id]
-    );
+    const savedBefore = await captureListingReviewSnapshot(connection, listing.lot_project_listing_id);
 
     let auditCase = null;
     let returnedReview = null;
     if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
         auditCaseId: req.body?.auditCaseId,
         entityType: 'lot_project_listing',
@@ -354,26 +348,16 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
     }
 
     const beforeSnapshot = {
+      ...savedBefore,
       projectSlug: slug,
       listingId: listing.lot_project_listing_id,
       unitCode: listing.lot_project_listing_unit_id,
-      documents: beforeRows.map((row) => ({
-        documentId: Number(row.document_id),
-        isRequired: Number(row.is_required || 0),
-        responsibleParty: row.responsible_party,
-        status: row.status,
-      })),
     };
     const afterSnapshot = {
+      ...await captureListingReviewSnapshot(connection, listing.lot_project_listing_id),
       projectSlug: slug,
       listingId: listing.lot_project_listing_id,
       unitCode: listing.lot_project_listing_unit_id,
-      documents: cleanDocuments.map((row) => ({
-        documentId: Number(row.document_id),
-        isRequired: Number(row.is_required || 0),
-        responsibleParty: row.responsible_party,
-        status: row.status,
-      })),
     };
     let workflow = null;
     if (auditCase) {
@@ -381,6 +365,7 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
         auditCase,
         actor: req.authUser,
         correctionSummary: String(req.body?.correctionSummary || 'Corrected listing document requirements from the Audit Case.').trim(),
+        beforeSnapshot,
         afterSnapshot,
         metadata: { actionKey: 'listing.documents.update' },
       });
@@ -408,6 +393,9 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
       });
     }
 
+    await writeAuditLog(connection,req,{action:'update',module:'Documents',entityType:'lot_project_listing',
+      entityId:String(listing.lot_project_listing_id),entityLabel:listing.lot_project_listing_unit_id,
+      title:'Updated listing document requirements',metadata:{before:beforeSnapshot,after:afterSnapshot,reviewId:workflow?.reviewId}});
     await connection.commit();
 
     return res.json({

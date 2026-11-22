@@ -77,22 +77,4 @@ test('read-all controller uses transaction and rolls back on failure, and hides 
   assert.deepEqual(logs,['begin','rollback','release'])
 })
 
-test('authenticated PATCH route and UI provide individual and bulk controls, without mutating review status', () => {
-  const router = read('SERVER/SYSTEM/routers/System/workflow.routers.js')
-  const controller = read('SERVER/SYSTEM/controllers/System/workflow.controller.js')
-  const client = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx')
-  assert.match(router, /router\.patch\('\/notifications\/read-all',requirePermission\(PERMISSIONS\.WORKFLOW_REVIEW_CENTER_VIEW\),markAllInternalNotificationsRead\)/)
-  assert.match(router, /router\.patch\('\/notifications\/:id\/read',requirePermission\(PERMISSIONS\.WORKFLOW_REVIEW_CENTER_VIEW\),markInternalNotificationRead\)/)
-  assert.ok(router.indexOf("'/notifications/read-all'") < router.indexOf("'/notifications/:id/read'"))
-  assert.match(controller, /const access = notificationVisibilityWhere\(req\.authUser\)/)
-  assert.match(client, /Mark All as Read/)
-  assert.match(client, /Mark as Read/)
-  assert.match(client, /const notificationBusy = markRead\.isPending \|\| markAllRead\.isPending/)
-  assert.match(client, /await Promise\.all\(\[notifications\.refetch\(\), summary\.refetch\(\)\]\)/)
-  assert.match(client, /Marking these read does not complete pending reviews or corrections/)
-  assert.match(client, /if \(row\.operational_review_id\) navigate/)
-  assert.doesNotMatch(client.slice(client.indexOf('const ReviewCenter = () => {')), /markAllRead\.mutate\([^)]*status/)
-})
-
-
-
+test("Notification read APIs remain authenticated and absent from Review Center UI", ()=>{const router=read('SERVER/SYSTEM/routers/System/workflow.routers.js'),client=read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');assert.ok(router.includes("router.patch('/notifications/read-all',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW)"));assert.ok(router.includes("router.patch('/notifications/:id/read'"));for(const label of ['Mark All as Read','Mark as Read','workflow-notifications'])assert.ok(!client.includes(label),label)});

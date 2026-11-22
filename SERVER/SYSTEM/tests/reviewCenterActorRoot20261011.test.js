@@ -9,19 +9,11 @@ const source = fs.readFileSync(sourcePath, 'utf8')
 const centerStart = source.indexOf('const ReviewCenter = () => {')
 const center = source.slice(centerStart)
 
-test('Review Center declares actorRoot in the same component as click handlers', () => {
-  assert.ok(centerStart > -1)
-  assert.match(center, /const actor = me\?\.user \|\| \{\}/)
-  assert.match(center, /const actorRoot = actor\.role \? `\/portal\/\$\{actor\.role\}` : ''/)
-})
+test("Review Center declares its actor and route root in the click-handler component", ()=>{assert.ok(centerStart>-1);assert.ok(center.includes('actor=me?.user||{}'));assert.ok(center.includes("root='/portal/'+actor.role"))});
 
-test('Reviews list opens detail route with the logged-in actor role', () => {
-  assert.match(center, /onClick=\{\(\) => navigate\(`\$\{actorRoot\}\/review-center\/reviews\/\$\{row\.operational_review_id\}`\)\}/)
-})
+test("Review rows open detail routes under the signed-in role", ()=>{assert.ok(center.includes("navigate(root+'/review-center/reviews/'+row.operational_review_id)"))});
 
-test('Internal workflow notification opens detail route with the logged-in actor role', () => {
-  assert.match(center, /if \(row\.operational_review_id\) navigate\(`\$\{actorRoot\}\/review-center\/reviews\/\$\{row\.operational_review_id\}`\)/)
-})
+test("Review Center has no internal notification navigation", ()=>{assert.ok(!center.includes('workflow-notifications'));assert.ok(!center.includes('Mark as Read'))});
 
 test('All review-enabled roles have a route at that role path', () => {
   const appSource = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../CLIENT/SYSTEM/src/App.jsx'), 'utf8')

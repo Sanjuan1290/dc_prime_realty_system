@@ -77,7 +77,7 @@ test('UI offers search, 4 named columns, page sizing, row expand/collapse and co
   assert.match(component, /Rows per page/)
   assert.match(component, /visiblePreview\.totalPages/)
   assert.match(component, /Confirmation applies every validated change in the workbook/)
-  assert.match(component, /\{ rows, filename, reason: reason\.trim\(\) \}/)
+  assert.match(component, /\{ rows, filename, submissionKey, reason: reason\.trim\(\) \}/)
 })
 
 

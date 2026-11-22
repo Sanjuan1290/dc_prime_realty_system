@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FiAlertCircle, FiColumns, FiList, FiLock } from 'react-icons/fi'
 import {
   formatSnapshotValue, humanizeKey, isEmptyValue, isPlainObject, parseSnapshotValue, sameValue,
+  savedSnapshotChangeSummary,
 } from '../../utils/reviewSnapshotFormat'
 import ReviewSnapshotDiff from './ReviewSnapshotDiff'
 import { REVIEW_FORM_TEMPLATES } from '../../utils/reviewFormTemplates'
@@ -62,7 +63,7 @@ export const buildReviewFormSections = ({ before, after, entityType, labels = {}
 }
 
 const ReviewFormComparison = ({ beforeValue, afterValue, events = [], revision = 1, actionKey = null, entityType, lookups = {}, labels = {}, isHiddenField, fieldOrder = [], listRenderers = {} }) => {
-  const [mode,setMode] = useState('forms')
+  const [mode,setMode] = useState('changes')
   const [mobileSide,setMobileSide] = useState('after')
   const [highlight,setHighlight] = useState(true)
   const [selectedRevision,setSelectedRevision] = useState('latest')
@@ -88,7 +89,9 @@ const ReviewFormComparison = ({ beforeValue, afterValue, events = [], revision =
   const {title,sections} = buildReviewFormSections({before,after,entityType,labels,isHiddenField})
   const opts = {lookups,labelFor:(key)=>labels[key]||humanizeKey(key),isHidden:(key)=>neverShow(key,isHiddenField)}
   const comparable = (key) => Object.hasOwn(before,key) && Object.hasOwn(after,key)
-  const count = sections.reduce((sum,section)=>sum + section.fields.filter(field=>comparable(field.key) && !sameValue(entryValue(before,field.key),entryValue(after,field.key))).length,0)
+  const comparison=savedSnapshotChangeSummary(before,after,key=>neverShow(key,isHiddenField))
+  const count = comparison.changedFields
+  const unavailable = !comparison.complete
   const renderSide = (side) => <div className="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
     <h4 className="flex items-center gap-2 border-b border-slate-100 pb-2 text-sm font-black text-slate-900">{side==='before'?'Before':'After'} <span className="ml-auto text-xs font-semibold text-slate-500">Read Only</span></h4>
     {side==='before'&&!hasBefore ? <p className="rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-600">No previous values were saved with this review</p> : side==='after'&&!hasAfter ? <p className="rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-600">No after-values were saved with this review</p> : sections.length ? sections.map(section=><section key={section.name} className="space-y-3">
@@ -98,7 +101,7 @@ const ReviewFormComparison = ({ beforeValue, afterValue, events = [], revision =
   </div>
   return <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white" aria-label="Before and After">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-      <div><h3 className="text-base font-black text-slate-900">Before &amp; After</h3><p className="text-xs font-semibold text-slate-500">{title} · {count} changed {count===1?'field':'fields'}</p></div>
+      <div><h3 className="text-base font-black text-slate-900">Before &amp; After</h3><p className="text-xs font-semibold text-slate-500">{title} · {count===0&&unavailable?'Historical comparison unavailable':`${count} changed ${count===1?'field':'fields'}${unavailable?' · Some historical values unavailable':''}`}</p></div>
       <span className="flex items-center gap-1 text-xs font-bold text-slate-500"><FiLock/> Saved history</span>
     </div>
     <div className="space-y-4 p-4">

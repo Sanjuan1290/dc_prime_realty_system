@@ -1958,6 +1958,7 @@ export const editUser = async (req, res) => {
     if (sellerRoles.has(role) && existingAccreditedSellerId) {
       if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
         auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
           actor: req.authUser,
           auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
           entityType: 'accredited_seller',
@@ -2167,6 +2168,7 @@ export const editUser = async (req, res) => {
           auditCase,
           actor: req.authUser,
           correctionSummary: String(req.body?.correctionSummary || 'Corrected accredited seller details from the Audit Case.').trim(),
+          beforeSnapshot: beforeSellerSnapshot,
           afterSnapshot: afterSellerSnapshot,
           metadata: { actionKey: 'seller.edit', accreditedSellerId: Number(accreditedSellerId) },
         });

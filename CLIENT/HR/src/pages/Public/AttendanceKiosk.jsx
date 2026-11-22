@@ -93,6 +93,7 @@ const AttendanceKiosk = () => {
   })
 
   const unlocked = Boolean(sessionQuery.data?.unlocked)
+  useEffect(()=>{if(!unlocked){setBarcode('');setShowScanner(false);clearScanResult()}},[unlocked])
 
   useEffect(() => {
     if (sessionQuery.isLoading) return
@@ -205,26 +206,28 @@ const AttendanceKiosk = () => {
           ) : null}
         </header>
 
+        {sessionQuery.data?.passwordExpired&&<StatusAlert type="error" message="The kiosk password expired. Ask an HR administrator to regenerate it."/>}
+        {sessionQuery.data?.expiringSoon&&<StatusAlert type="warning" message={`Kiosk password expires on ${new Date(sessionQuery.data.passwordExpiresAt).toLocaleString('en-PH',{timeZone:'Asia/Manila'})}. Ask an administrator to regenerate it.`}/>}
         {!unlocked ? (
           <section className="mx-auto mt-[8vh] max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl">
             <div className="bg-slate-950 px-6 py-6 text-white">
               <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10"><FiShield className="h-6 w-6" /></span>
               <h2 className="text-2xl font-black">Unlock Attendance</h2>
-              <p className="mt-2 text-sm font-semibold leading-6 text-slate-300">Enter the office attendance PIN to access Time In and Time Out. This station does not provide access to the admin portal.</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-300">Enter the office kiosk password to access Time In and Time Out. This station does not provide access to the admin portal.</p>
             </div>
             <form onSubmit={(event) => { event.preventDefault(); if (!unlockMutation.isPending) unlockMutation.mutate() }} className="grid gap-4 p-6">
               {notice ? <StatusAlert type={notice.type} message={notice.message} /> : null}
               {sessionQuery.isError ? <StatusAlert type="error" message={sessionQuery.error?.message || 'Attendance station could not be loaded.'} /> : null}
               <label className="grid gap-2">
-                <span className="text-sm font-black text-slate-700">Attendance PIN</span>
+                <span className="text-sm font-black text-slate-700">Kiosk Password</span>
                 <input
                   ref={pinInputRef}
                   type="password"
-                  inputMode="numeric"
+                  maxLength={128}
                   autoComplete="off"
                   value={pin}
-                  onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 12))}
-                  placeholder="Enter PIN"
+                  onChange={(event) => setPin(event.target.value.slice(0,128))}
+                  placeholder="Enter kiosk password"
                   className="h-14 rounded-2xl border border-slate-300 px-4 text-center font-mono text-2xl font-black tracking-[0.35em] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                 />
               </label>

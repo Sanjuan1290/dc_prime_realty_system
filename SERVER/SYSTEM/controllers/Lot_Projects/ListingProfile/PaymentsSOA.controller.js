@@ -1,3 +1,4 @@
+import {capturePaymentAllocationEvidence} from '../../../services/paymentCorrectionEvidence.service.js';
 import { capturePaymentSchedule } from '../../../services/paymentReviewSchedule.service.js';
 import { normalizeFullPaymentReview, readFullPaymentSettlement } from '../../../services/fullPaymentSettlement.service.js';
 import {locksSoaFirstDueDate,planSoaDueDateUpdates} from '../../../services/soaFirstDueDate.service.js';
@@ -422,6 +423,18 @@ const requirePaymentCorrectionVerification = async (connection, req, { action, l
   const payload = buildPaymentCorrectionPayload({ action, actor, listing, existingPayment, body: req.body, reason });
   validatePaymentCorrectionRequest({ action, reason, payload });
 
+  // An explicit assigned case takes precedence over the Staff review context.
+  const requestedCaseId=Number(req.body.auditCaseId || req.body.audit_case_id || 0);
+  if(requestedCaseId){
+    const auditCase=await getPendingAuditCorrectionCase(connection,{
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,auditCaseId:requestedCaseId,entityType:'lot_project_payment',entityId:existingPayment.lot_project_payment_id,actor});
+    if(!auditCase || Number(auditCase.lot_project_id)!==Number(listing.lot_project_id))throw createHttpError(409,'This Audit Case does not authorize correction of this payment/account.');
+    const contextReviewId=Number(req.body.reviewId || req.body.review_id || 0);
+    if(contextReviewId && contextReviewId!==Number(auditCase.operational_review_id))throw createHttpError(409,'The correction case and review reference do not match.');
+    return {ok:true,actor,reason,payload,authorizationType:'audit_case',allowReviewId:auditCase.operational_review_id,auditCase,
+      beforeAllocations:await capturePaymentAllocationEvidence(connection,existingPayment.lot_project_payment_id,listing.lot_project_id)};
+  }
+
   // The Head can enter a correction directly only when the record is not already
   // tracked by an active review/case. The saved change is sent straight to Auditor review.
   if (actor.role === 'accounting_head') {
@@ -463,38 +476,6 @@ const requirePaymentCorrectionVerification = async (connection, req, { action, l
       throw createHttpError(409, 'This returned-review correction is no longer valid for your account.');
     }
     throw createHttpError(409, 'Accounting Staff can correct a recorded payment only after the Accounting Head returns its review for correction.');
-  }
-
-  // A valid Auditor finding gives System Admin a correction right only for the
-  // exact payment attached to that Audit Case.
-  const auditCaseId = Number(req.body.auditCaseId || req.body.audit_case_id || 0);
-  if (['system_admin','super_admin'].includes(actor.role) && auditCaseId) {
-    const [caseRows] = await connection.query(
-      `SELECT c.*, r.entity_type, r.entity_id, r.operational_review_id, r.review_number
-       FROM audit_cases c
-       INNER JOIN operational_reviews r ON r.operational_review_id = c.operational_review_id
-       WHERE c.audit_case_id = ?
-       LIMIT 1 FOR UPDATE`,
-      [auditCaseId]
-    );
-    const auditCase = caseRows[0];
-    if (
-      !auditCase ||
-      auditCase.status !== 'pending_system_admin_correction' ||
-      auditCase.entity_type !== 'lot_project_payment' ||
-      String(auditCase.entity_id) !== String(existingPayment.lot_project_payment_id)
-    ) {
-      throw createHttpError(409, 'This Audit Case does not authorize correction of this payment.');
-    }
-    return {
-      ok: true,
-      actor,
-      reason,
-      payload,
-      authorizationType: 'audit_case',
-      allowReviewId: auditCase.operational_review_id,
-      auditCase,
-    };
   }
 
   // Super Admin remains the owner-level emergency fallback and keeps the existing
@@ -547,7 +528,6 @@ const completePaymentCorrectionWorkflow = async (connection, {
       `UPDATE operational_reviews
        SET status='pending_head_review',
            revision=revision+1,
-           before_snapshot_json=?,
            after_snapshot_json=?,
            claimed_by_user_id=NULL,
            claimed_at=NULL,
@@ -556,7 +536,7 @@ const completePaymentCorrectionWorkflow = async (connection, {
            auditor_reviewed_by_user_id=NULL,
            auditor_reviewed_at=NULL
        WHERE operational_review_id=?`,
-      [JSON.stringify(beforeSnapshot), JSON.stringify(afterSnapshot), review.operational_review_id]
+      [JSON.stringify(afterSnapshot), review.operational_review_id]
     );
     await appendReviewEvent(connection, {
       reviewId: review.operational_review_id,
@@ -584,52 +564,12 @@ const completePaymentCorrectionWorkflow = async (connection, {
   }
 
   if (authorization.authorizationType === 'audit_case') {
-    const auditCase = authorization.auditCase;
-    const summary = `${action === 'void' ? 'Voided' : 'Corrected'} payment ${existingPayment.lot_project_payment_reference_id || paymentId}: ${authorization.reason}`;
-    await connection.query(
-      `UPDATE audit_cases
-       SET status='pending_system_admin_correction',
-           system_admin_user_id=?,
-           correction_summary=?,
-           correction_applied_at=NOW()
-       WHERE audit_case_id=? AND status='pending_system_admin_correction'`,
-      [actor.id, summary, auditCase.audit_case_id]
-    );
-    const [[previousReview]] = await connection.query(
-      `SELECT revision, action_key, before_snapshot_json, after_snapshot_json
-       FROM operational_reviews WHERE operational_review_id=? FOR UPDATE`,
-      [auditCase.operational_review_id]
-    );
-    if (!previousReview) throw createHttpError(409, 'The linked payment review no longer exists.');
-    const priorRevision = Math.max(1, Number(previousReview.revision || 1));
-    await connection.query(
-      `UPDATE operational_reviews
-       SET status='correction_required', revision=revision+1, after_snapshot_json=?
-       WHERE operational_review_id=?`,
-      [JSON.stringify(afterSnapshot), auditCase.operational_review_id]
-    );
-    await appendReviewEvent(connection, {
-      reviewId: auditCase.operational_review_id,
-      eventType: 'system_correction_applied',
-      actor,
-      fromStatus: 'correction_required',
-      toStatus: 'correction_required',
-      message: summary,
-      metadata: {
-        auditCaseId: auditCase.audit_case_id, action, paymentId,
-        previousActionKey: previousReview.action_key, latestActionKey: 'audit_case.correction',
-        previousRevision: priorRevision, reviewRevision: priorRevision + 1,
-        previousBeforeSnapshot: previousReview.before_snapshot_json ?? null,
-        previousAfterSnapshot: previousReview.after_snapshot_json ?? null,
-        originalBaselinePreserved: true,
-        nextBeforeSnapshot: beforeSnapshot, nextAfterSnapshot: afterSnapshot,
-      },
+    return advanceAuditCaseToRecheck(connection,{
+      auditCase:authorization.auditCase,actor,correctionSummary:authorization.reason,
+      beforeSnapshot:{...beforeSnapshot,allocations:authorization.beforeAllocations ?? null},
+      afterSnapshot:{...afterSnapshot,allocations:await capturePaymentAllocationEvidence(connection,paymentId,project.lot_project_id)},
+      metadata:{action,paymentId},
     });
-    return {
-      reviewId: auditCase.operational_review_id,
-      auditCaseId: auditCase.audit_case_id,
-      status: 'correction_required',
-    };
   }
 
   const review = await createOperationalReview(connection, {
@@ -768,6 +708,7 @@ const authorizeAccountingAdjustment = async (connection, {
 
   if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
     const auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
       actor: req.authUser,
       auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
       entityType,
@@ -854,6 +795,7 @@ const completeAccountingAdjustmentReview = async (connection, {
       actor,
       afterSnapshot,
       correctionSummary: `${actionKey} corrected by System Admin after Auditor finding.`,
+      beforeSnapshot,
     });
     return {
       reviewId: authorization.auditCase.operational_review_id,
@@ -1179,20 +1121,14 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
     if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCaseId = Number(req.body.auditCaseId || req.body.audit_case_id || 0);
       if (!auditCaseId) throw createHttpError(409, 'A valid Auditor-approved Audit Case is required for System Admin payment correction.');
-      const [caseRows] = await connection.query(
-        `SELECT c.audit_case_id, c.case_number, c.status, r.entity_type, r.entity_id
-         FROM audit_cases c
-         INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id
-         WHERE c.audit_case_id=?
-         LIMIT 1 FOR UPDATE`,
-        [auditCaseId]
-      );
-      const auditCase = caseRows[0];
+        const auditCase = await getPendingAuditCorrectionCase(connection, {
+          auditCaseId, actor, correctionReason: reason,
+          entityType: 'lot_project_payment', entityId: existingPayment.lot_project_payment_id,
+        });
       if (
         !auditCase ||
-        auditCase.status !== 'pending_system_admin_correction' ||
-        auditCase.entity_type !== 'lot_project_payment' ||
-        String(auditCase.entity_id) !== String(existingPayment.lot_project_payment_id)
+          Number(auditCase.lot_project_id) !== Number(project.lot_project_id) ||
+          (Number(req.body.reviewId || 0) > 0 && Number(req.body.reviewId) !== Number(auditCase.operational_review_id))
       ) {
         throw createHttpError(409, 'This Audit Case does not authorize correction of this payment.');
       }
@@ -2505,6 +2441,7 @@ export const restoreSeparateLegalMiscFeeFromAuditCase = async (req, res) => {
     if (!schedule || getStoredScheduleType(schedule) !== 'legal_misc') throw createHttpError(404, 'Legal / Misc Fee SOA row not found.');
 
     const auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
       actor: req.authUser,
       auditCaseId,
       entityType: ACCOUNTING_LMF_ENTITY,

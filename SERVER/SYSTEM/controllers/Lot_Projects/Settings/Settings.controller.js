@@ -232,6 +232,7 @@ export const requestLotProjectSettingsCode = async (req, res) => {
 
     if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
         auditCaseId,
         entityType: PROJECT_SETTINGS_REVIEW_ENTITY,
@@ -419,6 +420,7 @@ export const updateLotProjectSettings = async (req, res) => {
 
     if ((isOwnerAdministrator(currentUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
         auditCaseId,
         entityType: PROJECT_SETTINGS_REVIEW_ENTITY,
@@ -520,6 +522,7 @@ export const updateLotProjectSettings = async (req, res) => {
         actor: currentUser,
         correctionSummary: reason,
         afterSnapshot: after,
+        beforeSnapshot: before,
         metadata: { authorizationType, projectId: project.lot_project_id },
       });
     } else {

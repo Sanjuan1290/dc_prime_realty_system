@@ -14,7 +14,11 @@ export function moduleBreadcrumb(pathname, {role='super_admin',projectName,searc
   for(let index=start;index<parts.length;index++){
     const segment=parts[index],previous=parts[index-1]
     const label=previous==='lot-projects'?projectName||'Project Workspace':previous==='listings'&&segment!=='bulk-edit'?'Listing Profile':previous==='reviews'?'Review Details':previous==='accounts'?'Buyer Account':labels[segment]
-    if(label)crumbs.push({label,to:'/portal/'+parts.slice(0,index+1).join('/')})
+    if(label){
+      const crumb={label,to:'/portal/'+parts.slice(0,index+1).join('/')}
+      if(crumbs.at(-1)?.label===label)crumbs[crumbs.length-1]=crumb
+      else crumbs.push(crumb)
+    }
   }
   if(crumbs.length===1)crumbs.push({label:'Dashboard',to:home})
   const tab=new URLSearchParams(search).get('tab')

@@ -13,6 +13,7 @@ import { countWorkflowSummaryNotifications } from '../../services/workflowSummar
 import { markVisibleInternalNotificationsRead } from '../../services/internalNotificationRead.service.js';
 import { enrichLegacyListingReviewSnapshots } from '../../services/legacyListingReviewSnapshot.service.js';
 import { sendAuthenticatedAssetContent } from '../../services/secureCloudinary.service.js';
+import {assertBulkReviewComplete} from '../../services/bulkListingReview.service.js';
 
 const errorMessage = (error) => error?.message || 'Workflow operation failed.';
 const pageValues = (query = {}) => ({ page: Math.max(Number(query.page || 1),1), limit: Math.min(Math.max(Number(query.limit || 25),1),100) });
@@ -46,7 +47,9 @@ const reviewQueueWhere = (actor, { alias = 'r' } = {}) => {
 
 const canActorOpenReview = async (connection, actor, review) => {
   if (!actor || !review) return false;
-  if (actor.role === 'auditor') return ['pending_auditor_review','pending_auditor_recheck'].includes(review.status) && Number(review.initiated_by_user_id)!==Number(actor.id);
+  if (actor.role === 'auditor') return ['pending_auditor_review','pending_auditor_recheck'].includes(review.status)
+    && Number(review.initiated_by_user_id)!==Number(actor.id)
+    && roleHasPermission(actor,review.status==='pending_auditor_recheck'?PERMISSIONS.WORKFLOW_AUDIT_CORRECTION_VERIFY:PERMISSIONS.WORKFLOW_AUDIT_REVIEW);
   if (['system_admin','super_admin'].includes(actor.role)) {
     if(review.status!=='correction_required')return false;
     const [cases]=await connection.query("SELECT * FROM audit_cases WHERE operational_review_id=? AND status='pending_system_admin_correction' ORDER BY audit_case_id DESC LIMIT 1",[review.operational_review_id]);
@@ -184,22 +187,31 @@ export const listOperationalReviews = async (req, res) => {
   try {
     const { page, limit } = pageValues(req.query);
     const offset = (page - 1) * limit;
-    const scope = String(req.query.scope || 'queue') === 'history' ? 'history' : 'queue';
+    const scope = ['history','cases'].includes(String(req.query.scope)) ? String(req.query.scope) : 'queue';
     const queue = reviewQueueWhere(req.authUser);
     // History means visible reviews that do NOT currently need this user's action.
     // Apply the exclusion in SQL *before* counting and paginating, otherwise
     // actionable reviews overlap with History and page totals become incorrect.
-    const history = scope === 'history' ? reviewHistoryWhere(req.authUser) : null;
+    const history = ['history','cases'].includes(scope) ? reviewHistoryWhere(req.authUser) : null;
     const access = history
-      ? { sql: `(${history.sql}) AND NOT (${queue.sql})`, params: [...history.params, ...queue.params] }
+      ? scope==='cases' ? history : { sql: `(${history.sql}) AND NOT (${queue.sql})`, params: [...history.params, ...queue.params] }
       : queue;
     const statuses = String(req.query.status || '').trim().split(',').map((v) => v.trim()).filter(Boolean);
     const params = [...access.params];
     let statusSql = '';
     if (statuses.length) { statusSql = ` AND r.status IN (${statuses.map(() => '?').join(',')})`; params.push(...statuses); }
+    if(scope==='cases')statusSql+=" AND EXISTS(SELECT 1 FROM audit_cases c WHERE c.operational_review_id=r.operational_review_id AND c.status NOT IN ('closed','finding_invalid'))";
+    if(req.query.context==='review_queue')statusSql+=" AND r.status='pending_auditor_review'";
+    if(req.query.category==='bulk')statusSql+=" AND r.entity_type='lot_project_listing_bulk_batch'";
+    if(req.query.category==='individual')statusSql+=" AND r.entity_type<>'lot_project_listing_bulk_batch' AND NOT EXISTS(SELECT 1 FROM lot_project_listing_bulk_rows br WHERE br.operational_review_id=r.operational_review_id)";
+    if(req.query.category==='progress')statusSql+=" AND (r.status='pending_auditor_recheck' OR EXISTS(SELECT 1 FROM lot_project_listing_bulk_batches b INNER JOIN lot_project_listing_bulk_rows br ON br.batch_id=b.batch_id WHERE b.operational_review_id=r.operational_review_id AND br.review_status<>'pending'))";
+    if(req.query.assigned==='me'&&['system_admin','super_admin'].includes(req.authUser.role)){statusSql+=' AND EXISTS(SELECT 1 FROM audit_cases c WHERE c.operational_review_id=r.operational_review_id AND (c.assigned_responder_user_id=? OR c.assigned_responder_user_id IS NULL))';params.push(req.authUser.id)}
+    const search=String(req.query.search||'').trim().slice(0,200);
+    if(search){statusSql+=` AND (r.review_number LIKE ? OR r.entity_label LIKE ? OR r.entity_id LIKE ? OR EXISTS(SELECT 1 FROM lot_projects lp WHERE lp.lot_project_id=r.lot_project_id AND lp.lot_project_name LIKE ?) OR EXISTS(SELECT 1 FROM users u WHERE u.id=r.initiated_by_user_id AND CONCAT_WS(' ',u.first_name,u.middle_name,u.last_name) LIKE ?) OR EXISTS(SELECT 1 FROM lot_project_listing_bulk_batches b INNER JOIN lot_project_listing_bulk_rows br ON br.batch_id=b.batch_id WHERE b.operational_review_id=r.operational_review_id AND JSON_UNQUOTE(JSON_EXTRACT(br.after_snapshot_json,'$.unitCode')) LIKE ?))`;params.push(...Array(6).fill('%'+search+'%'))}
     const [countRows] = await db.query(`SELECT COUNT(*) total FROM operational_reviews r WHERE ${access.sql}${statusSql}`, params);
     const [rows] = await db.query(
       `SELECT r.*, p.lot_project_name, (CASE WHEN ${queue.sql} THEN 1 ELSE 0 END) needs_my_action,
+              COALESCE((SELECT b.changed_count FROM lot_project_listing_bulk_batches b WHERE b.operational_review_id=r.operational_review_id),1) AS affected_records,
               TRIM(CONCAT_WS(' ', initiator.first_name,initiator.middle_name,initiator.last_name)) initiated_by_name,
               TRIM(CONCAT_WS(' ', claimant.first_name,claimant.middle_name,claimant.last_name)) claimed_by_name,
               TRIM(CONCAT_WS(' ', head.first_name,head.middle_name,head.last_name)) head_reviewed_by_name,
@@ -276,7 +288,31 @@ export const getReviewCenterSummary = async (req, res) => {
     const unreadInformationalNotifications = notificationCountsAvailable
       ? Math.max(0, unreadNotifications - unreadActionNotifications)
       : 0;
+    const visible=reviewHistoryWhere(actor);
+    const [[taskCounts]]=await db.query(`SELECT COUNT(*) AS pendingReviewTasks,COALESCE(SUM(COALESCE(b.changed_count,1)),0) AS affectedRecords
+      FROM operational_reviews r LEFT JOIN lot_project_listing_bulk_batches b ON b.operational_review_id=r.operational_review_id
+      WHERE r.status='pending_auditor_review' AND ${visible.sql}`,visible.params);
+    const caseWhere=['system_admin','super_admin'].includes(actor.role)?' AND (c.assigned_responder_user_id=? OR c.assigned_responder_user_id IS NULL)':'';
+    const [[caseCounts]]=await db.query(`SELECT COALESCE(SUM(c.status NOT IN ('closed','finding_invalid')),0) AS openAuditCases,
+      COALESCE(SUM(c.status='pending_system_admin_correction'),0) AS assignedCorrections,
+      COALESCE(SUM(c.status='pending_system_admin_correction' AND c.auditor_resolution IS NOT NULL),0) AS returnedCorrections,
+      COALESCE(SUM(c.status='pending_auditor_recheck'),0) AS awaitingVerification,
+      COALESCE(SUM(c.status='closed' AND c.final_verified_at IS NOT NULL),0) AS completedCorrections
+      FROM audit_cases c INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id
+      WHERE ${visible.sql}${caseWhere}`,[...visible.params,...(caseWhere?[actor.id]:[])]);
+    let headCounts={returnedRequests:0,departmentAwaitingAudit:0};
+    if(actorDepartment&&DEPARTMENT_HEAD_ROLE[actorDepartment]===actor.role){
+      const [[reviewTotals]]=await db.query(`SELECT COALESCE(SUM(r.status='returned_for_correction'),0) AS returnedRequests,
+        COALESCE(SUM(r.status IN ('pending_auditor_review','pending_auditor_recheck')),0) AS departmentAwaitingAudit
+        FROM operational_reviews r WHERE ${visible.sql}`,visible.params);
+      const [[approvalTotals]]=await db.query(`SELECT COUNT(*) AS total FROM protected_change_requests p
+        WHERE p.department=? AND p.status='returned' AND (p.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS
+        (SELECT 1 FROM user_project_access upa WHERE upa.user_id=? AND upa.lot_project_id=p.lot_project_id))`,
+      [actorDepartment,Number(actor.all_projects_access||actor.admin_all_projects||0),actor.id]);
+      headCounts={returnedRequests:Number(reviewTotals.returnedRequests)+Number(approvalTotals.total),departmentAwaitingAudit:Number(reviewTotals.departmentAwaitingAudit)};
+    }
     return res.json({ data: {
+      ...Object.fromEntries(Object.entries({...taskCounts,...caseCounts,...headCounts}).map(([key,value])=>[key,Number(value||0)])),
       counts, actionable, pendingProtectedChanges, unreadNotifications,
       protectedCountsAvailable, notificationCountsAvailable,
       badgeCount: actionable + pendingProtectedChanges + unreadInformationalNotifications,
@@ -469,7 +505,7 @@ export const getOperationalReview = async (req, res) => {
       `SELECT e.*,TRIM(CONCAT_WS(' ',u.first_name,u.middle_name,u.last_name)) actor_name FROM operational_review_events e LEFT JOIN users u ON u.id=e.actor_user_id WHERE e.operational_review_id=? ORDER BY e.operational_review_event_id`, [reviewId]
     );
     const [caseRows] = await db.query(
-      `SELECT * FROM audit_cases WHERE operational_review_id=? ORDER BY audit_case_id DESC LIMIT 1`, [reviewId]
+      `SELECT c.*,u.role AS assigned_responder_role,TRIM(CONCAT_WS(' ',u.first_name,u.last_name)) AS assigned_responder_name FROM audit_cases c LEFT JOIN users u ON u.id=c.assigned_responder_user_id WHERE c.operational_review_id=? ORDER BY c.audit_case_id DESC LIMIT 1`, [reviewId]
     ).catch(() => [[]]);
     let auditCase = caseRows?.[0] || null;
     if (auditCase) {
@@ -492,7 +528,7 @@ export const getOperationalReview = async (req, res) => {
     }));
     const displayReview = await enrichLegacyListingReviewSnapshots(db, review);
     const [lookups, location, proofFiles] = await Promise.all([buildReviewLookups(db, displayReview), resolveReviewRecordLocation(db, displayReview), liveReviewProofs(db, displayReview)]);
-    const [correctionAssignees]=req.authUser.role==='auditor' ? await db.query("SELECT id,role,TRIM(CONCAT_WS(' ',first_name,last_name)) AS name FROM users WHERE role IN ('system_admin','super_admin') AND status='active' AND COALESCE(can_login,1)=1 ORDER BY role,id") : [[]];
+    const [correctionAssignees]=req.authUser.role==='auditor' ? await db.query("SELECT id,role,TRIM(CONCAT_WS(' ',first_name,last_name)) AS name FROM users WHERE role IN ('system_admin','super_admin') AND status='active' AND COALESCE(can_login,1)=1 ORDER BY CASE WHEN role='system_admin' THEN 0 ELSE 1 END,id") : [[]];
     return res.json({ data: { ...displayReview, action_label: getReviewActionLabel(displayReview.action_key), events: readableEvents, auditCase, correctionAssignees, lookups, proofFiles, ...location, viewer: { canAct, readOnly: !canAct } } });
   } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
 };
@@ -568,7 +604,7 @@ export const returnReviewForCorrection = async (req, res) => {
 const MANUAL_RESUBMIT_ACTION_KEYS = new Set([
   'reservation.create', 'buyer_form.approve', 'commission.release', 'commission.hold',
   'commission.unhold', 'listing.delete', 'listing.import', 'listing.import_undo',
-  'network.members.import',
+  'network.members.import', 'listing.bulk_edit',
 ]);
 const MANUAL_RESUBMIT_ENTITY_TYPES = new Set(['lot_project_account', 'lot_project_buyer_form', 'lot_project_commission']);
 
@@ -646,6 +682,7 @@ const verifyCorrectedCase = async (connection,req,review) => {
  if(note.length<5||note.length>5000)throw Object.assign(new Error('Enter verification comments between 5 and 5,000 characters.'),{statusCode:400});
  await connection.query("UPDATE audit_cases SET status='closed',final_verified_by_auditor_user_id=?,final_verified_at=NOW(),auditor_resolution=?,auditor_resolved_by_user_id=?,auditor_resolved_at=NOW() WHERE audit_case_id=?",[req.authUser.id,note,req.authUser.id,item.audit_case_id]);
  await connection.query("UPDATE operational_reviews SET status='closed',auditor_reviewed_by_user_id=?,auditor_reviewed_at=NOW() WHERE operational_review_id=?",[req.authUser.id,review.operational_review_id]);
+ await connection.query("UPDATE lot_project_listing_bulk_rows SET review_status='verified_closed' WHERE operational_review_id=?",[review.operational_review_id]);
  await appendReviewEvent(connection,{reviewId:review.operational_review_id,eventType:'auditor_correction_verified',actor:req.authUser,fromStatus:'pending_auditor_recheck',toStatus:'closed',message:note,metadata:{auditCaseId:item.audit_case_id,caseNumber:item.case_number,result:'passed',correctionRevision:review.revision,correctedBy:item.system_admin_user_id}});
  await writeAuditLog(connection,req,{action:'approve',module:'Audit Cases',entityType:'audit_case',entityId:String(item.audit_case_id),entityLabel:item.case_number,title:'Correction Verified & Closed',description:note,metadata:{reviewId:review.operational_review_id,correctionRevision:review.revision}});
 };
@@ -664,6 +701,7 @@ export const returnCorrectedAuditCase = async (req,res) => {
   if([review.initiated_by_user_id,item.system_admin_user_id].map(Number).includes(Number(req.authUser.id)))throw Object.assign(new Error('You cannot verify your own record or correction.'),{statusCode:403});
   await connection.query("UPDATE audit_cases SET status='pending_system_admin_correction',correction_applied_at=NULL,auditor_resolution=?,auditor_resolved_by_user_id=?,auditor_resolved_at=NOW() WHERE audit_case_id=?",[comments,req.authUser.id,item.audit_case_id]);
   await connection.query("UPDATE operational_reviews SET status='correction_required' WHERE operational_review_id=?",[review.operational_review_id]);
+  await connection.query("UPDATE lot_project_listing_bulk_rows SET review_status='correction_required' WHERE operational_review_id=?",[review.operational_review_id]);
   await appendReviewEvent(connection,{reviewId:review.operational_review_id,eventType:'auditor_correction_returned',actor:req.authUser,fromStatus:'pending_auditor_recheck',toStatus:'correction_required',message:comments,metadata:{auditCaseId:item.audit_case_id,caseNumber:item.case_number,result:'failed',correctionRevision:review.revision,correctedBy:item.system_admin_user_id,correctionSummary:item.correction_summary}});
   await notifyCorrectionOwners(connection,review,{...item,finding:comments});
   await writeAuditLog(connection,req,{action:'return',module:'Audit Cases',entityType:'audit_case',entityId:String(item.audit_case_id),entityLabel:item.case_number,title:'Correction failed independent verification',description:comments,metadata:{reviewId:review.operational_review_id,correctionRevision:review.revision}});
@@ -681,9 +719,11 @@ export const auditorVerifyReview = async (req, res) => {
     if (!['pending_auditor_review','pending_auditor_recheck'].includes(review.status)) throw Object.assign(new Error('This review is not awaiting Auditor verification.'), { statusCode: 409 });
     if(Number(review.initiated_by_user_id)===Number(req.authUser.id))throw Object.assign(new Error('An independent Auditor must verify this record.'),{statusCode:403});
     if(review.status==='pending_auditor_recheck'){
+      if(!roleHasPermission(req.authUser,PERMISSIONS.WORKFLOW_AUDIT_CORRECTION_VERIFY))throw Object.assign(new Error('You do not have permission to verify controlled corrections.'),{statusCode:403});
       await verifyCorrectedCase(connection,req,review);
       await connection.commit();return res.json({message:'Correction independently verified. The same case is Verified & Closed.'});
     }
+    if(review.entity_type==='lot_project_listing_bulk_batch')await assertBulkReviewComplete(connection,review);
     const previous = review.status;
     await connection.query(`UPDATE operational_reviews SET status='closed',auditor_reviewed_by_user_id=?,auditor_reviewed_at=NOW() WHERE operational_review_id=?`, [req.authUser.id,review.operational_review_id]);
     await appendReviewEvent(connection, { reviewId:review.operational_review_id,eventType:'auditor_verified',actor:req.authUser,fromStatus:previous,toStatus:'closed',message:String(req.body?.note || 'Auditor verified no issue.').slice(0,1000) });
@@ -742,6 +782,7 @@ export const openAuditCase = async (req,res) => {
     const review=await getOperationalReviewForUpdate(connection,req.params.id);
     if(!review) throw Object.assign(new Error('Review not found.'),{statusCode:404});
     if(review.status!=='pending_auditor_review') throw Object.assign(new Error('An Audit Case can be opened only while the review is pending Auditor review.'),{statusCode:409});
+    if(review.entity_type==='lot_project_listing_bulk_batch')throw Object.assign(new Error('Report the issue against its affected listing inside the batch.'),{statusCode:400});
     if(Number(review.initiated_by_user_id)===Number(req.authUser.id))throw Object.assign(new Error('An independent Auditor must review this record.'),{statusCode:403});
     const [eligibleAdmins]=await connection.query("SELECT id FROM users WHERE role IN ('system_admin','super_admin') AND status='active' AND COALESCE(can_login,1)=1 ORDER BY CASE WHEN role='system_admin' THEN 0 ELSE 1 END,id");
     const assigneeId=Number(req.body?.assigneeId || eligibleAdmins[0]?.id || 0);
@@ -775,7 +816,7 @@ export const resolveAuditCaseByAdmin = async (req,res) => {
     if (!auditCase) throw Object.assign(new Error('Audit Case not found.'),{statusCode:404});
     const notes=String(req.body?.notes || '').trim();
     await resolveAuditCaseWithNotes(connection,{auditCase,actor:req.authUser,notes});
-    await writeAuditLog(connection,req,{action:'update',module:'Audit Cases',entityType:'audit_case',entityId:String(auditCase.audit_case_id),entityLabel:auditCase.case_number,title:'Resolved Audit Case with Notes',description:notes,metadata:{reviewId:auditCase.operational_review_id,correctionRole:getAuditCorrectionRole(auditCase)}});
+    await writeAuditLog(connection,req,{action:'update',module:'Audit Cases',entityType:'audit_case',entityId:String(auditCase.audit_case_id),entityLabel:auditCase.case_number,title:'Submitted correction for independent verification',description:notes,metadata:{reviewId:auditCase.operational_review_id,correctionRole:getAuditCorrectionRole(auditCase)}});
     await connection.commit();
     return res.json({message:'Correction is awaiting independent Auditor verification. Only the Auditor can close the case.'});
   } catch(error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)}); }
@@ -799,20 +840,21 @@ export const listProtectedChangeRequests = async (req,res) => {
     let where='1=0',params=[];
     const department=getRoleDepartment(actor);
     if(DEPARTMENT_HEAD_ROLE[department]===actor.role){where="p.department=? AND (p.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS(SELECT 1 FROM user_project_access upa WHERE upa.user_id=? AND upa.lot_project_id=p.lot_project_id))";params=[department,Number(actor.all_projects_access||actor.admin_all_projects||0),actor.id];}
-    const requestedStatus=String(req.query.status||'').trim();if(requestedStatus){where+=` AND p.status=?`;params.push(requestedStatus);}
+    const requestedStatuses=String(req.query.status||'').trim().split(',').filter(Boolean);if(requestedStatuses.length){where+=` AND p.status IN (${requestedStatuses.map(()=>'?').join(',')})`;params.push(...requestedStatuses);}
+    const search=String(req.query.search||'').trim().slice(0,200);if(search){where+=' AND (p.request_number LIKE ? OR p.entity_label LIKE ? OR p.reason LIKE ?)';params.push('%'+search+'%','%'+search+'%','%'+search+'%')}
     const [countRows]=await db.query(`SELECT COUNT(*) total FROM protected_change_requests p WHERE ${where}`,params);
     const [rows]=await db.query(`SELECT p.*,TRIM(CONCAT_WS(' ',u.first_name,u.middle_name,u.last_name)) requested_by_name,TRIM(CONCAT_WS(' ',h.first_name,h.middle_name,h.last_name)) reviewed_by_head_name,lp.lot_project_name FROM protected_change_requests p LEFT JOIN users u ON u.id=p.requested_by_user_id LEFT JOIN users h ON h.id=p.reviewed_by_head_user_id LEFT JOIN lot_projects lp ON lp.lot_project_id=p.lot_project_id WHERE ${where} ORDER BY p.created_at DESC,p.protected_change_request_id DESC LIMIT ? OFFSET ?`,[...params,limit,offset]);
-    const total=Number(countRows[0]?.total||0); const totalPages=Math.max(1,Math.ceil(total/limit)); return res.json({data:rows,pagination:{page,limit,total,totalPages,hasNext:page<totalPages,hasPrev:page>1}});
+    const compactRows=rows.map(row=>row.entity_type==='lot_project_listing_bulk_batch'?{...row,affected_records:(parseSnapshot(row.request_payload_json)?.rows||[]).length,request_payload_json:undefined}:row);
+    const total=Number(countRows[0]?.total||0); const totalPages=Math.max(1,Math.ceil(total/limit)); return res.json({data:compactRows,pagination:{page,limit,total,totalPages,hasNext:page<totalPages,hasPrev:page>1}});
   }catch(error){return res.status(500).json({message:errorMessage(error)});}
 };
 
 export const reviewProtectedChangeRequest = async (req,res) => {
   const connection=await db.getConnection();
   try{
-    const decision=String(req.body?.decision||'').trim().toLowerCase(); if(!['approve','reject'].includes(decision))return res.status(400).json({message:'Decision must be approve or reject.'});
-    await connection.beginTransaction(); const row=await approveProtectedChange(connection,{requestId:req.params.requestId,actor:req.authUser,approve:decision==='approve',note:req.body?.note});
-    await writeAuditLog(connection,req,{action:decision==='approve'?'approve':'reject',module:'Review Center',entityType:'protected_change_request',entityId:String(row.protected_change_request_id),entityLabel:row.request_number,title:`Department Head ${decision}d protected change`,description:`${row.request_number} was ${decision}d by the Department Head.`,metadata:{action_key:row.action_key,department:row.department}});
-    await connection.commit(); return res.json({message:`Protected change ${decision}d.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
+    const decision=String(req.body?.decision||'').trim().toLowerCase(); if(!['approve','reject','return'].includes(decision))return res.status(400).json({message:'Decision must be approve, reject or return.'});
+    await connection.beginTransaction(); const row=await approveProtectedChange(connection,{requestId:req.params.requestId,actor:req.authUser,approve:decision==='approve',decision,note:req.body?.note});
+    await connection.commit(); return res.json({message:`Protected change ${row.status}.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
   }catch(error){try{await connection.rollback()}catch{}return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
 

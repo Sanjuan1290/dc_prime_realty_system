@@ -61,10 +61,10 @@ test('every financial and surveyed area field gives a clear field-specific contr
 });
 
 test('bulk approval is preflighted and committed without saving any listing changes', () => {
-  assert.match(backend, /actionKey: 'listing\.protected_edit'/);
-  assert.match(backend, /consume: false/);
-  assert.match(backend, /if \(approvalPending\.length\) \{[\s\S]*?connection\.commit\(\); committed = true;[\s\S]*?res\.status\(202\)/);
-  assert.match(backend, /approvalRequestId: governance\.approvalRequestId, consume: true/);
+  assert.match(backend, /actionKey:'listing\.bulk_protected_edit'/);
+  assert.match(backend, /consume:false/);
+  assert.ok(backend.includes('if(batchGovernance.pending)')); assert.ok(backend.includes('res.status(202)'));
+  assert.match(backend, /approvalRequestId:batchGovernance\.approvalRequestId,consume:true/);
   assert.match(backend, /headPreApprovedByUserId/);
 });
 

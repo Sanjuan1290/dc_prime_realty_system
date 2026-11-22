@@ -1,9 +1,10 @@
+import {createBulkListingReview} from '../../../services/bulkListingReview.service.js';
+import {createHash} from 'node:crypto';
 import {
   db, getProjectBySlug, getErrorMessage, mapListingRow, tableExists,
 } from '../_shared/lotProject.shared.js';
 import { calculateContractPricing } from '../_shared/listingPricing.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
-import { createOperationalReview } from '../../../services/operationalReview.service.js';
 import { authorizeGovernedAction } from '../../../services/governedAction.service.js';
 import { hasBuyerFormSchema, revokeOpenBuyerFormLinks } from '../BuyerForms/buyerForm.shared.js';
 import { syncListingDocumentCloudinaryUnitFolder, rollbackListingDocumentCloudinaryMoves } from './Listings.controller.js';
@@ -217,46 +218,29 @@ export const applyBulkListingEdit = async (req, res) => {
       return res.status(409).json({ message: 'Some rows need correction. Read the messages below, fix the Excel file, and validate again. No changes were saved.', errors: plan.errors });
     }
     if (!plan.changed.length) { await connection.rollback(); return res.status(400).json({ message: 'No listing values were changed.' }); }
-    // Approval requests are saved separately, BEFORE any inventory writes.
-    // Nothing in a mixed batch changes until every protected identity correction
-    // has received the required Operations Head approval.
-    const protectedApprovals = new Map();
-    const approvalPending = [];
-    for (const item of plan.changed.filter((entry) => entry.contractProtected)) {
-      const listingId = Number(item.listing.lot_project_listing_id);
-      const payload = { listingId, before: item.before, after: item.after, changes: item.changes, reason };
-      const governance = await authorizeGovernedAction(connection, {
-        actor: req.authUser, actionKey: 'listing.protected_edit', projectId: project.lot_project_id,
-        entityId: listingId, entityLabel: item.before.unitCode,
-        payload, reason, consume: false,
-      });
-      protectedApprovals.set(listingId, { payload, governance });
-      if (governance.pending) approvalPending.push({ listingId, unitCode: item.before.unitCode,
-        requestNumber: governance.pending.requestNumber, status: governance.pending.status });
-    }
-    if (approvalPending.length) {
-      await connection.commit(); committed = true; // Commit ONLY approval requests; inventory is unchanged.
-      return res.status(202).json({ success: true, approvalPending: true,
-        message: `${approvalPending.length} protected unit correction(s) are waiting for Operations Head approval. No listing changes were saved. After approval, click Apply Approved Changes again using this same Excel file.`,
-        pending: approvalPending });
-    }
-    // All requests exist and are approved (or the user is an authorized Head/Admin).
-    // Consume the approvals atomically with the updates, so any error rolls back both.
-    for (const [listingId, { payload, governance }] of protectedApprovals) {
-      const result = await authorizeGovernedAction(connection, {
-        actor: req.authUser, actionKey: 'listing.protected_edit', projectId: project.lot_project_id,
-        entityId: listingId, entityLabel: payload.before.unitCode,
-        payload, reason, approvalRequestId: governance.approvalRequestId, consume: true,
-      });
-      if (!result.authorized) throw fail(`Operations Head approval is still needed for ${payload.before.unitCode}. No listing changes were saved.`, 409);
-      protectedApprovals.set(listingId, { payload, governance: result });
+    // One protected approval covers the exact mixed batch; inventory remains
+    // unchanged until the required Operations Head approval is consumed.
+    const payload={rows:plan.changed.map(item=>({listingId:Number(item.listing.lot_project_listing_id),before:item.before,after:item.after,changes:item.changes,contractProtected:item.contractProtected})).sort((a,b)=>a.listingId-b.listingId),reason};
+    const suppliedKey=String(req.body?.submissionKey||'');
+    if(suppliedKey&&!/^[a-zA-Z0-9_-]{8,64}$/.test(suppliedKey))throw fail('Invalid bulk submission reference.');
+    const submissionKey=suppliedKey||createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+    let batchGovernance=null;
+    if(plan.changed.some(item=>item.contractProtected)){
+      batchGovernance=await authorizeGovernedAction(connection,{actor:req.authUser,actionKey:'listing.bulk_protected_edit',projectId:project.lot_project_id,entityId:submissionKey,entityLabel:project.lot_project_name+' bulk listing edit',payload,reason,consume:false});
+      if(batchGovernance.pending){
+        await connection.commit();committed=true;
+        return res.status(202).json({success:true,approvalPending:true,message:'Bulk approval requested. No listings changed.',pending:[{requestNumber:batchGovernance.pending.requestNumber,status:batchGovernance.pending.status}],approvalRequestId:batchGovernance.pending.requestId,submissionKey});
+      }
+      batchGovernance=await authorizeGovernedAction(connection,{actor:req.authUser,actionKey:'listing.bulk_protected_edit',projectId:project.lot_project_id,entityId:submissionKey,entityLabel:project.lot_project_name+' bulk listing edit',payload,reason,approvalRequestId:batchGovernance.approvalRequestId,consume:true});
+      if(!batchGovernance.authorized)throw fail('Operations Head approval is required for this exact batch.',409);
     }
     const filename = String(req.body?.filename || 'Bulk Edit Listings.xlsx').slice(0, 255);
     const [batchResult] = await connection.query(
-      `INSERT INTO lot_project_listing_bulk_batches (lot_project_id, changed_by_user_id, source_filename, adjustment_reason, changed_count)
-       VALUES (?, ?, ?, ?, ?)`, [project.lot_project_id, req.authUser?.id || null, filename, reason, plan.changed.length]
+      `INSERT INTO lot_project_listing_bulk_batches (lot_project_id, changed_by_user_id, source_filename, adjustment_reason, changed_count, submission_key)
+       VALUES (?, ?, ?, ?, ?, ?)`, [project.lot_project_id, req.authUser?.id || null, filename, reason, plan.changed.length, submissionKey]
     );
     const batchId = Number(batchResult.insertId);
+    let savedChangedFieldCount=0;
     for (const item of plan.changed) {
       const { listing, before, after, changes, cadastralNames } = item;
       const id = Number(listing.lot_project_listing_id);
@@ -337,30 +321,29 @@ export const applyBulkListingEdit = async (req, res) => {
         await connection.query('UPDATE lot_project_listings SET buyer_form_generation = buyer_form_generation + 1 WHERE lot_project_listing_id = ?', [id]);
       }
       const beforeSnapshot = { ...before, unitStatus: listing.lot_project_listing_status };
-      const afterSnapshot = { ...after, unitStatus: listing.lot_project_listing_status };
+      const persisted=normalizedListing((await loadListings(connection,project.lot_project_id,[id]))[0]);
+      const afterSnapshot = { ...persisted, unitStatus: listing.lot_project_listing_status };
+      const savedChanges=listingChanges(before,persisted);
+      savedChangedFieldCount+=Object.keys(savedChanges).length;
       await connection.query(
         `INSERT INTO lot_project_listing_bulk_rows (batch_id, lot_project_listing_id, before_snapshot_json, after_snapshot_json, changed_fields_json) VALUES (?,?,?,?,?)`,
-        [batchId, id, JSON.stringify(beforeSnapshot), JSON.stringify(afterSnapshot), JSON.stringify(changes)]
+        [batchId, id, JSON.stringify(beforeSnapshot), JSON.stringify(afterSnapshot), JSON.stringify(savedChanges)]
       );
       await writeAuditLog(connection, req, { action: 'update', module: 'Listings', entityType: 'lot_project_listing',
         entityId: String(id), entityLabel: after.unitCode, title: 'Bulk-edited listing',
         description: `Updated ${after.unitCode} from bulk listing batch ${batchId}. Reason: ${reason}`,
-        metadata: { batchId, reason, before: beforeSnapshot, after: afterSnapshot, changes },
+        metadata: { batchId, reason, before: beforeSnapshot, after: afterSnapshot, changes:savedChanges },
       });
-      const approval = protectedApprovals.get(id)?.governance;
-      await createOperationalReview(connection, { actor: req.authUser,
-        actionKey: item.contractProtected ? 'listing.protected_edit' : 'listing.edit', department: 'operations',
-        projectId: project.lot_project_id, entityType: 'lot_project_listing', entityId: id,
-        entityLabel: `Unit ${after.unitCode} — ${project.lot_project_name}`, beforeSnapshot, afterSnapshot,
-        ...(item.contractProtected ? { headPreApprovedByUserId: approval?.headPreApprovedByUserId || null } : {}),
-      });
+
     }
+    const parentReview=await createBulkListingReview(connection,{actor:req.authUser,project,batchId,reason,changedCount:plan.changed.length,
+      changedFieldCount:savedChangedFieldCount,headPreApprovedByUserId:batchGovernance?.headPreApprovedByUserId||null});
     await writeAuditLog(connection, req, { action: 'import', module: 'Listings', entityType: 'lot_project_listing_bulk_batch',
       entityId: String(batchId), entityLabel: `Bulk listing batch ${batchId}`, title: 'Bulk listing adjustment completed',
       description: `${plan.changed.length} listings updated. Reason: ${reason}`, metadata: { batchId, reason, changedCount: plan.changed.length },
     });
     await connection.commit(); committed = true;
-    return res.json({ success: true, batchId, changedCount: plan.changed.length, message: `Updated ${plan.changed.length} listings.` });
+    return res.json({ success: true, batchId, reviewId:parentReview.reviewId, changedCount: plan.changed.length, message: `Updated ${plan.changed.length} listings.` });
   } catch (error) {
     if (!committed) {
       try { await connection.rollback(); } catch { /* already rolled back */ }

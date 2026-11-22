@@ -7,6 +7,7 @@ import helmet from 'helmet'
 import 'express-async-errors'
 
 import { db } from './db/connect.js'
+import { ensureAuditLogTable } from './controllers/System/auditLogs.controller.js'
 import { checkStartupDatabase, readStartupTimeout } from './services/serverStartup.service.js'
 import { startDailyPenaltyScheduler } from './jobs/dailyPenalty.job.js'
 import { parseTrustProxySetting } from './utils/requestIp.js'
@@ -171,6 +172,7 @@ const startServer = () => {
     console.log(`Checking TiDB connection (startup deadline: ${startupTimeoutMs}ms).`)
     try {
       await checkStartupDatabase(db, { timeoutMs: startupTimeoutMs })
+      await ensureAuditLogTable(db)
       await carryForwardOpenAuditCases(db)
       databaseReady = true
       console.log('TiDB connected')

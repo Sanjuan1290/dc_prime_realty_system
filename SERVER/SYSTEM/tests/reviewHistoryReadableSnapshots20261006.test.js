@@ -20,22 +20,14 @@ test('review snapshots render structured fields instead of raw JSON blocks', () 
 test('Head and Auditor can track reviews after their action without keeping them actionable', () => {
   const controller = read('SERVER/SYSTEM/controllers/System/workflow.controller.js')
   assert.match(controller, /const reviewHistoryWhere/)
-  assert.match(controller, /const history = scope === 'history' \? reviewHistoryWhere\(req\.authUser\) : null/);
+  assert.ok(controller.includes("['history','cases'].includes(scope) ? reviewHistoryWhere(req.authUser) : null"));
   assert.match(controller, /sql: `\(\$\{history\.sql\}\) AND NOT \(\$\{queue\.sql\}\)`/)
   assert.match(controller, /role === 'auditor'[\s\S]*head_reviewed_at IS NOT NULL/)
   assert.match(controller, /department = \?[\s\S]*user_project_access hupa/)
   assert.match(controller, /canActorOpenReview[\s\S]*reviewHistoryWhere\(actor\)/)
 })
 
-test('Review Center separates actionable work from history and paginates it', () => {
-  const center = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx')
-  assert.match(center, /Needs My Action/)
-  assert.match(center, /History/)
-  assert.match(center, /scope=\$\{reviewScope\}/)
-  assert.match(center, /limit=10/)
-  assert.match(center, /Previous/)
-  assert.match(center, /Next/)
-})
+test("Review Center separates queues from history with server pagination", ()=>{const center=read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');for(const value of ['Review Queue','Correction Queue','Approval Queue',"params.set('scope','history')",'<Pagination'])assert.ok(center.includes(value),value)});
 
 test('completed transitions stay visible instead of producing stale workflow errors', () => {
   const center = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx')

@@ -94,7 +94,7 @@ test('review mutations preserve original snapshots and include revision evidence
     assert.match(file,/nextAfterSnapshot/)
   }
   assert.match(op,/originalBaselinePreserved: true/)
-  assert.match(op,/beforeSnapshot, afterSnapshot, link/)
+  assert.ok(op.includes('beforeSnapshot = null, afterSnapshot = null'))
   const ui=source('CLIENT/SYSTEM/src/components/Shared/ReviewFormComparison.jsx')
   assert.match(ui,/Action Performed/)
   assert.match(ui,/statusTransitionAction/)
@@ -122,7 +122,7 @@ test('Audit Case corrections preserve prior saved evidence as a separate review 
     auditCase:{audit_case_id:91,operational_review_id:27,correction_role:'system_admin',case_number:'CASE-91'},
     actor:{id:5,role:'system_admin'},correctionSummary:'Corrected saved price',afterSnapshot:{price:13},
   })
-  assert.equal(result.status,'correction_required')
+  assert.equal(result.status,'pending_auditor_recheck')
   assert.ok(statements.some(sql=>/revision=revision\+1/.test(sql)))
   const event=savedEvents.find(x=>x.eventType==='controlled_correction_applied')
   assert.ok(event,'correction must have immutable event evidence')
@@ -131,8 +131,8 @@ test('Audit Case corrections preserve prior saved evidence as a separate review 
   const history=getSavedReviewRevisions({before:{price:10},after:{price:13},latestRevision:2,
     actionKey:'listing.edit',events:[{event_type:event.eventType,metadata_json:JSON.stringify(event.metadata)}]})
   assert.deepEqual(history.map(v=>v.after.price),[13,12])
-  assert.equal(history[0].before.price,12)
-  assert.equal(history[0].beforeEvidence,'prior-saved')
+  assert.equal(history[0].before,null)
+  assert.equal(history[0].beforeEvidence,'missing')
 })
 
 

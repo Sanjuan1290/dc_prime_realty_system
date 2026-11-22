@@ -25,7 +25,7 @@ export const carryForwardOpenAuditCases = async pool => {
    await connection.query('UPDATE operational_reviews SET status=? WHERE operational_review_id=?',[reviewStatus,item.operational_review_id]);
    await appendReviewEvent(connection,{reviewId:item.operational_review_id,eventType:'audit_case_flow_updated',fromStatus:item.review_status,toStatus:reviewStatus,message:'Existing case continued in the independent correction verification workflow. Earlier evidence and events were preserved.',metadata:{auditCaseId:item.audit_case_id,previousCaseStatus:item.status,previousAssignee:item.assigned_responder_user_id||null}});
    if(corrected)await notifyAuditors(connection,{reviewId:item.operational_review_id,auditCaseId:item.audit_case_id,type:'audit_correction_recheck',title:'Correction awaiting Auditor verification',message:item.correction_summary});
-   else await notifyCorrectionOwners(connection,item,item);
+   else await notifyCorrectionOwners(connection,item,{...item,assigned_responder_user_id:null});
   }
   await connection.commit();return cases.length;
  }catch(error){await connection.rollback();throw error}finally{connection.release()}

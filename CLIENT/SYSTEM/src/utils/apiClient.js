@@ -198,6 +198,17 @@ export const requestApi = async (
   const mutationPath = normalizePathWithoutQuery(path)
   const url = `${apiBaseUrl}${normalizedPath}`
   const method = String(options.method || 'GET').toUpperCase()
+  if(MUTATING_METHODS.has(method)&&typeof options.body==='string'){
+    let correctionBody;try{correctionBody=JSON.parse(options.body)}catch{}
+    if(correctionBody&&(correctionBody.auditCaseId||correctionBody.audit_case_id)){
+      const hasReason=['reason','correctionReason','correctionSummary','adjustmentReason'].some(key=>typeof correctionBody[key]==='string'&&correctionBody[key].trim().length>=5)
+      if(!hasReason){
+        const reason=typeof window!=='undefined'?window.prompt('Correction reason (required, 5–1,000 characters):'):null
+        if(!reason||reason.trim().length<5||reason.trim().length>1000)throw new ApiError('Enter a correction reason before saving.',{status:499,code:'AUDIT_CORRECTION_REASON_REQUIRED'})
+        options.body=JSON.stringify({...correctionBody,correctionSummary:reason.trim()})
+      }
+    }
+  }
   let controller = null
   let timeoutId = null
 

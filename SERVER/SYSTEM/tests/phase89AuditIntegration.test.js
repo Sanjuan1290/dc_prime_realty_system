@@ -8,14 +8,14 @@ import { sellerAuditRows } from '../../../CLIENT/SYSTEM/src/utils/sellerAuditHis
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
 const read=name=>readFileSync(path.join(root,name),'utf8');
 
-test('financial and replacement actions use distinct Reviews while routine edits may merge',()=>{
- for(const action of ['seller.manager_replace','commission.assigned_seller_change','commission.adjust_unit']) assert.equal(requiresDistinctReview(action),true);
- for(const action of ['seller.update','listing.update','reservation.update']) assert.equal(requiresDistinctReview(action),false);
+test("Every individual operation creates its own review while explicit corrections reuse cases", ()=>{
  const src=read('SERVER/SYSTEM/services/operationalReview.service.js');
- assert.match(src,/isDepartmentHead && !requiresDistinctReview\(actionKey\)/);
- assert.match(src,/requiresDistinctReview\(actionKey\) \? null : await refreshOwnRoutineReview/);
- assert.match(src,/requiresDistinctReview\(actionKey\)/);
+ assert.ok(src.includes('INSERT INTO operational_reviews'));
+ assert.ok(!src.includes('await refreshOwnRoutineReview'));
+ assert.ok(!src.includes('await absorbOpenStaffReviewIntoHeadCorrection'));
+ assert.ok(src.includes('export const resubmitReturnedOperationalReview'));
 });
+
 test('manager and seller changes attach exact Review ID in the same transaction',()=>{
  const manager=read('SERVER/SYSTEM/controllers/System/sellerManagerReplacement.controller.js');
  const seller=read('SERVER/SYSTEM/controllers/Lot_Projects/ListingProfile/AssignedSellerChange.controller.js');

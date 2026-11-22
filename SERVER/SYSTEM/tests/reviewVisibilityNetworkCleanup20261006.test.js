@@ -13,16 +13,7 @@ test('Head action scope stays limited to its department and project', () => {
   assert.match(controller, /canActorSeeReview\(connection, actor, review\)/);
 });
 
-test('Review list supports a History scope, excluding work waiting on the viewer', () => {
-  const controller = read('SERVER/SYSTEM/controllers/System/workflow.controller.js');
-  assert.match(controller, /req\.query\.scope/);
-  assert.match(controller, /reviewHistoryWhere/);
-  assert.match(controller, /needs_my_action/);
-  const center = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');
-  assert.match(center, /Needs My Action/);
-  assert.match(center, />Review History<\/button>/);
-  assert.match(center, /&scope=\$\{reviewScope\}/);
-});
+test("History scopes exclude queued work and role UI remains distinct", ()=>{const controller=read('SERVER/SYSTEM/controllers/System/workflow.controller.js'),center=read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');for(const value of ['reviewHistoryWhere','needs_my_action','req.query.scope'])assert.ok(controller.includes(value));for(const value of ['Review Queue','Correction Queue','Approval Queue',"['history','Review History']","params.set('scope','history')"])assert.ok(center.includes(value),value)});
 
 test('Review details do not retry 4xx answers and reload after a failed action', () => {
   const center = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');

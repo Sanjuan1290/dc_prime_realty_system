@@ -11,9 +11,9 @@ test('Auditor queue uses readable pending statuses and restrained colors without
   const source = read('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx')
   assert.match(source, /Awaiting Auditor Review/)
   assert.match(source, /Awaiting Department Head Review/)
-  assert.match(source, /Correction Ready for Recheck/)
-  assert.match(source, /Needs My Review/)
-  assert.match(source, /Unread Notifications/)
+  assert.match(source, /Awaiting Verification/)
+  assert.match(source, /Pending Review Tasks/)
+  assert.doesNotMatch(source, /Unread Notifications/)
   assert.doesNotMatch(source, /bg-violet-50 text-violet-700 border-violet-200/)
   assert.match(source, /reviewStatusLabel\(row.status\)/)
 })
@@ -31,10 +31,10 @@ test('Review Details explains task and action, never assumes unavailable means d
   assert.match(source, /review-history/)
 })
 
-test('Review history defaults to the full saved form and keeps changed fields optional', () => {
+test('Review history defaults to changed fields and retains the full saved form', () => {
   const comparison = read('CLIENT/SYSTEM/src/components/Shared/ReviewFormComparison.jsx')
   const diff = read('CLIENT/SYSTEM/src/components/Shared/ReviewSnapshotDiff.jsx')
-  assert.match(comparison, /useState\('forms'\)/)
+  assert.match(comparison, /useState\('changes'\)/)
   assert.match(comparison, /Full Form Comparison/)
   assert.match(comparison, /Changed Fields Only/)
   assert.match(comparison, /mode==='forms'/)

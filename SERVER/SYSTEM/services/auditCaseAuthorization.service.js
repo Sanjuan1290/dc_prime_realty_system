@@ -18,13 +18,14 @@ export const getPendingAuditCorrectionCase = async (connection, {
   entityType,
   entityId,
   actor = null,
+  correctionReason = null,
   forUpdate = true,
 }) => {
   const id = Number(auditCaseId || 0);
   if (!id) return null;
   const [rows] = await connection.query(
     `SELECT c.*, r.review_number, r.entity_type, r.entity_id, r.operational_review_id,
-            r.approval_type, r.initiated_by_role, r.initiated_by_user_id, r.lot_project_id
+            r.approval_type, r.initiated_by_role, r.initiated_by_user_id, r.lot_project_id,r.status AS review_status
      FROM audit_cases c
      INNER JOIN operational_reviews r ON r.operational_review_id = c.operational_review_id
      WHERE c.audit_case_id = ?
@@ -32,23 +33,23 @@ export const getPendingAuditCorrectionCase = async (connection, {
     [id]
   );
   const row = rows[0] || null;
-  if (!row || row.status !== 'pending_system_admin_correction') return null;
+  if (!row || row.status !== 'pending_system_admin_correction' || row.review_status !== 'correction_required') return null;
   if (String(row.entity_type) !== String(entityType) || String(row.entity_id) !== String(entityId)) return null;
 
   const correctionRole = getAuditCorrectionRole(row);
-  if (actor && !canApplyAuditCaseCorrection(actor,row)) {
+  if (!canApplyAuditCaseCorrection(actor,row)) {
     throw Object.assign(
-      new Error(correctionRole === 'super_admin'
-        ? 'This Audit Case originated from a Super Admin direct entry and must be corrected by Super Admin and resolved with notes.'
-        : 'This Audit Case requires its assigned System Admin or Super Admin to apply the controlled correction.'),
+      new Error('This Audit Case requires its assigned System Admin or Super Admin to apply the controlled correction.'),
       { statusCode: 403, code: 'AUDIT_CORRECTION_ROLE_REQUIRED', correctionRole }
     );
   }
-  return { ...row, correction_role: correctionRole };
+  const reason=String(correctionReason||'').trim();
+  if(reason.length<5||reason.length>1000)throw Object.assign(new Error('Enter a correction reason between 5 and 1,000 characters.'),{statusCode:400,code:'AUDIT_CORRECTION_REASON_REQUIRED'});
+  return { ...row, correction_role: correctionRole,correction_reason:reason };
 };
 
 // Retain the exported name for existing module callers; this records a correction
-// and keeps the case in the admin queue until Resolve with Notes.
+// and submits the same case for independent Auditor verification.
 export const advanceAuditCaseToRecheck = async (connection, {
   auditCase,
   actor,
@@ -63,13 +64,11 @@ export const advanceAuditCaseToRecheck = async (connection, {
   const expectedRole = auditCase.correction_role || getAuditCorrectionRole(auditCase);
   if (!canApplyAuditCaseCorrection(actor,auditCase)) {
     throw Object.assign(
-      new Error(expectedRole === 'super_admin'
-        ? 'Only Super Admin may apply this Audit Case correction.'
-        : 'Only System Admin may apply this Audit Case correction.'),
+      new Error('Only the assigned System Admin or Super Admin may apply this Audit Case correction.'),
       { statusCode: 403, code: 'AUDIT_CORRECTION_ROLE_REQUIRED', correctionRole: expectedRole }
     );
   }
-  const summary = String(correctionSummary || '').trim();
+  const summary = String(auditCase.correction_reason || correctionSummary || '').trim();
   if (summary.length < 5) throw Object.assign(new Error('Describe the correction that was applied.'), { statusCode: 400 });
   const [result] = await connection.query(
     `UPDATE audit_cases
@@ -118,6 +117,7 @@ export const advanceAuditCaseToRecheck = async (connection, {
       ...(metadata || {}),
     },
   });
+  await connection.query("UPDATE lot_project_listing_bulk_rows SET review_status='awaiting_verification' WHERE operational_review_id=?",[auditCase.operational_review_id]);
   await notifyAuditors(connection,{reviewId:auditCase.operational_review_id,auditCaseId:auditCase.audit_case_id,type:'audit_correction_recheck',title:`Correction awaiting independent verification · ${auditCase.case_number || ''}`,message:summary});
   return { reviewId: auditCase.operational_review_id, auditCaseId: auditCase.audit_case_id, status: 'pending_auditor_recheck' };
 };

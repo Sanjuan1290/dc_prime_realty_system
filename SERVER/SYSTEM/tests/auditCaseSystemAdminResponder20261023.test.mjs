@@ -73,9 +73,9 @@ test('Current UI routes findings to correction; legacy responder history remains
   const ui = source('CLIENT/SYSTEM/src/pages/System/ReviewCenter.jsx');
   assert.match(controller,/notifyCorrectionOwners/);
   assert.match(controller,/AUDIT_FLOW_UPDATED/);
-  assert.match(service,/getAuditCorrectionRole/);
+  assert.match(service,/assertAuditCaseCorrectionActor/);
   assert.match(service,/audit_case_flow_updated/);
-  assert.match(ui,/Resolve with Notes/);
+  assert.match(ui,/Verified & Closed/);
   assert.match(ui,/Resolved by/);
   assert.doesNotMatch(ui,/>Submit Explanation<|>Reassign Responder</);
 });

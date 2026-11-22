@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const source = readFileSync(new URL('../controllers/System/workflow.controller.js', import.meta.url), 'utf8')
-const code = source.slice(source.indexOf('const MANUAL_RESUBMIT_ACTION_KEYS ='), source.indexOf('export const auditorVerifyReview ='))
+const code = source.slice(source.indexOf('const MANUAL_RESUBMIT_ACTION_KEYS ='), source.indexOf('const verifyCorrectedCase ='))
   .replace('export const resubmitManualReviewCorrection =', 'const resubmitManualReviewCorrection =')
 
 const withController = (review) => {

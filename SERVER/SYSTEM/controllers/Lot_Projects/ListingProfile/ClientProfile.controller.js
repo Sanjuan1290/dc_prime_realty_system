@@ -398,6 +398,7 @@ export const updateLotProjectClientProfile = async (req, res) => {
 
     if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
         auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
         entityType: 'lot_project_client_profile',
@@ -490,6 +491,7 @@ export const updateLotProjectClientProfile = async (req, res) => {
         auditCase,
         actor: req.authUser,
         correctionSummary: `Corrected buyer profile for ${buyerName}.`,
+        beforeSnapshot,
         afterSnapshot,
         metadata: { clientProfileId, listingId: listing.lot_project_listing_id },
       });

@@ -40,11 +40,11 @@ test('dismiss view removes section/payment targets without dropping review retur
  assert.equal(params.get('reviewReturnId'),'25')
 })
 
-test('Before & After defaults to full saved forms with explicit missing evidence',()=>{
+test('Before & After defaults to changed fields with explicit missing evidence',()=>{
  const form=source('CLIENT/SYSTEM/src/components/Shared/ReviewFormComparison.jsx')
  const live=source('CLIENT/SYSTEM/src/components/Shared/ReviewLiveRecordPanel.jsx')
  const templates=source('CLIENT/SYSTEM/src/utils/reviewFormTemplates.js')
- assert.match(form,/useState\('forms'\)/)
+ assert.match(form,/useState\('changes'\)/)
  assert.match(form,/Full Form Comparison/)
  assert.match(form,/Not Recorded/)
  assert.match(form,/import \{ REVIEW_FORM_TEMPLATES \}/)

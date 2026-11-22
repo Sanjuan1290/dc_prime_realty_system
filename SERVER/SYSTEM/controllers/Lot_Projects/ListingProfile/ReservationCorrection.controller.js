@@ -698,6 +698,7 @@ export const requestControlledReservationCorrectionCode = async (req, res) => {
 
     if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
         auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
         entityType: 'lot_project_reservation',
@@ -855,6 +856,7 @@ export const correctReservationUnit = async (req, res) => {
 
       if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
         auditCase = await getPendingAuditCorrectionCase(connection, {
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
           actor: req.authUser,
           auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
           entityType: 'lot_project_reservation',
@@ -1197,6 +1199,7 @@ export const correctReservationUnit = async (req, res) => {
         auditCase: correctionAuthorization.auditCase,
         actor: req.authUser,
         correctionSummary: `Corrected reservation from ${source.lot_project_listing_unit_id} to ${destination.lot_project_listing_unit_id}: ${reason}`,
+        beforeSnapshot: { ...before, projectSlug: clean(req.params.projectSlug), listingId: sourceId },
         afterSnapshot: { ...after, projectSlug: clean(req.params.projectSlug), listingId: destinationId, sourceListingId: sourceId, correctionId: Number(correctionResult.insertId) },
         metadata: { correctionId: Number(correctionResult.insertId), sourceListingId: sourceId, destinationListingId: destinationId },
       })

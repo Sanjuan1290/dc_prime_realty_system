@@ -52,7 +52,7 @@ test('bulk edit is transactionally audited and protects buyer contracts', () => 
   assert.match(backend, /beginTransaction\(\)/)
   assert.match(backend, /FOR UPDATE/)
   assert.match(backend, /connection\.commit\(\)/)
-  assert.match(backend, /createOperationalReview\(/)
+  assert.match(backend, /createBulkListingReview\(/)
   assert.match(backend, /writeAuditLog\(/)
   assert.match(backend, /isContractProtected\(/)
   assert.match(backend, /getProtectedFieldErrors\(/)
