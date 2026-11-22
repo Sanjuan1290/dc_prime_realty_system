@@ -98,7 +98,6 @@ const InHouseMemberProfile = () => {
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
           <h2 className="text-base font-bold text-slate-950">Member Information</h2><p className="mb-4 mt-1 text-sm text-slate-500">Current details saved for this accredited seller. This page is read-only.</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Info label="Account Code" value={selected.account_code} />
             <Info label="Position" value={getSellerRoleLabel(selected.role)} />
             <Info label="First Name" value={selected.first_name} />
             <Info label="Middle Name" value={selected.middle_name} />

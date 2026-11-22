@@ -1,3 +1,4 @@
+import ListingPriceBreakdown from '../../ListingComponents/ListingPriceBreakdown'
 import { useEffect, useMemo, useState } from 'react'
 import { FiFileText, FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
@@ -656,19 +657,7 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
           <section className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <h3 className="text-sm font-black text-slate-950">Live Price Breakdown</h3>
 
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              {[['Installment', priceBreakdown.installment], ['Cash', priceBreakdown.cash]].map(([label, pricing]) => (
-                <div key={label} className="rounded-xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-black uppercase tracking-wide text-blue-700">{label} Pricing</p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                    <BreakdownCard label="Base Selling Price" value={formatMoney(pricing.baseSellingPrice)} />
-                    <BreakdownCard label="LMF Amount" value={formatMoney(pricing.lmfAmount)} />
-                    <BreakdownCard label="TCP" value={formatMoney(pricing.tcp)} highlight />
-                  </div>
-                </div>
-              ))}
-            </div>
-
+            <ListingPriceBreakdown pricing={priceBreakdown} money={formatMoney} />
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <BreakdownCard label="Reservation Fee" value={formatMoney(priceBreakdown.reservationFee)} />
               <BreakdownCard label="Annual Interest Rate" value={`${Number(priceBreakdown.annualInterestRate || 0)}%`} />

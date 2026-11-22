@@ -427,7 +427,7 @@ const requirePaymentCorrectionVerification = async (connection, req, { action, l
   const requestedCaseId=Number(req.body.auditCaseId || req.body.audit_case_id || 0);
   if(requestedCaseId){
     const auditCase=await getPendingAuditCorrectionCase(connection,{
-        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,auditCaseId:requestedCaseId,entityType:'lot_project_payment',entityId:existingPayment.lot_project_payment_id,actor});
+        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,auditCaseId:requestedCaseId,entityType:'lot_project_payment',entityId:existingPayment.lot_project_payment_id,actor,explainState:true});
     if(!auditCase || Number(auditCase.lot_project_id)!==Number(listing.lot_project_id))throw createHttpError(409,'This Audit Case does not authorize correction of this payment/account.');
     const contextReviewId=Number(req.body.reviewId || req.body.review_id || 0);
     if(contextReviewId && contextReviewId!==Number(auditCase.operational_review_id))throw createHttpError(409,'The correction case and review reference do not match.');
@@ -1124,6 +1124,7 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
         const auditCase = await getPendingAuditCorrectionCase(connection, {
           auditCaseId, actor, correctionReason: reason,
           entityType: 'lot_project_payment', entityId: existingPayment.lot_project_payment_id,
+          explainState: true,
         });
       if (
         !auditCase ||

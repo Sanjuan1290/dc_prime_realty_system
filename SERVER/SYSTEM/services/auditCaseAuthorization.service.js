@@ -20,6 +20,7 @@ export const getPendingAuditCorrectionCase = async (connection, {
   actor = null,
   correctionReason = null,
   forUpdate = true,
+  explainState = false,
 }) => {
   const id = Number(auditCaseId || 0);
   if (!id) return null;
@@ -33,8 +34,15 @@ export const getPendingAuditCorrectionCase = async (connection, {
     [id]
   );
   const row = rows[0] || null;
-  if (!row || row.status !== 'pending_system_admin_correction' || row.review_status !== 'correction_required') return null;
+  if (!row) return null;
   if (String(row.entity_type) !== String(entityType) || String(row.entity_id) !== String(entityId)) return null;
+  if (row.status !== 'pending_system_admin_correction' || row.review_status !== 'correction_required') {
+    if(explainState){
+      const awaiting=row.status==='pending_auditor_recheck'||row.review_status==='pending_auditor_recheck';
+      throw Object.assign(new Error(awaiting?'This case is already awaiting Auditor verification. Return to Review Center; the Auditor must verify it or return it before another correction.':'This case is no longer awaiting correction. Return to Review Center to check its current status.'),{statusCode:409,code:awaiting?'AUDIT_CASE_AWAITING_VERIFICATION':'AUDIT_CASE_NOT_AWAITING_CORRECTION'});
+    }
+    return null;
+  }
 
   const correctionRole = getAuditCorrectionRole(row);
   if (!canApplyAuditCaseCorrection(actor,row)) {

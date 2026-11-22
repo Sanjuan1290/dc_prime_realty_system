@@ -31,10 +31,38 @@ export const carryForwardOpenAuditCases = async pool => {
  }catch(error){await connection.rollback();throw error}finally{connection.release()}
 };
 
+// An explanation is evidence of a resolution, never evidence that a record was edited.
+// A returned response invalidates the earlier submission until it is resubmitted.
+export const findNoEditAuditResolution = (auditCase,events=[]) => {
+ const relevant=new Set(['resolution_submitted_without_edit','controlled_correction_applied','auditor_correction_returned']);
+ for(const event of [...events].sort((a,b)=>Number(b.operational_review_event_id)-Number(a.operational_review_event_id))){
+  if(!relevant.has(event.event_type))continue;
+  let metadata=event.metadata_json;try{if(typeof metadata==='string')metadata=JSON.parse(metadata)}catch{continue}
+  if(Number(metadata?.auditCaseId)!==Number(auditCase.audit_case_id))continue;
+  return event.event_type==='resolution_submitted_without_edit' && Number(auditCase.system_admin_user_id)>0
+   && Number(event.actor_user_id)===Number(auditCase.system_admin_user_id) && metadata.resolutionMode==='without_edit' ? event:null;
+ }
+ return null;
+};
+
 // Older clients can submit a completed correction for audit, never close it.
-export const resolveAuditCaseWithNotes = async (connection,{auditCase,actor,notes}) => {
+export const resolveAuditCaseWithNotes = async (connection,{auditCase,actor,notes,resolutionMode='applied'}) => {
  assertAuditCaseCorrectionActor(actor,auditCase);
- if(auditCase.status==='pending_auditor_recheck')return;
+ if(!['applied','without_edit'].includes(resolutionMode))throw Object.assign(new Error('Choose a valid resolution method.'),{statusCode:400});
+ if(resolutionMode==='without_edit'){
+  const summary=String(notes||'').trim();
+  if(summary.length<5||summary.length>5000)throw Object.assign(new Error('Explain why the issue is resolved without changing the record (5–5,000 characters).'),{statusCode:400});
+  if(auditCase.status!=='pending_system_admin_correction'||auditCase.review_status!=='correction_required')throw Object.assign(new Error('This case is no longer awaiting an administrator response. It may already be awaiting Auditor verification.'),{statusCode:409});
+  const [changed]=await connection.query("UPDATE audit_cases SET status='pending_auditor_recheck',system_admin_user_id=?,correction_summary=? WHERE audit_case_id=? AND status='pending_system_admin_correction'",[actor.id,summary,auditCase.audit_case_id]);
+  if(!Number(changed.affectedRows))throw Object.assign(new Error('This case has already moved to another stage. Reload the Review.'),{statusCode:409});
+  const [reviewChanged]=await connection.query("UPDATE operational_reviews SET status='pending_auditor_recheck' WHERE operational_review_id=? AND status='correction_required'",[auditCase.operational_review_id]);
+  if(!Number(reviewChanged.affectedRows))throw Object.assign(new Error('The linked review has already moved to another stage. Reload the Review.'),{statusCode:409});
+  await connection.query("UPDATE lot_project_listing_bulk_rows SET review_status='awaiting_verification' WHERE operational_review_id=?",[auditCase.operational_review_id]);
+  await appendReviewEvent(connection,{reviewId:auditCase.operational_review_id,eventType:'resolution_submitted_without_edit',actor,fromStatus:'correction_required',toStatus:'pending_auditor_recheck',message:summary,metadata:{auditCaseId:auditCase.audit_case_id,resolutionMode:'without_edit',recordChanged:false}});
+  await notifyAuditors(connection,{reviewId:auditCase.operational_review_id,auditCaseId:auditCase.audit_case_id,type:'audit_correction_recheck',title:'Resolution awaiting verification · no record changes',message:summary});
+  return {resolutionMode,recordChanged:false};
+ }
+ if(auditCase.status==='pending_auditor_recheck')return {unchanged:true};
  if(auditCase.status!=='pending_system_admin_correction'||!auditCase.correction_applied_at)throw Object.assign(new Error('Apply the controlled correction first. Only an Auditor can verify and close this case.'),{statusCode:409,code:'AUDIT_CORRECTION_NOT_APPLIED'});
  const summary=String(notes||'').trim();if(summary.length<5||summary.length>5000)throw Object.assign(new Error('Enter correction notes between 5 and 5,000 characters.'),{statusCode:400});
  await connection.query("UPDATE audit_cases SET status='pending_auditor_recheck' WHERE audit_case_id=?",[auditCase.audit_case_id]);

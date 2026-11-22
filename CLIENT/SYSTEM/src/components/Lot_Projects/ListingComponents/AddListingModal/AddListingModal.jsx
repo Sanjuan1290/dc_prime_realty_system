@@ -1,3 +1,4 @@
+import ListingPriceBreakdown from '../ListingPriceBreakdown'
 import { useEffect, useMemo, useState } from 'react'
 import { FiFileText, FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
@@ -289,18 +290,7 @@ const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDo
 
           <section className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <h3 className="text-sm font-black text-slate-950">Live Price Breakdown</h3>
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              {[['Installment', priceBreakdown.installment], ['Cash', priceBreakdown.cash]].map(([label, pricing]) => (
-                <div key={label} className="rounded-xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-black uppercase tracking-wide text-blue-700">{label} Pricing</p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                    <div><p className="text-xs font-bold text-slate-500">Base Selling Price</p><p className="mt-1 font-black text-slate-950">{money(pricing.baseSellingPrice)}</p></div>
-                    <div><p className="text-xs font-bold text-slate-500">LMF Amount</p><p className="mt-1 font-black text-slate-950">{money(pricing.lmfAmount)}</p></div>
-                    <div><p className="text-xs font-bold text-slate-500">TCP</p><p className="mt-1 font-black text-blue-700">{money(pricing.tcp)}</p></div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <ListingPriceBreakdown pricing={priceBreakdown} money={money} />
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">Reservation Fee</p><p className="mt-2 text-lg font-black text-slate-950">{money(priceBreakdown.reservationFee)}</p></div>
               <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">Annual Interest Rate</p><p className="mt-2 text-lg font-black text-slate-950">{Number(priceBreakdown.annualInterestRate || 0)}%</p></div>

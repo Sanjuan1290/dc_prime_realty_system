@@ -730,7 +730,7 @@ const ListingProfile = () => {
 
   return (
     <main className="flex flex-col gap-6">
-      <ReviewReturnLink role={user?.role} reviewId={reviewView?workflowReviewId:dismissedReviewId} />
+      <ReviewReturnLink role={user?.role} reviewId={workflowReviewId||dismissedReviewId} />
       {alert ? (
         <StatusAlert
           type={alert.type}

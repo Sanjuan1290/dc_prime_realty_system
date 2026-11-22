@@ -4,7 +4,7 @@ import { writeAuditLog } from './auditLogs.controller.js';
 import { activeNotificationSql, createInternalNotifications, notifyDepartmentHeads, notifyAuditors, REVIEW_ACTION_NOTIFICATION_STAGES } from '../../services/internalNotification.service.js';
 import { appendReviewEvent, canActorSeeReview, getOperationalReviewForUpdate } from '../../services/operationalReview.service.js';
 import { approveProtectedChange } from '../../services/protectedChange.service.js';
-import { notifyCorrectionOwners, resolveAuditCaseWithNotes } from '../../services/auditCaseWorkflow.service.js';
+import { notifyCorrectionOwners, resolveAuditCaseWithNotes, findNoEditAuditResolution } from '../../services/auditCaseWorkflow.service.js';
 import { getAuditCorrectionRole, canApplyAuditCaseCorrection } from '../../services/auditCaseAuthorization.service.js';
 import { getReviewActionLabel, REVIEW_ACTIONS } from '../../config/reviewActions.js';
 import { resolveReviewRecordLocation } from '../../services/reviewRecordLocation.service.js';
@@ -510,6 +510,8 @@ export const getOperationalReview = async (req, res) => {
     let auditCase = caseRows?.[0] || null;
     if (auditCase) {
       auditCase = { ...auditCase, correctionRole: getAuditCorrectionRole(review) };
+      const noEditResolution=findNoEditAuditResolution(auditCase,events);
+      if(noEditResolution)auditCase={...auditCase,resolutionMode:'without_edit',resolutionSubmittedAt:noEditResolution.created_at,resolutionSubmittedBy:noEditResolution.actor_name};
     }
     if (auditCase) {
       const resolved = [...events].reverse().find(event => event.event_type === 'audit_case_resolved'
@@ -676,15 +678,21 @@ export const resubmitManualReviewCorrection = async (req, res) => {
 const verifyCorrectedCase = async (connection,req,review) => {
  const [cases]=await connection.query("SELECT * FROM audit_cases WHERE operational_review_id=? AND status='pending_auditor_recheck' ORDER BY audit_case_id DESC LIMIT 1 FOR UPDATE",[review.operational_review_id]);
  const item=cases[0];
- if(!item||!item.correction_applied_at)throw Object.assign(new Error('No applied correction is awaiting verification.'),{statusCode:409});
+ let noEditResolution=null;
+ if(item&&!item.correction_applied_at){
+  const [events]=await connection.query("SELECT * FROM operational_review_events WHERE operational_review_id=? AND event_type IN ('resolution_submitted_without_edit','controlled_correction_applied','auditor_correction_returned') ORDER BY operational_review_event_id",[review.operational_review_id]);
+  noEditResolution=findNoEditAuditResolution(item,events);
+ }
+ if(!item||(!item.correction_applied_at&&!noEditResolution))throw Object.assign(new Error('No applied correction or documented resolution is awaiting verification.'),{statusCode:409});
  if(Number(item.system_admin_user_id)===Number(req.authUser.id))throw Object.assign(new Error('You cannot verify your own correction.'),{statusCode:403});
  const note=String(req.body?.note||'Verified correction against the saved record and evidence.').trim();
  if(note.length<5||note.length>5000)throw Object.assign(new Error('Enter verification comments between 5 and 5,000 characters.'),{statusCode:400});
  await connection.query("UPDATE audit_cases SET status='closed',final_verified_by_auditor_user_id=?,final_verified_at=NOW(),auditor_resolution=?,auditor_resolved_by_user_id=?,auditor_resolved_at=NOW() WHERE audit_case_id=?",[req.authUser.id,note,req.authUser.id,item.audit_case_id]);
  await connection.query("UPDATE operational_reviews SET status='closed',auditor_reviewed_by_user_id=?,auditor_reviewed_at=NOW() WHERE operational_review_id=?",[req.authUser.id,review.operational_review_id]);
  await connection.query("UPDATE lot_project_listing_bulk_rows SET review_status='verified_closed' WHERE operational_review_id=?",[review.operational_review_id]);
- await appendReviewEvent(connection,{reviewId:review.operational_review_id,eventType:'auditor_correction_verified',actor:req.authUser,fromStatus:'pending_auditor_recheck',toStatus:'closed',message:note,metadata:{auditCaseId:item.audit_case_id,caseNumber:item.case_number,result:'passed',correctionRevision:review.revision,correctedBy:item.system_admin_user_id}});
- await writeAuditLog(connection,req,{action:'approve',module:'Audit Cases',entityType:'audit_case',entityId:String(item.audit_case_id),entityLabel:item.case_number,title:'Correction Verified & Closed',description:note,metadata:{reviewId:review.operational_review_id,correctionRevision:review.revision}});
+ const resolutionMode=noEditResolution?'without_edit':'applied';
+ await appendReviewEvent(connection,{reviewId:review.operational_review_id,eventType:'auditor_correction_verified',actor:req.authUser,fromStatus:'pending_auditor_recheck',toStatus:'closed',message:note,metadata:{auditCaseId:item.audit_case_id,caseNumber:item.case_number,result:'passed',correctionRevision:review.revision,correctedBy:item.system_admin_user_id,resolutionMode}});
+ await writeAuditLog(connection,req,{action:'approve',module:'Audit Cases',entityType:'audit_case',entityId:String(item.audit_case_id),entityLabel:item.case_number,title:noEditResolution?'Resolution Without Editing Verified & Closed':'Correction Verified & Closed',description:note,metadata:{reviewId:review.operational_review_id,correctionRevision:review.revision,resolutionMode}});
 };
 
 export const returnCorrectedAuditCase = async (req,res) => {
@@ -811,14 +819,15 @@ export const resolveAuditCaseByAdmin = async (req,res) => {
   try {
     if (!['system_admin','super_admin'].includes(req.authUser?.role)) return res.status(403).json({message:'Only the authorized administrator may resolve this case.'});
     await connection.beginTransaction();
-    const [rows]=await connection.query(`SELECT r.*,c.* FROM audit_cases c INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id WHERE c.audit_case_id=? LIMIT 1 FOR UPDATE`,[Number(req.params.caseId)]);
+    const [rows]=await connection.query(`SELECT r.*,c.*,r.status AS review_status FROM audit_cases c INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id WHERE c.audit_case_id=? LIMIT 1 FOR UPDATE`,[Number(req.params.caseId)]);
     const auditCase=rows[0];
     if (!auditCase) throw Object.assign(new Error('Audit Case not found.'),{statusCode:404});
     const notes=String(req.body?.notes || '').trim();
-    await resolveAuditCaseWithNotes(connection,{auditCase,actor:req.authUser,notes});
-    await writeAuditLog(connection,req,{action:'update',module:'Audit Cases',entityType:'audit_case',entityId:String(auditCase.audit_case_id),entityLabel:auditCase.case_number,title:'Submitted correction for independent verification',description:notes,metadata:{reviewId:auditCase.operational_review_id,correctionRole:getAuditCorrectionRole(auditCase)}});
+    const resolutionMode=req.body?.resolutionMode ?? 'applied';
+    await resolveAuditCaseWithNotes(connection,{auditCase,actor:req.authUser,notes,resolutionMode});
+    await writeAuditLog(connection,req,{action:'update',module:'Audit Cases',entityType:'audit_case',entityId:String(auditCase.audit_case_id),entityLabel:auditCase.case_number,title:resolutionMode==='without_edit'?'Submitted resolution without editing':'Submitted correction for independent verification',description:notes,metadata:{reviewId:auditCase.operational_review_id,correctionRole:getAuditCorrectionRole(auditCase),resolutionMode,...(resolutionMode==='without_edit'?{recordChanged:false}:{})}});
     await connection.commit();
-    return res.json({message:'Correction is awaiting independent Auditor verification. Only the Auditor can close the case.'});
+    return res.json({message:resolutionMode==='without_edit'?'Resolution submitted for independent Auditor verification. No record was changed. Only the Auditor can close the case.':'Correction is awaiting independent Auditor verification. Only the Auditor can close the case.'});
   } catch(error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)}); }
   finally { connection.release(); }
 };

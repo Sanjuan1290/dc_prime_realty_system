@@ -544,7 +544,7 @@ const EditUserModal = ({
                   <input type="text" data-example="123 Aguinaldo Hwy, Cavite" value={form.address} onChange={(event) => updateForm("address", event.target.value)} placeholder="Complete seller address" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                 </label>
 
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2">
                   <label className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-slate-700">Role</p>
                     <select
@@ -581,10 +581,6 @@ const EditUserModal = ({
                     <p className="text-xs text-slate-500">Use the protected Activate or Deactivate action to change status.</p>
                   </label>
 
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                    <p className="font-bold text-slate-700">Password</p>
-                    <p className="mt-1 text-xs font-semibold">Use Reset Password from the users table when needed.</p>
-                  </div>
                 </div>
               </>
             ) : null}
