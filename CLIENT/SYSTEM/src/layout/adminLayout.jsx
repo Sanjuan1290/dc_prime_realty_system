@@ -167,7 +167,7 @@ const AdminLayout = () => {
         <div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{getFullName(user)}</p><p className="text-xs text-slate-500">System Admin</p></div><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-black text-white">{getInitials(user)}</div></div>
       </header>
 
-      <main className="min-h-screen pt-16 lg:pl-72"><div className="p-4 sm:p-6 lg:p-8"><Outlet /></div></main>
+      <main className="min-h-screen pt-16 lg:pl-72"><div className="p-4 sm:p-6 lg:p-8"><ModuleBreadcrumb role={user?.role}/><Outlet /></div></main>
     </div>
   )
 }
@@ -176,3 +176,4 @@ export default AdminLayout
 
 
 
+import ModuleBreadcrumb from '../components/Shared/ModuleBreadcrumb'

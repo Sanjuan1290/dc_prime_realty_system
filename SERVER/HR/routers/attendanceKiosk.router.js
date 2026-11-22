@@ -1,4 +1,6 @@
 import express from 'express';
+import {db} from '../db/connect.js';
+import {loadKioskCredential,kioskCredentialStatus,validateKioskPassword} from '../services/attendanceKioskCredential.service.js';
 import { scanAttendance } from '../controllers/System/Employees/AttendanceSimple.controller.js';
 import {
   ATTENDANCE_KIOSK_COOKIE,
@@ -16,17 +18,25 @@ import {
 
 const router = express.Router();
 
-router.get('/session', (req, res) => {
-  const session = getAttendanceKioskSession(req);
+router.get('/session', async (req, res,next) => {
+ try{
+  res.set('Cache-Control','no-store');
+  const state=kioskCredentialStatus(await loadKioskCredential(db));
+  const session = await getAttendanceKioskSession(req);
   if (!session) {
     clearAttendanceKioskCookie(res);
-    return res.json({ success: true, unlocked: false });
+    return res.json({ success: true, unlocked: false,passwordExpired:state.expired,passwordExpiresAt:state.expiresAt,expiringSoon:state.expiringSoon });
   }
-  return res.json({ success: true, unlocked: true, expiresAt: session.expiresAt });
+  return res.json({ success: true, unlocked: true, expiresAt: session.expiresAt,passwordExpiresAt:state.expiresAt,expiringSoon:state.expiringSoon });
+ }catch(error){next(error)}
 });
 
-router.post('/unlock', (req, res) => {
-  if (!isAttendancePinConfigured()) {
+router.post('/unlock', async (req, res,next) => {
+ try{
+  res.set('Cache-Control','no-store');
+  const credential=await loadKioskCredential(db),state=kioskCredentialStatus(credential);
+  if(state.expired)return res.status(401).json({code:'KIOSK_PASSWORD_EXPIRED',message:'The kiosk password has expired. An HR administrator must regenerate it.'});
+  if (!state.configured) {
     return res.status(503).json({
       success: false,
       code: 'ATTENDANCE_KIOSK_NOT_CONFIGURED',
@@ -44,7 +54,7 @@ router.post('/unlock', (req, res) => {
     });
   }
 
-  if (!attendancePinMatches(req.body?.pin)) {
+  if (!await validateKioskPassword(req.body?.password ?? req.body?.pin,credential)) {
     const failure = recordAttendancePinFailure(req);
     if (failure.locked) {
       return res.status(429).json({
@@ -61,7 +71,7 @@ router.post('/unlock', (req, res) => {
   }
 
   clearAttendancePinFailures(req);
-  const session = createAttendanceKioskToken();
+  const session = createAttendanceKioskToken({generation:credential.generation,credentialExpiresAt:credential.expiresAt});
   res.cookie(ATTENDANCE_KIOSK_COOKIE, session.token, getAttendanceKioskCookieOptions());
   return res.json({
     success: true,
@@ -69,6 +79,7 @@ router.post('/unlock', (req, res) => {
     expiresAt: session.expiresAt,
     message: 'Attendance station unlocked.',
   });
+ }catch(error){next(error)}
 });
 
 router.post('/lock', (_req, res) => {

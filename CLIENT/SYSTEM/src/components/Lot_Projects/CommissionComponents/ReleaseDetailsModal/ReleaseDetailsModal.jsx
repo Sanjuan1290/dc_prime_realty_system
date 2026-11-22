@@ -620,6 +620,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
               <InfoCard label="Group" value={commission.sellerGroup || '-'} />
               <InfoCard label="Current Reports Under" value={commission.reportsUnder || '-'} />
             </div>
+            <CommissionPaymentProgress entitlement={grossCommission} released={released}/>
           </section>
 
           <section className="mt-5">
@@ -883,3 +884,4 @@ export default ReleaseDetailsModal
 
 
 
+import CommissionPaymentProgress from '../../../Shared/CommissionPaymentProgress'

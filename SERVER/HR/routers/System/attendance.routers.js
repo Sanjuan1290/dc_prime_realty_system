@@ -27,6 +27,8 @@ router.get('/calendar', requirePermission(PERMISSIONS.ATTENDANCE_VIEW), getAtten
 router.get('/export-data', requirePermission(PERMISSIONS.ATTENDANCE_VIEW), getAttendanceExportData);
 router.get('/settings', requirePermission(PERMISSIONS.ATTENDANCE_VIEW), getAttendanceSettings);
 router.put('/settings', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), updateAttendanceSettings);
+router.get('/kiosk-password', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), getKioskPasswordStatus);
+router.post('/kiosk-password', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), rotateKioskPassword);
 router.post('/scan', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), scanAttendance);
 router.post('/manual', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), createManualAttendance);
 router.post('/bulk-time-out/preview',requirePermission(PERMISSIONS.ATTENDANCE_MANAGE),previewBulkTimeOutAdjustment);
@@ -44,3 +46,4 @@ export default router;
 
 
 
+import {getKioskPasswordStatus,rotateKioskPassword} from '../../controllers/System/Employees/AttendanceKioskSettings.controller.js';

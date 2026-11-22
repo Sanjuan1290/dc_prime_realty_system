@@ -103,6 +103,7 @@ const normalizeRows = (rows = []) => {
     canWaivePenalty: Boolean(row.canWaivePenalty ?? row.can_waive_penalty),
     datePaid: row.datePaid || row.date_paid || '',
     amountPaid: cleanMoney(row.amountPaid ?? row.amount_paid),
+    remainingDue: row.remainingDue ?? installmentRemainingDue({totalDue:row.totalDue ?? row.total_due ?? row.dueAmount ?? row.due_amount,amountPaid:row.amountPaid ?? row.amount_paid,status:row.status ?? row.schedule_status}),
     paidPrincipalAmount: cleanMoney(row.paidPrincipalAmount ?? row.paid_principal_amount),
     paidInterestAmount: cleanMoney(row.paidInterestAmount ?? row.paid_interest_amount),
     paidPenaltyAmount: cleanMoney(row.paidPenaltyAmount ?? row.paid_penalty_amount),
@@ -1894,6 +1895,7 @@ const PaymentsSOA = ({
                   'Penalty Adjustment',
                   'Date Paid',
                   'Amount Paid',
+                  'Remaining Due',
                   'Reference ID',
                   'Status',
                   'Ending Balance',
@@ -1980,6 +1982,8 @@ const PaymentsSOA = ({
                     {money(row.amountPaid)}
                   </td>
 
+                  <td className="px-4 py-3 font-black text-amber-700">{money(row.remainingDue)}</td>
+
                   <td className="px-4 py-3 font-semibold text-slate-600">
                     {row.referenceId || '-'}
                   </td>
@@ -2034,7 +2038,7 @@ const PaymentsSOA = ({
 
               {!rows.length ? (
                 <tr>
-                  <td colSpan={15} className="px-4 py-10 text-center">
+                  <td colSpan={16} className="px-4 py-10 text-center">
                     <FiCheckCircle className="mx-auto h-8 w-8 text-slate-300" />
                     <p className="mt-3 text-sm font-black text-slate-700">
                       No SOA schedule yet
@@ -2220,3 +2224,4 @@ export default PaymentsSOA
 
 
 
+import {installmentRemainingDue} from '../../../../../../shared/financialProgress.js'

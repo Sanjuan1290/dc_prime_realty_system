@@ -3201,18 +3201,19 @@ export const getListingSoaRows = async (
       return sortedRows.map((row) => ({
         ...row,
         totalDue: getScheduleTotalDue(row),
+        remainingDue: installmentRemainingDue({totalDue:getScheduleTotalDue(row),amountPaid:row.amountPaid,status:row.status}),
       }));
     }
 
     // Stored schedules already include balloon repricing and settlement
     // adjustments. Rebuilding their interest here would undo those adjustments
     // in the UI even though the persisted cash and allocations are correct.
-    return recomputeComputedSoaBalances(sortedRows, terms, { preserveScheduledAmounts: true });
+    return recomputeComputedSoaBalances(sortedRows, terms, { preserveScheduledAmounts: true }).map(row => ({...row, remainingDue: installmentRemainingDue(row)}));
   }
 
   const computedRows = createComputedSoaRows(terms);
   const rowsWithPayments = allocatePaymentsToComputedRows(computedRows, payments);
-  return recomputeComputedSoaBalances(rowsWithPayments, terms);
+  return recomputeComputedSoaBalances(rowsWithPayments, terms).map(row => ({...row, remainingDue: installmentRemainingDue(row)}));
 };
 
 
@@ -4718,3 +4719,4 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 
 
 
+import {installmentRemainingDue} from '../../../../../CLIENT/shared/financialProgress.js';

@@ -153,7 +153,7 @@ const ListingProfile = () => {
     : `/projects/lot-projects/${projectSlug}/listings/${listingId}`
 
   const [activeTab, setActiveTab] = useState(
-    ['payment_correction','penalty_adjustment','lmf_correction','payment_proof_review'].includes(workflowAction)
+    ['unit','client','payments','documents','printouts'].includes(searchParams.get('tab')) ? searchParams.get('tab') : ['payment_correction','penalty_adjustment','lmf_correction','payment_proof_review'].includes(workflowAction)
       ? 'payments'
       : workflowAction === 'buyer_profile_edit_review'
         ? 'client'
@@ -210,6 +210,10 @@ const ListingProfile = () => {
     ['lot_project_lmf_schedule','lot_project_penalty_schedule'].includes(reviewEntityType) ? (profile.soaRows || []).find((row)=>Number(row.scheduleId||row.id||row.lot_project_payment_schedule_id)===reviewScheduleId && reviewScheduleId === reviewTargetId) : null
   ) : null
   const readOnly = Boolean(profile.readOnly)
+  useEffect(() => {
+    const requestedTab=searchParams.get('tab')
+    if(visibleTabs.some(tab=>tab.key===requestedTab))setActiveTab(requestedTab)
+  },[searchParams,visibleTabs])
   useEffect(() => {
     if (reviewView && visibleTabs.some(tab => tab.key === reviewTab)) setActiveTab(reviewTab)
   }, [reviewView, reviewTab, visibleTabs])
@@ -901,7 +905,7 @@ const ListingProfile = () => {
               <button
                 key={tab.key}
                 type="button"
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => {setActiveTab(tab.key);setSearchParams(previous=>{const next=new URLSearchParams(previous);next.set('tab',tab.key);return next})}}
                 className={`inline-flex h-11 items-center gap-2 rounded-xl px-4 text-sm font-black transition active:scale-[0.98] ${
                   isActive
                     ? 'bg-blue-600 text-white shadow-sm'

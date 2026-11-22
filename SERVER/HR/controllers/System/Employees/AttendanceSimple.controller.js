@@ -316,6 +316,7 @@ export const scanAttendance = async (req, res) => {
     const now = getManilaDateTime();
 
     await connection.beginTransaction();
+    if(req.attendanceKiosk)await assertKioskSessionCurrent(connection,req.attendanceKiosk,{forUpdate:true});
 
     const employee = await getEmployeeByBarcode(
       connection,
@@ -2556,3 +2557,4 @@ export const getAttendanceCorrections = async (req, res) => {
 
 
 
+import {assertKioskSessionCurrent} from '../../../services/attendanceKioskCredential.service.js';

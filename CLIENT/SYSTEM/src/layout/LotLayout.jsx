@@ -258,6 +258,7 @@ const LotLayout = () => {
         </header>
 
         <main className="min-h-[calc(100vh-80px)] p-4 md:p-6">
+          <ModuleBreadcrumb role={user?.role} projectName={project?.lot_project_name}/>
           <Outlet context={{ project }} />
         </main>
       </div>
@@ -270,3 +271,4 @@ export default LotLayout
 
 
 
+import ModuleBreadcrumb from '../components/Shared/ModuleBreadcrumb'

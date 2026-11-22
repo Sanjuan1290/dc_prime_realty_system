@@ -87,6 +87,9 @@ const AttendanceKiosk = () => {
     queryFn: () => useFetch('/attendance-kiosk/session', { redirectOnUnavailable: true }),
     retry: false,
     staleTime: 30_000,
+    refetchInterval: 1000,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: 'always',
   })
 
   const unlocked = Boolean(sessionQuery.data?.unlocked)

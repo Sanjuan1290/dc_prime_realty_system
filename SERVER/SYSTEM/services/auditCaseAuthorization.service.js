@@ -1,10 +1,17 @@
 import { appendReviewEvent } from './operationalReview.service.js';
+import {PERMISSIONS,roleHasPermission} from '../config/permissions.js';
+import {notifyAuditors} from './internalNotification.service.js';
 
-export const getAuditCorrectionRole = (row = {}) => (
-  row.approval_type === 'emergency_super_admin' || row.initiated_by_role === 'super_admin'
-    ? 'super_admin'
-    : 'system_admin'
+export const getAuditCorrectionRole = () => 'system_admin';
+export const canApplyAuditCaseCorrection = (actor, row = {}) => Boolean(
+  actor?.id && ['system_admin','super_admin'].includes(actor.role)
+  && roleHasPermission(actor,PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY)
+  && (!Number(row.assigned_responder_user_id) || Number(row.assigned_responder_user_id)===Number(actor.id))
+  && Number(row.opened_by_auditor_user_id || 0)!==Number(actor.id)
 );
+export const assertAuditCaseCorrectionActor = (actor,row) => {
+  if(!canApplyAuditCaseCorrection(actor,row))throw Object.assign(new Error('Only the assigned System Admin or Super Admin may apply this controlled correction.'),{statusCode:403,code:'AUDIT_CORRECTION_ASSIGNEE_REQUIRED'});
+};
 
 export const getPendingAuditCorrectionCase = async (connection, {
   auditCaseId,
@@ -17,7 +24,7 @@ export const getPendingAuditCorrectionCase = async (connection, {
   if (!id) return null;
   const [rows] = await connection.query(
     `SELECT c.*, r.review_number, r.entity_type, r.entity_id, r.operational_review_id,
-            r.approval_type, r.initiated_by_role, r.initiated_by_user_id
+            r.approval_type, r.initiated_by_role, r.initiated_by_user_id, r.lot_project_id
      FROM audit_cases c
      INNER JOIN operational_reviews r ON r.operational_review_id = c.operational_review_id
      WHERE c.audit_case_id = ?
@@ -29,11 +36,11 @@ export const getPendingAuditCorrectionCase = async (connection, {
   if (String(row.entity_type) !== String(entityType) || String(row.entity_id) !== String(entityId)) return null;
 
   const correctionRole = getAuditCorrectionRole(row);
-  if (actor?.role && actor.role !== correctionRole) {
+  if (actor && !canApplyAuditCaseCorrection(actor,row)) {
     throw Object.assign(
       new Error(correctionRole === 'super_admin'
         ? 'This Audit Case originated from a Super Admin direct entry and must be corrected by Super Admin and resolved with notes.'
-        : 'This Audit Case requires a controlled System Admin correction and resolved with notes.'),
+        : 'This Audit Case requires its assigned System Admin or Super Admin to apply the controlled correction.'),
       { statusCode: 403, code: 'AUDIT_CORRECTION_ROLE_REQUIRED', correctionRole }
     );
   }
@@ -47,13 +54,14 @@ export const advanceAuditCaseToRecheck = async (connection, {
   actor,
   correctionSummary,
   afterSnapshot = null,
+  beforeSnapshot = null,
   metadata = null,
 }) => {
   if (!auditCase?.audit_case_id || !auditCase?.operational_review_id) {
     throw Object.assign(new Error('A valid Audit Case is required to record the correction.'), { statusCode: 409 });
   }
   const expectedRole = auditCase.correction_role || getAuditCorrectionRole(auditCase);
-  if (actor?.role !== expectedRole) {
+  if (!canApplyAuditCaseCorrection(actor,auditCase)) {
     throw Object.assign(
       new Error(expectedRole === 'super_admin'
         ? 'Only Super Admin may apply this Audit Case correction.'
@@ -65,7 +73,7 @@ export const advanceAuditCaseToRecheck = async (connection, {
   if (summary.length < 5) throw Object.assign(new Error('Describe the correction that was applied.'), { statusCode: 400 });
   const [result] = await connection.query(
     `UPDATE audit_cases
-     SET status='pending_system_admin_correction', system_admin_user_id=?, correction_summary=?, correction_applied_at=NOW()
+     SET status='pending_auditor_recheck', system_admin_user_id=?, correction_summary=?, correction_applied_at=NOW()
      WHERE audit_case_id=? AND status='pending_system_admin_correction'`,
     [actor?.id || null, summary, auditCase.audit_case_id]
   );
@@ -84,7 +92,7 @@ export const advanceAuditCaseToRecheck = async (connection, {
   const priorRevision = Math.max(1, Number(previous.revision || 1));
   await connection.query(
     `UPDATE operational_reviews
-     SET status='correction_required', revision=revision+1, after_snapshot_json=COALESCE(?, after_snapshot_json)
+     SET status='pending_auditor_recheck', revision=revision+1, after_snapshot_json=COALESCE(?, after_snapshot_json)
      WHERE operational_review_id=?`,
     [afterSnapshot == null ? null : JSON.stringify(afterSnapshot), auditCase.operational_review_id]
   );
@@ -93,7 +101,7 @@ export const advanceAuditCaseToRecheck = async (connection, {
     eventType: 'controlled_correction_applied',
     actor,
     fromStatus: 'correction_required',
-    toStatus: 'correction_required',
+    toStatus: 'pending_auditor_recheck',
     message: summary,
     metadata: {
       auditCaseId: auditCase.audit_case_id, correctionRole: expectedRole,
@@ -105,11 +113,13 @@ export const advanceAuditCaseToRecheck = async (connection, {
       // No explicit per-action BEFORE was supplied. The version renderer labels
       // the preceding saved AFTER as evidence, not a verified immediate BEFORE.
       nextAfterSnapshot: afterSnapshot,
+      nextBeforeSnapshot: beforeSnapshot,
+      immediateBeforeAvailable: beforeSnapshot != null,
       ...(metadata || {}),
     },
   });
-  // The correction is saved; the authorized admin closes the case separately with Resolve with Notes.
-  return { reviewId: auditCase.operational_review_id, auditCaseId: auditCase.audit_case_id, status: 'correction_required' };
+  await notifyAuditors(connection,{reviewId:auditCase.operational_review_id,auditCaseId:auditCase.audit_case_id,type:'audit_correction_recheck',title:`Correction awaiting independent verification · ${auditCase.case_number || ''}`,message:summary});
+  return { reviewId: auditCase.operational_review_id, auditCaseId: auditCase.audit_case_id, status: 'pending_auditor_recheck' };
 };
 
 

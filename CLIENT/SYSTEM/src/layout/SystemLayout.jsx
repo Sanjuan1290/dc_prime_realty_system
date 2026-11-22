@@ -431,6 +431,7 @@ const SystemLayout = () => {
 
       <main className="min-h-screen pt-16 lg:pl-72">
         <div className="p-4 sm:p-6 lg:p-8">
+          <ModuleBreadcrumb role={user?.role}/>
           <Outlet />
         </div>
       </main>
@@ -445,3 +446,4 @@ export default SystemLayout;
 
 
 
+import ModuleBreadcrumb from '../components/Shared/ModuleBreadcrumb';

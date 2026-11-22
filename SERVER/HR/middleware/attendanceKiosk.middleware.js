@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import {db} from '../db/connect.js';
+import {loadKioskCredential,kioskSessionMatchesCredential} from '../services/attendanceKioskCredential.service.js';
 
 export const ATTENDANCE_KIOSK_COOKIE = 'hr_attendance_kiosk_session';
 const DEFAULT_SESSION_HOURS = 12;
@@ -60,7 +62,7 @@ const signPayload = (encodedPayload) => {
   return crypto.createHmac('sha256', secret).update(encodedPayload).digest('base64url');
 };
 
-export const createAttendanceKioskToken = () => {
+export const createAttendanceKioskToken = ({generation=0,credentialExpiresAt=null}={}) => {
   const secret = getSigningSecret();
   if (!secret) {
     const error = new Error('Attendance kiosk signing is not configured. Set ATTENDANCE_KIOSK_SECRET or JWT_SECRET.');
@@ -73,7 +75,8 @@ export const createAttendanceKioskToken = () => {
   const payload = {
     type: 'attendance_kiosk',
     issuedAt: now,
-    expiresAt: now + (getSessionHours() * 60 * 60 * 1000),
+    expiresAt: Math.min(now + (getSessionHours() * 60 * 60 * 1000),credentialExpiresAt||Infinity),
+    generation,
     nonce: crypto.randomBytes(18).toString('base64url'),
   };
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -86,8 +89,8 @@ export const createAttendanceKioskToken = () => {
 
 export const verifyAttendanceKioskToken = (token) => {
   try {
-    const [encodedPayload, providedSignature] = String(token || '').split('.');
-    if (!encodedPayload || !providedSignature) return null;
+    const [encodedPayload, providedSignature,extra] = String(token || '').split('.');
+    if (!encodedPayload || !providedSignature || extra) return null;
     const expectedSignature = signPayload(encodedPayload);
     if (!expectedSignature || !safeEqual(providedSignature, expectedSignature)) return null;
     const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8'));
@@ -141,13 +144,16 @@ export const clearAttendancePinFailures = (req) => {
   failedAttempts.delete(getClientKey(req));
 };
 
-export const getAttendanceKioskSession = (req) => {
+export const getAttendanceKioskSession = async (req) => {
   const token = req.cookies?.[ATTENDANCE_KIOSK_COOKIE];
-  return verifyAttendanceKioskToken(token);
+  const session=verifyAttendanceKioskToken(token);
+  if(!session)return null;
+  return kioskSessionMatchesCredential(session,await loadKioskCredential(db))?session:null;
 };
 
-export const requireAttendanceKiosk = (req, res, next) => {
-  const session = getAttendanceKioskSession(req);
+export const requireAttendanceKiosk = async (req, res, next) => {
+  let session;
+  try{session=await getAttendanceKioskSession(req)}catch(error){return next(error)}
   if (!session) {
     clearAttendanceKioskCookie(res);
     return res.status(401).json({

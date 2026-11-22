@@ -70,7 +70,8 @@ const fetchHr = async (path, options = {}, asBlob = false) => {
     }
     const verifiedUndo = options.confirmationHandled === 'payroll-undo' && /^\/employee-payroll\/payrolls\/[1-9]\d*\/undo\/(request|confirm)$/.test(pathname)
     const previewedBulkTimeOut = options.confirmationHandled === 'bulk-time-out' && pathname==='/attendance/bulk-time-out' && method==='POST'
-    if (!KIOSK_MUTATION_PATHS.has(pathname) && options.confirmationHandled !== 'technical' && !verifiedUndo && !previewedBulkTimeOut) {
+    const confirmedKioskRotation = options.confirmationHandled === 'kiosk-password' && pathname==='/attendance/kiosk-password' && method==='POST'
+    if (!KIOSK_MUTATION_PATHS.has(pathname) && options.confirmationHandled !== 'technical' && !verifiedUndo && !previewedBulkTimeOut && !confirmedKioskRotation) {
       if (typeof window === 'undefined' || !window.confirm('Confirm this HR change?')) {
         throw new ApiError('Changes cancelled.', {status:499,code:'REVIEW_CANCELLED'})
       }

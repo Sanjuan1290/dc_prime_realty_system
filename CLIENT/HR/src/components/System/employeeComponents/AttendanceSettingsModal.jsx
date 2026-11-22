@@ -271,6 +271,7 @@ const AttendanceSettingsModal = ({ settings, onClose, onSaved }) => {
             </div>
           </section>
 
+          <KioskPasswordSettings/>
           <section className="rounded-2xl border border-slate-200 p-4 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -317,3 +318,4 @@ export default AttendanceSettingsModal
 
 
 
+import KioskPasswordSettings from './KioskPasswordSettings'

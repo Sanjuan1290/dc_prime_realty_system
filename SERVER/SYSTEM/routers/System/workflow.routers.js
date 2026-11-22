@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
+import {returnCorrectedAuditCase} from '../../controllers/System/workflow.controller.js';
 import {
   listOperationalReviews,getReviewCenterSummary,getOperationalReview,getOperationalReviewProofContent,getOperationalReviewRecordPreview,getOperationalReviewSignedReceiptContent,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,resubmitManualReviewCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,markAllInternalNotificationsRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,resolveAuditCaseByAdmin,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
 } from '../../controllers/System/workflow.controller.js';
@@ -30,6 +31,7 @@ router.post('/reviews/:id/head-confirm',requireReviewCenterRole,requirePermissio
 router.post('/reviews/:id/return',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_RETURN_FOR_CORRECTION),returnReviewForCorrection);
 router.post('/reviews/:id/resubmit-manual',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),resubmitManualReviewCorrection);
 router.post('/reviews/:id/auditor-verify',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_AUDIT_REVIEW),auditorVerifyReview);
+router.post('/reviews/:id/correction-return',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_AUDIT_CORRECTION_VERIFY),returnCorrectedAuditCase);
 router.post('/reviews/:id/audit-case',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE),openAuditCase);
 router.post('/audit-cases/:caseId/resolve-with-notes',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY),resolveAuditCaseByAdmin);
 router.get('/audit-cases/:caseId',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getAuditCase);
