@@ -428,35 +428,41 @@ const requirePaymentCorrectionVerification = async (connection, req, { action, l
     return { ok: true, actor, reason, payload, authorizationType: 'department_head', headPreApprovedByUserId: actor.id };
   }
 
-  // Staff may correct only a payment that the Accounting Head explicitly returned.
-  // The same review is reused and goes back to Head review after the correction.
-  const returnedReviewId = Number(req.body.reviewId || req.body.review_id || 0);
-  const returnedParams = returnedReviewId
-    ? [returnedReviewId, String(existingPayment.lot_project_payment_id), actor.id]
-    : [String(existingPayment.lot_project_payment_id), actor.id];
-  const returnedWhere = returnedReviewId
-    ? `operational_review_id=? AND entity_type='lot_project_payment' AND entity_id=? AND initiated_by_user_id=?`
-    : `entity_type='lot_project_payment' AND entity_id=? AND initiated_by_user_id=?`;
-  const [returnedRows] = await connection.query(
-    `SELECT * FROM operational_reviews
-     WHERE ${returnedWhere} AND status='returned_for_correction'
-     ORDER BY operational_review_id DESC LIMIT 1 FOR UPDATE`,
-    returnedParams
-  );
-  const returnedReview = returnedRows[0] || null;
-  if (returnedReview) {
-    return {
-      ok: true,
-      actor,
-      reason,
-      payload,
-      authorizationType: 'returned_review',
-      allowReviewId: returnedReview.operational_review_id,
-      returnedReview,
-    };
-  }
-  if (returnedReviewId) {
-    throw createHttpError(409, 'This returned-review correction is no longer valid for your account.');
+  // Only Accounting Staff use a returned operational-review ID. System Admin
+  // and Super Admin may also arrive from Review Center with both reviewId and
+  // auditCaseId; an unrelated reviewId must never shadow the Audit Case check.
+  if (actor.role === 'accounting_staff') {
+    // Staff may correct only a payment that the Accounting Head explicitly returned.
+    // The same review is reused and goes back to Head review after the correction.
+    const returnedReviewId = Number(req.body.reviewId || req.body.review_id || 0);
+    const returnedParams = returnedReviewId
+      ? [returnedReviewId, String(existingPayment.lot_project_payment_id), actor.id]
+      : [String(existingPayment.lot_project_payment_id), actor.id];
+    const returnedWhere = returnedReviewId
+      ? `operational_review_id=? AND entity_type='lot_project_payment' AND entity_id=? AND initiated_by_user_id=?`
+      : `entity_type='lot_project_payment' AND entity_id=? AND initiated_by_user_id=?`;
+    const [returnedRows] = await connection.query(
+      `SELECT * FROM operational_reviews
+       WHERE ${returnedWhere} AND status='returned_for_correction'
+       ORDER BY operational_review_id DESC LIMIT 1 FOR UPDATE`,
+      returnedParams
+    );
+    const returnedReview = returnedRows[0] || null;
+    if (returnedReview) {
+      return {
+        ok: true,
+        actor,
+        reason,
+        payload,
+        authorizationType: 'returned_review',
+        allowReviewId: returnedReview.operational_review_id,
+        returnedReview,
+      };
+    }
+    if (returnedReviewId) {
+      throw createHttpError(409, 'This returned-review correction is no longer valid for your account.');
+    }
+    throw createHttpError(409, 'Accounting Staff can correct a recorded payment only after the Accounting Head returns its review for correction.');
   }
 
   // A valid Auditor finding gives System Admin a correction right only for the
@@ -516,10 +522,6 @@ const requirePaymentCorrectionVerification = async (connection, req, { action, l
       authorizationType: 'emergency_super_admin',
       headPreApprovedByUserId: actor.id,
     };
-  }
-
-  if (actor.role === 'accounting_staff') {
-    throw createHttpError(409, 'Accounting Staff can correct a recorded payment only after the Accounting Head returns its review for correction.');
   }
 
   throw createHttpError(403, 'You are not authorized to correct this recorded payment.');
@@ -1144,29 +1146,34 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
     const payload = buildPaymentCorrectionPayload({ action, actor, listing, existingPayment, body, reason });
     validatePaymentCorrectionRequest({ action, reason, payload });
 
-    const [returnedRows] = await connection.query(
-      `SELECT operational_review_id, review_number
-       FROM operational_reviews
-       WHERE entity_type='lot_project_payment'
-         AND entity_id=?
-         AND initiated_by_user_id=?
-         AND status='returned_for_correction'
-       ORDER BY operational_review_id DESC
-       LIMIT 1 FOR UPDATE`,
-      [String(existingPayment.lot_project_payment_id), actor.id]
-    );
-    if (returnedRows[0]) {
-      await connection.commit();
-      return res.json({
-        success: true,
-        message: `${returnedRows[0].review_number} was returned to you for correction. The corrected payment will go back to Accounting Head review.`,
-        data: {
-          directCorrection: true,
-          authorizationType: 'returned_review',
-          reviewId: Number(returnedRows[0].operational_review_id),
-          status: 'approved',
-        },
-      });
+    // Returned operational reviews are the Accounting Staff path only. Owner
+    // administrators must be authorized by the exact Audit Case supplied from
+    // Review Center, even when the request also carries workflowReviewId.
+    if (actor.role === 'accounting_staff') {
+      const [returnedRows] = await connection.query(
+        `SELECT operational_review_id, review_number
+         FROM operational_reviews
+         WHERE entity_type='lot_project_payment'
+           AND entity_id=?
+           AND initiated_by_user_id=?
+           AND status='returned_for_correction'
+         ORDER BY operational_review_id DESC
+         LIMIT 1 FOR UPDATE`,
+        [String(existingPayment.lot_project_payment_id), actor.id]
+      );
+      if (returnedRows[0]) {
+        await connection.commit();
+        return res.json({
+          success: true,
+          message: `${returnedRows[0].review_number} was returned to you for correction. The corrected payment will go back to Accounting Head review.`,
+          data: {
+            directCorrection: true,
+            authorizationType: 'returned_review',
+            reviewId: Number(returnedRows[0].operational_review_id),
+            status: 'approved',
+          },
+        });
+      }
     }
 
     if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
@@ -3817,6 +3824,7 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+
 
 
 
