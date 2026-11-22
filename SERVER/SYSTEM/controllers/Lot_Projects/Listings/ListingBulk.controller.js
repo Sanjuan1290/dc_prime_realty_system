@@ -20,11 +20,21 @@ const cadastralSQL = `(
  WHERE rel.lot_project_listing_id = l.lot_project_listing_id
 ) AS cadastral_lots`;
 
-const loadListings = async (connection, projectId, ids = null, status = 'all', forUpdate = false) => {
+const loadListings = async (connection, projectId, ids = null, status = 'all', forUpdate = false, includeInterest = false) => {
+  // Export the current account's SOA rate separately from the inventory default.
+  // Validation and update locks continue to use only the listing's own values.
   const filter = statusFilterSQL(status);
   const idSQL = ids ? `AND l.lot_project_listing_id IN (${ids.map(() => '?').join(', ')})` : '';
   const [rows] = await connection.query(
-    `SELECT l.*, ${cadastralSQL} FROM lot_project_listings l
+    `SELECT l.*, ${cadastralSQL}
+     ${includeInterest ? ', cp.soa_annual_interest_rate, cp.soa_interest_rate_overridden' : ''}
+     FROM lot_project_listings l
+     ${includeInterest ? `LEFT JOIN lot_project_accounts current_account
+       ON current_account.lot_project_account_id=l.current_account_id
+       AND current_account.lot_project_listing_id=l.lot_project_listing_id
+       LEFT JOIN lot_project_client_profiles cp
+       ON cp.lot_project_client_profile_id=current_account.lot_project_client_profile_id
+       AND cp.lot_project_listing_id=l.lot_project_listing_id` : ''}
      WHERE l.lot_project_id = ? ${idSQL} ${filter.sql}
      ORDER BY l.lot_project_listing_id ASC ${forUpdate ? 'FOR UPDATE' : ''}`,
     [projectId, ...(ids || []), ...filter.params]
@@ -38,7 +48,7 @@ export const getBulkListingExport = async (req, res) => {
     const project = await getProjectBySlug(String(req.params.projectSlug || ''));
     if (!project) throw fail('Project not found.', 404);
     const status = String(req.query.status || 'all');
-    const rows = await loadListings(connection, project.lot_project_id, null, status);
+    const rows = await loadListings(connection, project.lot_project_id, null, status, false, true);
     // Do not expose buyer data or private documents in exported spreadsheets.
     return res.json({ success: true, data: rows.map(mapListingRow), project: {
       id: project.lot_project_id, name: project.lot_project_name, locationCode: project.lot_project_location_code,

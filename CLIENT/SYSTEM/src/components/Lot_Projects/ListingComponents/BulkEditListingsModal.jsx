@@ -85,6 +85,7 @@ const BulkEditListingsModal = ({ project, projectSlug, onClose, onSaved }) => {
       <div className="flex w-full flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5"><div><h2 className="text-2xl font-black">Bulk Edit Listings</h2><p className="mt-1 text-sm text-slate-500">Upload an Editable Listings Template to review changes before saving.</p></div><button type="button" disabled={busy} onClick={onClose} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700"><FiArrowLeft />Back to Listings</button></header>
         <div className="space-y-5 p-5">
+          <p className="text-sm text-slate-600">Enter adjustments in the workbook’s New columns. Blank New cells keep the current values. Changing a Unit ID automatically keeps the previous ID in Old Unit IDs.</p>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" disabled={busy} onClick={() => setShowDownloadTemplate(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50"><FiDownload /> Download Editable Template</button>
             <input ref={inputRef} type="file" accept=".xlsx" onChange={selectFile} className="hidden" />

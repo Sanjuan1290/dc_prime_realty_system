@@ -59,10 +59,16 @@ test('editable Excel export has no sheet-level lock and keeps protected fields v
   assert.equal(workbook.Sheets['Original Values'] !== undefined, true, 'Original values needed for validation');
   assert.equal(filename, 'Bailen_Bulk_Edit_Listings_all.xlsx');
   assert.equal(options.cellStyles, true);
-  const availableIdCell = listingSheet.E2;
-  const soldIdCell = listingSheet.E3;
-  const availablePriceCell = listingSheet.J2;
-  const soldPriceCell = listingSheet.J3;
+  const cellFor = (header, row) => {
+    const column = Object.values(listingSheet).find(cell => cell?.v === header);
+    const address = Object.keys(listingSheet).find(key => listingSheet[key] === column).replace(/1$/, String(row));
+    return listingSheet[address];
+  };
+  const availableIdCell = cellFor('New Unit ID', 2);
+  const soldIdCell = cellFor('New Unit ID', 3);
+  const availablePriceCell = cellFor('New Installment Price / SQM', 2);
+  const soldPriceCell = cellFor('New Installment Price / SQM', 3);
+  assert.equal(cellFor('Unit ID', 2).s.fill.fgColor.rgb, 'E5E7EB', 'Current values are references');
   assert.equal(availableIdCell.s.fill.fgColor.rgb, 'EFF6FF');
   assert.equal(soldIdCell.s.fill.fgColor.rgb, 'EFF6FF');
   assert.equal(availablePriceCell.s.fill.fgColor.rgb, 'EFF6FF');

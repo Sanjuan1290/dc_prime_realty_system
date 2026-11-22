@@ -279,6 +279,8 @@ export const mapListingRow = (row = {}) => {
     cashTcp: cashPricing.tcp,
     reservationFee: Number(row.lot_project_listing_reservation_fee || 0),
     annualInterestRate: Number(row.annual_interest_rate || 0),
+    soaAnnualInterestRate: getEffectiveSoaInterestRate(row),
+    soaInterestRateSource: Number(row.soa_interest_rate_overridden || 0) === 1 ? 'custom' : 'listing',
     buyer: row.buyer_full_name || row.buyer_name || 'No buyer yet',
     documentStatus: row.document_status || formatDocumentsLabel(row),
     status: getListingStatusLabel(row.lot_project_listing_status, row.lot_project_listing_sold_substatus),

@@ -54,7 +54,7 @@ const ExportListingsModal = ({ projectSlug, projectName, canPrint, onClose, edit
             {[
               ...(!editableOnly && canPrint ? [{ value: 'print', label: 'Price List — Print / PDF', helper: 'Existing printable price list and monthly computation' }] : []),
               ...(!editableOnly ? [{ value: 'inventory', label: 'Complete Listings — Excel', helper: 'Read-only reference inventory and calculated TCPs' }] : []),
-              { value: 'editable', label: 'Editable Listings Template — Excel', helper: 'Edit existing lot areas, Unit IDs, cadastral lots and prices' },
+              { value: 'editable', label: 'Editable Listings Template — Excel', helper: 'Current values beside blank New columns for your adjustments' },
             ].map((choice) => <label key={choice.value} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${format === choice.value ? 'border-blue-400 bg-blue-50' : 'border-slate-200'}`}>
               <input type="radio" name="format" value={choice.value} checked={format === choice.value} onChange={() => handleFormat(choice.value)} className="mt-1" />
               <span><span className="block text-sm font-black text-slate-900">{choice.label}</span><span className="block text-xs font-semibold text-slate-500">{choice.helper}</span></span>

@@ -588,7 +588,7 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
             />
 
             <Field
-              label="Annual Interest Rate (%)"
+              label={isProtectedListing ? 'Listing Default Annual Interest Rate (%)' : 'Annual Interest Rate (%)'}
               type="number"
               min="0"
               step="0.01"
@@ -596,10 +596,18 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
               onChange={(value) => updateField('annualInterestRate', value)}
               placeholder="0"
               helper={isProtectedListing
-                ? `Listing default, locked after reservation/sale. This buyer's SOA rate is ${Number(listing?.soaAnnualInterestRate ?? listing?.annualInterestRate ?? 0).toFixed(2)}%.`
+                ? 'Inventory default, locked after reservation/sale. The buyer SOA rate is shown separately.'
                 : 'Default rate for monthly amortization. A buyer-specific rate can be set when reserving.'}
               disabled={isProtectedListing}
             />
+
+            {isProtectedListing && Boolean(listing?.hasClientProfile || listing?.clientProfileId || listing?.lot_project_client_profile_id) ? <Field
+              label="Buyer SOA Annual Interest Rate (%)"
+              type="number"
+              value={Number(listing?.soaAnnualInterestRate ?? listing?.annualInterestRate ?? 0)}
+              disabled
+              helper="Current buyer contract rate. Review this rate in Edit SOA Terms."
+            /> : null}
 
             <SelectField
               label="Status"
