@@ -82,9 +82,16 @@ const lookupName = (key, value, lookups = {}) => {
   return lookups?.[rule.kind]?.[String(value)] || `#${value}`
 }
 
-export const formatSnapshotValue = (key, value, { lookups = {}, labelFor = humanizeKey, isHidden = () => false } = {}) => {
+export const formatSnapshotValue = (key, value, { lookups = {}, labelFor = humanizeKey, isHidden = () => false, snapshot = null } = {}) => {
   if (isEmptyValue(value)) return 'Not set'
-  if (/^(scheduleId|soaRowId|lot_project_payment_schedule_id)$/.test(key)) return `Schedule ID #${value}`
+  if (/^(scheduleId|soaRowId|lot_project_payment_schedule_id)$/.test(key)) {
+    const description = String(snapshot?.scheduleDescription || '').trim()
+    if (!description) return `Schedule ID #${value}`
+    const dueDate = snapshot?.scheduleDueDate
+      ? formatPhilippineCalendarDate(snapshot.scheduleDueDate, { style: 'medium' })
+      : ''
+    return dueDate ? `${description} · Due ${dueDate}` : description
+  }
   if (/(?:^|_)(?:bank_?)?account_?number$|^(?:bank)?AccountNumber$/i.test(String(key))) {
     const digits = String(value).replace(/\s+/g, '')
     return digits.length > 4 ? `••••${digits.slice(-4)}` : '••••'
@@ -98,7 +105,7 @@ export const formatSnapshotValue = (key, value, { lookups = {}, labelFor = human
   if (isPlainObject(value)) {
     return Object.entries(value)
       .filter(([childKey]) => !isHidden(childKey))
-      .map(([childKey, childValue]) => `${labelFor(childKey)}: ${formatSnapshotValue(childKey, childValue, { lookups, labelFor, isHidden })}`)
+      .map(([childKey, childValue]) => `${labelFor(childKey)}: ${formatSnapshotValue(childKey, childValue, { lookups, labelFor, isHidden, snapshot: value })}`)
       .join('; ')
   }
   const numeric = typeof value === 'number' || (typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value.trim()))

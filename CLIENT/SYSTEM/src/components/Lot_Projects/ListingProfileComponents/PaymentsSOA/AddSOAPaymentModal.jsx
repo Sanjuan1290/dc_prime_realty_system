@@ -223,6 +223,8 @@ const AddSOAPaymentModal = ({
   const [previewError, setPreviewError] = useState('')
   const linkedPenaltyWaiver = initialPayment?.penaltyWaiver || null
   const [penaltyHandling, setPenaltyHandling] = useState(linkedPenaltyWaiver && !['cancelled', 'restored'].includes(String(linkedPenaltyWaiver.status || '').toLowerCase()) ? 'waive' : 'apply')
+  // Preserve recorded amounts on open; an explicit penalty choice enables recalculation.
+  const [penaltyHandlingChanged, setPenaltyHandlingChanged] = useState(false)
   const [penaltyWaiverReason, setPenaltyWaiverReason] = useState(linkedPenaltyWaiver?.reason || '')
   const [penaltyWaiverInternalNotes, setPenaltyWaiverInternalNotes] = useState(linkedPenaltyWaiver?.internalNotes || '')
 
@@ -303,7 +305,7 @@ const AddSOAPaymentModal = ({
             ? 0
             : Math.max(Number(result?.selectedRow?.totalPayable || 0) - (penaltyHandling === 'waive' && canWaivePenalty ? previewPenalty : 0), 0)
 
-        if (previewAmount > 0 && (form.paymentType === 'Full Payment' || (!amountManuallyEdited && !isEdit))) {
+        if (previewAmount > 0 && (form.paymentType === 'Full Payment' || (!amountManuallyEdited && (!isEdit || penaltyHandlingChanged)))) {
           setForm((current) => ({
             ...current,
             amount: formatPaymentAmountInput(previewAmount),
@@ -331,6 +333,7 @@ const AddSOAPaymentModal = ({
     isEdit,
     onPreview,
     penaltyHandling,
+    penaltyHandlingChanged,
     canWaivePenalty,
     requiresSoaRow,
     settlementReview,
@@ -421,6 +424,12 @@ const AddSOAPaymentModal = ({
   const displayedAmount = isFullPayment
     ? formatPaymentAmountInput(fullPaymentAmount)
     : form.amount
+
+  const updatePenaltyHandling = (value) => {
+    setPenaltyHandling(value)
+    setPenaltyHandlingChanged(true)
+    if (alert?.type === 'error') setAlert(null)
+  }
 
   const updateField = (key, value) => {
     if (key === 'amount' && isFullPayment) return
@@ -764,11 +773,11 @@ const AddSOAPaymentModal = ({
               <p className="mt-1 text-xs font-semibold text-emerald-800">The selected payment date creates {money(automaticPenalty)} in penalty. Choose whether to collect it or formally waive it for this payment.</p>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${penaltyHandling === 'apply' ? 'border-red-300 bg-white' : 'border-emerald-200 bg-emerald-50/40'}`}>
-                  <input type="radio" name="penaltyHandling" value="apply" checked={penaltyHandling === 'apply'} onChange={() => { setPenaltyHandling('apply'); if (alert?.type === 'error') setAlert(null) }} disabled={isSaving} className="mt-1" />
+                  <input type="radio" name="penaltyHandling" value="apply" checked={penaltyHandling === 'apply'} onChange={() => updatePenaltyHandling('apply')} disabled={isSaving} className="mt-1" />
                   <span><span className="block text-sm font-black text-slate-900">Apply calculated penalty</span><span className="mt-1 block text-xs font-semibold text-slate-500">Buyer owes {money(automaticPenalty)} penalty.</span></span>
                 </label>
                 <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${penaltyHandling === 'waive' ? 'border-emerald-400 bg-white' : 'border-emerald-200 bg-emerald-50/40'}`}>
-                  <input type="radio" name="penaltyHandling" value="waive" checked={penaltyHandling === 'waive'} onChange={() => { setPenaltyHandling('waive'); if (alert?.type === 'error') setAlert(null) }} disabled={isSaving} className="mt-1" />
+                  <input type="radio" name="penaltyHandling" value="waive" checked={penaltyHandling === 'waive'} onChange={() => updatePenaltyHandling('waive')} disabled={isSaving} className="mt-1" />
                   <span><span className="block text-sm font-black text-slate-900">Waive penalty for this payment</span><span className="mt-1 block text-xs font-semibold text-slate-500">Keep the real payment date, but save the {money(automaticPenalty)} penalty as formally waived.</span></span>
                 </label>
               </div>

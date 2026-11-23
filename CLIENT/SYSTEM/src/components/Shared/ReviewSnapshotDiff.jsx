@@ -25,7 +25,7 @@ const makeContext = ({ lookups, labels, isHiddenField, fieldOrder }) => {
     labelFor,
     isHidden,
     orderOf,
-    format: (key, value) => formatSnapshotValue(key, value, { lookups: lookups || {}, labelFor, isHidden }),
+    format: (key, value, snapshot) => formatSnapshotValue(key, value, { lookups: lookups || {}, labelFor, isHidden, snapshot }),
   }
 }
 
@@ -48,7 +48,7 @@ const flattenRows = (ctx, before, after, prefix = []) => {
     } else if (isPlainObject(b) || isPlainObject(a)) {
       rows.push(...flattenRows(ctx, isPlainObject(b) ? b : {}, isPlainObject(a) ? a : {}, [...prefix, key]))
     } else {
-      rows.push({ type: 'field', key, path: [...prefix, key], before: b, after: a })
+      rows.push({ type: 'field', key, path: [...prefix, key], before: b, after: a, beforeSnapshot: before, afterSnapshot: after })
     }
   }
   return rows
@@ -63,10 +63,10 @@ const pathLabel = (ctx, path) => {
   return path.map(ctx.labelFor).join(' / ')
 }
 
-const ValueCell = ({ ctx, field, value, tone }) => {
+const ValueCell = ({ ctx, field, value, snapshot, tone }) => {
   const empty = isEmptyValue(value)
   const tones = { before: 'text-red-800 line-through decoration-red-300', after: 'text-emerald-900', plain: 'text-slate-800' }
-  return <span className={`break-words text-sm font-bold ${empty ? 'font-semibold italic text-slate-400 no-underline' : tones[tone] || tones.plain}`}>{value === undefined ? 'Not Recorded' : ctx.format(field, value)}</span>
+  return <span className={`break-words text-sm font-bold ${empty ? 'font-semibold italic text-slate-400 no-underline' : tones[tone] || tones.plain}`}>{value === undefined ? 'Not Recorded' : ctx.format(field, value, snapshot)}</span>
 }
 
 const FieldTable = ({ ctx, rows, showUnchanged, strictSavedComparison = false }) => {
@@ -87,8 +87,8 @@ const FieldTable = ({ ctx, rows, showUnchanged, strictSavedComparison = false })
           const changed = !sameValue(row.before, row.after)
           return <tr key={row.path.join('.')} className={changed ? 'bg-amber-50/40' : ''}>
             <td className="py-2.5 pr-3 align-top text-sm font-semibold text-slate-600">{pathLabel(ctx, row.path)}</td>
-            <td className="py-2.5 pr-3 align-top"><ValueCell ctx={ctx} field={row.key} value={row.before} tone={changed ? 'before' : 'plain'} /></td>
-            <td className="py-2.5 align-top"><ValueCell ctx={ctx} field={row.key} value={row.after} tone={changed ? 'after' : 'plain'} /></td>
+            <td className="py-2.5 pr-3 align-top"><ValueCell ctx={ctx} field={row.key} value={row.before} snapshot={row.beforeSnapshot} tone={changed ? 'before' : 'plain'} /></td>
+            <td className="py-2.5 align-top"><ValueCell ctx={ctx} field={row.key} value={row.after} snapshot={row.afterSnapshot} tone={changed ? 'after' : 'plain'} /></td>
           </tr>
         })}
       </tbody>
@@ -126,7 +126,7 @@ const RecordListDiff = ({ ctx, row, showUnchanged }) => {
             ? <dl className="grid gap-x-6 gap-y-2 py-1 sm:grid-cols-2">
                 {fields.map((field) => <div key={field.path.join('.')} className="flex items-baseline justify-between gap-3 border-b border-dashed border-slate-100 pb-1.5">
                   <dt className="text-sm font-semibold text-slate-500">{pathLabel(ctx, field.path)}</dt>
-                  <dd className={`text-right text-sm font-bold ${entry.state === 'removed' ? 'text-red-800 line-through decoration-red-300' : 'text-emerald-900'}`}>{ctx.format(field.key, entry.state === 'removed' ? field.before : field.after)}</dd>
+                  <dd className={`text-right text-sm font-bold ${entry.state === 'removed' ? 'text-red-800 line-through decoration-red-300' : 'text-emerald-900'}`}>{ctx.format(field.key, entry.state === 'removed' ? field.before : field.after, entry.state === 'removed' ? field.beforeSnapshot : field.afterSnapshot)}</dd>
                 </div>)}
               </dl>
             : <FieldTable ctx={ctx} rows={fields} showUnchanged={showUnchanged} />}

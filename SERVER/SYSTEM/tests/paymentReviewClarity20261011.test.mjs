@@ -72,4 +72,16 @@ test('reservation payment types are shown in customer-facing language', async ()
   assert.equal(formatSnapshotValue('referenceId', 'CASH-20261011-LA1805-P0001'), 'CASH-20261011-LA1805-P0001')
 })
 
+test('schedule references use only the description and due date saved on that side of the review', async () => {
+  const { formatSnapshotValue } = await import('../../../CLIENT/SYSTEM/src/utils/reviewSnapshotFormat.js')
+  const snapshot = { scheduleId: 90028, scheduleDescription: 'Reservation Fee', scheduleDueDate: '2026-11-22' }
+  for (const key of ['scheduleId', 'soaRowId', 'lot_project_payment_schedule_id']) {
+    assert.equal(formatSnapshotValue(key, 90028, { snapshot }), 'Reservation Fee · Due Nov 22, 2026')
+    assert.equal(formatSnapshotValue(key, 90028, { snapshot: { scheduleDescription: 'Downpayment' } }), 'Downpayment')
+    assert.equal(formatSnapshotValue(key, 90028, { lookups: { schedule: { 90028: 'Current live description' } } }), 'Schedule ID #90028')
+    assert.equal(formatSnapshotValue(key, 90028, { snapshot: { scheduleDueDate: '2026-11-22' } }), 'Schedule ID #90028')
+  }
+  assert.deepEqual(snapshot, { scheduleId: 90028, scheduleDescription: 'Reservation Fee', scheduleDueDate: '2026-11-22' })
+})
+
 
