@@ -10,6 +10,7 @@
     "test:soa-terms": "node --test soa-terms.e2e.test.mjs",
     "test:payments-soa:browser": "node payments-soa-browser.mjs",
     "test:payment-review-correction:browser": "node payment-review-correction-browser.mjs",
+    "test:pdf13:browser": "node pdf13-browser.mjs",
     "test:password-recovery": "node --test password-recovery.e2e.test.mjs",
     "test:password-recovery:browser": "node password-recovery-browser.mjs",
     "test:finance-csv": "node --test csv-finance.e2e.test.mjs",

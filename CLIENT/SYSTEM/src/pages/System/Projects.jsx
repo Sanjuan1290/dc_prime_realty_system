@@ -7,6 +7,7 @@ import {
   FiFileText,
   FiMap,
   FiPlus,
+  FiPower,
   FiSearch,
   FiTrash2,
 } from 'react-icons/fi'
@@ -223,17 +224,17 @@ const Projects = () => {
   })
 
   const changeStatusMutation = useMutation({
-    mutationFn: (projectId) =>
-      useFetchPatch(`/projects/lot-projects/${projectId}/status`, {
-        status: 'inactive',
+    mutationFn: ({ project, status }) =>
+      useFetchPatch(`/projects/lot-projects/${project.id}/status`, {
+        status,
       }, { confirmationHandled: 'compact' }),
-    onMutate: () => {
-      setAlert({ type: 'loading', message: 'Changing project status to inactive...' })
+    onMutate: ({ project, status }) => {
+      setAlert({ type: 'loading', message: `${status === 'active' ? 'Activating' : 'Deactivating'} ${project.name}...` })
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['lot-projects'] })
       queryClient.invalidateQueries({ queryKey: ['lot-project-options'] })
-      setAlert({ type: 'warning', message: data?.message || 'Project status changed to inactive.' })
+      setAlert({ type: 'success', message: data?.message || 'Project status updated.' })
     },
     onError: (error) => {
       setAlert({ type: 'error', message: error.message || 'Failed to change project status.' })
@@ -254,11 +255,15 @@ const Projects = () => {
     onError: (error, project) => {
       const message = error.message || 'Failed to delete project.'
 
-      if (canEdit && message.toLowerCase().includes('listed unit')) {
-        const changeStatus = window.confirm(`${message}\n\nChange this project status to inactive instead?`)
+      if (message.toLowerCase().includes('listed unit')) {
+        queryClient.invalidateQueries({ queryKey: ['lot-projects'] })
+      }
+
+      if (canEdit && project.status === 'active' && message.toLowerCase().includes('listed unit')) {
+        const changeStatus = window.confirm(`${message}\n\nDeactivate this project instead?`)
 
         if (changeStatus) {
-          changeStatusMutation.mutate(project.id)
+          changeStatusMutation.mutate({ project, status: 'inactive' })
           return
         }
       }
@@ -338,6 +343,13 @@ const Projects = () => {
     if (!confirmed) return
 
     deleteProjectMutation.mutate(project)
+  }
+
+  const handleChangeStatus = (project) => {
+    const status = project.status === 'active' ? 'inactive' : 'active'
+    const action = status === 'active' ? 'Activate' : 'Deactivate'
+    if (!window.confirm(`${action} "${project.name}"?`)) return
+    changeStatusMutation.mutate({ project, status })
   }
 
   return (
@@ -476,6 +488,9 @@ const Projects = () => {
               {filteredProjects.map((project) => {
                 const isDeleting =
                   deleteProjectMutation.isPending && deletingProjectId === project.id
+                const canDeleteProject = canDelete && project.listingCount === 0
+                const canChangeStatus = canEdit && !canDeleteProject
+                const isChangingStatus = changeStatusMutation.isPending && changeStatusMutation.variables?.project.id === project.id
 
                 return (
                   <tr key={project.id} className="transition hover:bg-slate-50">
@@ -530,8 +545,10 @@ const Projects = () => {
                           Details
                         </button>
 
-                        {canDelete ? (
+                        {canDeleteProject ? (
                           <button type="button" onClick={() => handleDelete(project.id)} disabled={deleteProjectMutation.isPending || changeStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-black text-white transition hover:bg-red-700 disabled:opacity-60"><FiTrash2 className="h-3.5 w-3.5" />{isDeleting ? 'Deleting...' : 'Delete'}</button>
+                        ) : canChangeStatus ? (
+                          <button type="button" onClick={() => handleChangeStatus(project)} disabled={deleteProjectMutation.isPending || changeStatusMutation.isPending} title={project.listingCount > 0 ? 'Projects with listed units can be activated or deactivated.' : undefined} className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-black transition disabled:opacity-60 ${project.status === 'active' ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'}`}><FiPower className="h-3.5 w-3.5" />{isChangingStatus ? 'Updating...' : project.status === 'active' ? 'Deactivate' : 'Activate'}</button>
                         ) : <span className="inline-flex h-9 items-center px-3 text-xs font-semibold text-slate-400">View only</span>}
                       </div>
                     </td>

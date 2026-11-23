@@ -30,7 +30,7 @@ export const NetworkProfitAcknowledgement = ({ profit, stage, onClose }) => {
         triggerPercent: stage.triggerPercent }] }} />
 }
 
-export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = false, embedded = false, profitRecord = null, sellers = [] }) {
+export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = false, embedded = false, profitRecord = null, sellers = [], paymentPercent = 0 }) {
   const queryClient = useQueryClient()
   const [releaseChoice, setReleaseChoice] = useState(null)
   const [method, setMethod] = useState('bank_transfer')
@@ -139,7 +139,7 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
             <p className="mt-1 text-sm font-black text-slate-950">{value || '-'}</p>
           </div>)}
         </div>
-        <CommissionPaymentProgress entitlement={profitRecord.totalProfit} released={profitRecord.released} label="Company Profit Released (%)"/>
+        <CommissionPaymentProgress paymentPercent={paymentPercent}/>
         <section>
           <h3 className="mb-3 text-sm font-black text-slate-950">Company Profit Release Milestones</h3>
           <div className="overflow-x-auto rounded-xl border border-slate-200">

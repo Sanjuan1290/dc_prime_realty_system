@@ -597,6 +597,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
               profitRecord={selectedProfit}
               projectSlug={projectSlug}
               canRelease={canRelease}
+              paymentPercent={commissionGroup?.paymentPercent ?? commission.paymentPercent ?? 0}
               sellers={sellers.filter(seller => Number(seller.sellerGroupId) === Number(selectedProfit.networkId))}
             />
           ) : selectedBeneficiary.startsWith('company:') ? (
@@ -632,7 +633,6 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
               <InfoCard label="Project" value={commission.project || '-'} />
               <InfoCard label="TCP" value={money(commission.tcp)} />
               <InfoCard label="Paid" value={money(commission.paid)} />
-              <InfoCard label="Payment %" value={`${Number(commission.paymentPercent || 0).toFixed(2)}%`} />
             </div>
           </section>
 
