@@ -139,7 +139,7 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
             <p className="mt-1 text-sm font-black text-slate-950">{value || '-'}</p>
           </div>)}
         </div>
-        <CommissionPaymentProgress entitlement={profitRecord.totalProfit} released={profitRecord.released}/>
+        <CommissionPaymentProgress entitlement={profitRecord.totalProfit} released={profitRecord.released} label="Company Profit Released (%)"/>
         <section>
           <h3 className="mb-3 text-sm font-black text-slate-950">Company Profit Release Milestones</h3>
           <div className="overflow-x-auto rounded-xl border border-slate-200">

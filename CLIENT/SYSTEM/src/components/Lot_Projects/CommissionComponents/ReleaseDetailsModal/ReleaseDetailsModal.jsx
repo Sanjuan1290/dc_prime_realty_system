@@ -620,7 +620,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
               <InfoCard label="Group" value={commission.sellerGroup || '-'} />
               <InfoCard label="Current Reports Under" value={commission.reportsUnder || '-'} />
             </div>
-            <CommissionPaymentProgress entitlement={grossCommission} released={released}/>
+            <CommissionPaymentProgress paymentPercent={commission.paymentPercent ?? 0}/>
           </section>
 
           <section className="mt-5">
