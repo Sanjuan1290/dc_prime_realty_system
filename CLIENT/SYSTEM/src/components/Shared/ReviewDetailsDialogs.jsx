@@ -6,7 +6,7 @@ import {ROLE_LABELS} from '../../config/permissions'
 const readable=value=>String(value||'').replace(/[._-]+/g,' ').replace(/\b\w/g,letter=>letter.toUpperCase())
 const date=value=>formatPhilippineDateTime(value,{fallback:'—',timeZoneLabel:true})
 
-const ReviewDialog=({title,onClose,children})=>{
+export const ReviewDialog=({title,onClose,children})=>{
  const dialog=useRef(null),close=useRef(onClose)
  close.current=onClose
  useEffect(()=>{

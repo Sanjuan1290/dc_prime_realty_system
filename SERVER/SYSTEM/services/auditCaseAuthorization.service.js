@@ -20,7 +20,7 @@ export const getPendingAuditCorrectionCase = async (connection, {
   actor = null,
   correctionReason = null,
   forUpdate = true,
-  explainState = false,
+  explainState = true,
 }) => {
   const id = Number(auditCaseId || 0);
   if (!id) return null;

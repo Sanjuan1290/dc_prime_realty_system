@@ -102,6 +102,18 @@ const buildSingleProjectRateReviewSnapshot = ({ groupId, groupType, project = {}
 // (entity id = groupId:projectId). Correction links carry reviewId, so validate
 // that exact Review belongs to the original Staff user instead of opening a new
 // review and leaving the returned one pending.
+const getPendingNetworkRateCase = async (connection,{groupId,auditCaseId,actor,reason}) => {
+  // The full Network form handles both whole-Network and single-project rates.
+  // Read the case's exact stored identity; never substitute groupId for groupId:projectId.
+  const [[reference]]=await connection.query(`SELECT r.entity_id FROM audit_cases c
+    INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id
+    WHERE c.audit_case_id=? AND r.entity_type='seller_group_project_rates' LIMIT 1 FOR UPDATE`,[auditCaseId]);
+  const entityId=String(reference?.entity_id||'');
+  const [caseGroup,caseProject]=entityId.split(':').map(Number);
+  if(!/^\d+(?::\d+)?$/.test(entityId)||caseGroup!==Number(groupId)||(entityId.includes(':')&&!caseProject))return null;
+  return getPendingAuditCorrectionCase(connection,{auditCaseId,actor,correctionReason:reason,entityType:'seller_group_project_rates',entityId});
+};
+
 const getReturnedNetworkRateReviewForActor = async (connection, { actor, groupId, reviewId = null, projectId = null }) => {
   const normalizedGroupId = Number(groupId || 0);
   const normalizedProjectId = Number(projectId || 0);
@@ -1298,17 +1310,16 @@ export const editGroup = async (req, res) => {
       networkAuditCase = await getPendingAuditCorrectionCase(connection, {
         correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
-        auditCaseId: req.body?.auditCaseId,
+        auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
         entityType: 'seller_group',
         entityId: groupId,
       });
       if (!networkAuditCase) {
-        rateAuditCase = await getPendingAuditCorrectionCase(connection, {
-        correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
+        rateAuditCase = await getPendingNetworkRateCase(connection, {
+          reason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
           actor: req.authUser,
-          auditCaseId: req.body?.auditCaseId,
-          entityType: 'seller_group_project_rates',
-          entityId: groupId,
+          auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
+          groupId,
         });
       }
       if (!networkAuditCase && !rateAuditCase) {
@@ -1316,6 +1327,11 @@ export const editGroup = async (req, res) => {
       }
       if (rateAuditCase && JSON.stringify(beforeNetwork) !== JSON.stringify(afterNetwork)) {
         throw Object.assign(new Error('This Audit Case is limited to Network project rates. Leave the Network identity/status fields unchanged.'), { statusCode: 409, code: 'AUDIT_CORRECTION_SCOPE_MISMATCH' });
+      }
+      if (rateAuditCase && !ratesChanged) throw Object.assign(new Error('The project rates are unchanged. Use Resolve Without Editing in Review Center if no rate correction is needed.'), {statusCode:409,code:'AUDIT_CORRECTION_NO_CHANGES'});
+      if(rateAuditCase && groupType==='external' && Object.keys(external_account).length){
+        const savedAccount=await getExternalAccount(connection,groupId);
+        if(['first_name','middle_name','last_name','email','contact_no','tin_no','prc_no','address'].some(field=>String(external_account[field]||'').trim()!==String(savedAccount?.[field]||'').trim()))throw Object.assign(new Error('This Audit Case is limited to project rates. Leave the representative account unchanged.'),{statusCode:409,code:'AUDIT_CORRECTION_SCOPE_MISMATCH'});
       }
       if (networkAuditCase && ratesChanged) {
         throw Object.assign(new Error('This Audit Case is limited to the Network record. Project-rate corrections require the rate Audit Case.'), { statusCode: 409, code: 'AUDIT_CORRECTION_SCOPE_MISMATCH' });
@@ -1361,13 +1377,14 @@ export const editGroup = async (req, res) => {
 
     let ratesGovernance = null;
     if (ratesChanged) {
-      const returnedRateEntityId = rateReturnedReview?.entity_id ? String(rateReturnedReview.entity_id) : String(groupId);
+      const returnedRateEntityId = String(rateAuditCase?.entity_id || rateReturnedReview?.entity_id || groupId);
       const returnedRateProjectId = Number(returnedRateEntityId.split(':')[1] || 0);
-      if (rateReturnedReview && returnedRateProjectId) {
+      if ((rateAuditCase || rateReturnedReview) && returnedRateProjectId) {
+        if(rateAuditCase&&!normalizedRates.some(rate=>Number(rate.lot_project_id)===returnedRateProjectId))throw Object.assign(new Error('Keep the reviewed project selected while correcting its rates.'),{statusCode:409,code:'AUDIT_CORRECTION_SCOPE_MISMATCH'});
         const beforeOther = normalizeRateReviewPayload(existingRateRows).filter((rate) => rate.projectId !== returnedRateProjectId);
         const afterOther = normalizeRateReviewPayload(normalizedRates).filter((rate) => rate.projectId !== returnedRateProjectId);
         if (JSON.stringify(beforeOther) !== JSON.stringify(afterOther)) {
-          throw Object.assign(new Error('This returned Review applies to one project rate only. Correct that project without changing rates for other projects.'), { statusCode: 409, code: 'RETURNED_REVIEW_SCOPE_MISMATCH' });
+          throw Object.assign(new Error(rateAuditCase?'This Audit Case applies to one project rate only. Correct that project without changing rates for other projects.':'This returned Review applies to one project rate only. Correct that project without changing rates for other projects.'), { statusCode: 409, code: rateAuditCase?'AUDIT_CORRECTION_SCOPE_MISMATCH':'RETURNED_REVIEW_SCOPE_MISMATCH' });
         }
       }
       await assertEntityNotReviewLocked(connection, {
@@ -1389,6 +1406,7 @@ export const editGroup = async (req, res) => {
       }
     }
 
+    if(!rateAuditCase){
     await connection.query(
       `UPDATE seller_groups SET
          seller_group_name = ?, seller_group_head_user_id = ?,
@@ -1409,6 +1427,13 @@ export const editGroup = async (req, res) => {
 
     await assertSellerGroupRoleHierarchy(connection, groupId);
     await syncGroupProjectAccreditations(connection, groupId, normalizedRates, groupType, accessibleProjectIds);
+    }else{
+      const projectId=Number(String(rateAuditCase.entity_id).split(':')[1]||0);
+      if(projectId){
+        await upsertGroupProjectRates(connection,groupId,normalizedRates.filter(rate=>Number(rate.lot_project_id)===projectId),groupType);
+        await deactivateLegacyIndividualRates(connection,groupId,[projectId]);
+      }else await syncGroupProjectAccreditations(connection,groupId,normalizedRates,groupType,accessibleProjectIds);
+    }
 
     await writeAuditLog(connection, req, {
       action: 'update', module: 'Groups', entityType: 'seller_group', entityId: String(groupId),
@@ -1440,7 +1465,7 @@ export const editGroup = async (req, res) => {
         beforeSnapshot: beforeNetwork,
         afterSnapshot: afterNetwork,
       });
-    } else {
+    } else if (!rateAuditCase) {
       networkReview = await createOperationalReview(connection, {
         actor: req.authUser,
         actionKey: 'network.edit',
@@ -1456,7 +1481,7 @@ export const editGroup = async (req, res) => {
 
     let rateReview = null;
     if (ratesChanged) {
-      const returnedRateProjectId = Number(String(rateReturnedReview?.entity_id || '').split(':')[1] || 0);
+      const returnedRateProjectId = Number(String(rateAuditCase?.entity_id || rateReturnedReview?.entity_id || '').split(':')[1] || 0);
       const returnedRateProject = returnedRateProjectId
         ? projects.find((project) => Number(project.lot_project_id) === returnedRateProjectId) || {}
         : null;
@@ -1546,7 +1571,7 @@ export const toggleGroupStatus = async (req, res) => {
       auditCase = await getPendingAuditCorrectionCase(connection, {
         correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
-        auditCaseId: req.body?.auditCaseId,
+        auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
         entityType: 'seller_group',
         entityId: groupId,
       });
@@ -2371,7 +2396,7 @@ export const updateGroupProjectPool = async (req, res) => {
       auditCase = await getPendingAuditCorrectionCase(connection, {
         correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
         actor: req.authUser,
-        auditCaseId: req.body?.auditCaseId,
+        auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
         entityType: 'seller_group_project_rates',
         entityId,
       });

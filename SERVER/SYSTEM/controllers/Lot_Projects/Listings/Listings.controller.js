@@ -1617,7 +1617,7 @@ export const updateLotProjectListing = async (req, res) => {
         inventoryAuditCase = await getPendingAuditCorrectionCase(connection, {
         correctionReason:req.body?.reason || req.body?.correctionReason || req.body?.correctionSummary || req.body?.adjustmentReason,
           actor: req.authUser,
-          auditCaseId: req.body?.auditCaseId,
+          auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
           entityType: 'lot_project_listing',
           entityId: existingListing.lot_project_listing_id,
         });

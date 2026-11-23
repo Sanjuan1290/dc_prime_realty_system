@@ -4,6 +4,7 @@ import { FiEdit3, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import ConfirmActionModal from '../../Shared/ConfirmActionModal'
 import ProjectAccreditationFields from './ProjectAccreditationFields'
+import useAuditCorrectionReason from '../../../utils/useAuditCorrectionReason'
 import { BrokerNameWarning } from './BrokerNameWarning'
 import { getDuplicateBrokerMatches, useBrokerNameMatches } from './useBrokerNameMatches'
 import { getCompanyProfitError, getMaxCompanyProfitPercent } from '../../../utils/companyProfitPolicy'
@@ -39,6 +40,7 @@ const Field = ({ label, required = false, ...props }) => (
 )
 
 const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupType: propGroupType, workflowReviewId = null, workflowAuditCaseId = null }) => {
+  const {requireReason,correctionReasonDialog}=useAuditCorrectionReason(workflowAuditCaseId)
   const queryClient = useQueryClient()
   const groupType = propGroupType || selectedGroup?.seller_group_type || 'in_house'
   const isExternal = groupType === 'external'
@@ -116,7 +118,7 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
   const brokerMatches = brokerCheck.matches.length ? brokerCheck.matches : (serverBrokerMatches || [])
 
   const mutation = useMutation({
-    mutationFn: () => putJson(`/seller-groups/edit/${selectedGroup.seller_group_id}`, { ...form, ...(workflowReviewId ? { reviewId: workflowReviewId } : {}), ...(workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}) }, {
+    mutationFn: async () => putJson(`/seller-groups/edit/${selectedGroup.seller_group_id}`, await requireReason({ ...form, ...(workflowReviewId ? { reviewId: workflowReviewId } : {}), ...(workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}) }), {
       doubleCheck: {
         type: 'seller-group',
         mode: 'edit',
@@ -185,6 +187,7 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-5">
+      {correctionReasonDialog}
       <form onSubmit={submit} className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4"><div className="flex items-start gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700"><FiEdit3 /></span><div><h2 className="text-xl font-black text-slate-950">Edit {groupLabel}</h2><p className="mt-1 text-sm font-semibold text-slate-500">{isExternal ? 'Update the partner account and overall project Pool Rates.' : 'Update the internal hierarchy and Pool Rate, Company Profit, and calculated role allocation.'}</p></div></div><button type="button" onClick={() => setShowEditGroupModal(false)} disabled={mutation.isPending} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"><FiX /></button></header>
 

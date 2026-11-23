@@ -11,6 +11,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import StatusAlert from "../../Shared/StatusAlert";
+import useAuditCorrectionReason from '../../../utils/useAuditCorrectionReason';
 import { useFetch as fetchApi, useFetchPut as putApi, getDoubleCheckNotice } from "../../../utils/useFetch";
 
 const sellerRoles = ["division_manager", "sales_director", "unit_manager", "sales_agent"];
@@ -218,6 +219,7 @@ const EditUserModal = ({
   workflowAuditCaseId = null,
 }) => {
   const queryClient = useQueryClient();
+  const {requireReason,correctionReasonDialog}=useAuditCorrectionReason(workflowAuditCaseId);
   const availableRoleEntries = useMemo(() => Object.entries(roleLabels).filter(([value]) => allowedRoles.includes(value)), [allowedRoles]);
   const isPrivilegedRoleLocked = false;
   const [activeStep, setActiveStep] = useState(1);
@@ -305,8 +307,8 @@ const EditUserModal = ({
   );
 
   const updateMutation = useMutation({
-    mutationFn: () =>
-      putApi(`/user/editUser/${selectedUser.id}`, { ...form, ...(workflowReviewId ? { reviewId: workflowReviewId } : {}), ...(workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}) }, {
+    mutationFn: async () =>
+      putApi(`/user/editUser/${selectedUser.id}`, await requireReason({ ...form, ...(workflowReviewId ? { reviewId: workflowReviewId } : {}), ...(workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}) }), {
         doubleCheck: {
           type: 'user',
           mode: 'edit',
@@ -412,6 +414,7 @@ const EditUserModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      {correctionReasonDialog}
       <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>

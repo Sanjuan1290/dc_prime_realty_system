@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import ReviewLiveRecordPanel from '../../components/Shared/ReviewLiveRecordPanel'
 import ReviewReturnLink from '../../components/Shared/ReviewReturnLink'
+import useAuditCorrectionReason from '../../utils/useAuditCorrectionReason'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FiArrowLeft,
@@ -136,6 +137,7 @@ const ListingProfile = () => {
   const canReleaseCancelledUnit = hasPermission(user, PERMISSIONS.LOT_CANCELLATIONS_RELEASE_UNIT)
   const canCorrectReservation = hasPermission(user, PERMISSIONS.LOT_RESERVATION_CORRECT)
   const workflowAuditCaseId = Number(searchParams.get('auditCaseId') || 0)
+  const {requireReason,correctionReasonDialog}=useAuditCorrectionReason(workflowAuditCaseId)
   const workflowReviewId = Number(searchParams.get('reviewId') || 0)
   const dismissedReviewId = Number(searchParams.get('reviewReturnId') || 0)
   const workflowAction = String(searchParams.get('workflowAction') || '').trim()
@@ -295,14 +297,14 @@ const ListingProfile = () => {
   )
 
   const updateListingMutation = useMutation({
-    mutationFn: (payload) => {
-      const workflowPayload = ['listing_edit_review', 'listing_documents_update_review'].includes(workflowAction)
+    mutationFn: async (payload) => {
+      const workflowPayload = await requireReason(['listing_edit_review', 'listing_documents_update_review'].includes(workflowAction)
         ? {
             ...payload,
             ...(workflowReviewId ? { reviewId: workflowReviewId } : {}),
             ...(workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}),
           }
-        : payload
+        : payload)
       return useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}`, workflowPayload, {
         doubleCheck: {
           type: 'listing',
@@ -637,14 +639,14 @@ const ListingProfile = () => {
   })
 
   const updateDocumentRequirementsMutation = useMutation({
-    mutationFn: (nextDocuments) =>
+    mutationFn: async (nextDocuments) =>
       useFetchPut(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/document-requirements`,
-        {
+        await requireReason({
           documents: nextDocuments,
           ...(['listing_documents_update_review', 'listing_edit_review'].includes(workflowAction) && workflowReviewId ? { reviewId: workflowReviewId } : {}),
           ...(['listing_documents_update_review', 'listing_edit_review'].includes(workflowAction) && workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}),
-        },
+        }),
         {
           doubleCheck: {
             type: 'listing-documents',
@@ -670,14 +672,14 @@ const ListingProfile = () => {
   })
 
   const updateClientProfileMutation = useMutation({
-    mutationFn: (payload) => {
-      const workflowPayload = workflowAction === 'buyer_profile_edit_review'
+    mutationFn: async (payload) => {
+      const workflowPayload = await requireReason(workflowAction === 'buyer_profile_edit_review'
         ? {
             ...payload,
             ...(workflowReviewId ? { reviewId: workflowReviewId } : {}),
             ...(workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}),
           }
-        : payload
+        : payload)
       return useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/client-profile`, workflowPayload, {
         doubleCheck: { type: 'buyer-profile', mode: 'edit', data: payload },
       })
@@ -730,6 +732,7 @@ const ListingProfile = () => {
 
   return (
     <main className="flex flex-col gap-6">
+      {correctionReasonDialog}
       <ReviewReturnLink role={user?.role} reviewId={workflowReviewId||dismissedReviewId} />
       {alert ? (
         <StatusAlert

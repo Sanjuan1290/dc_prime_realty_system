@@ -48,5 +48,5 @@ test('controlled correction requires the exact pending record and a meaningful r
  assert.ok(await getPendingAuditCorrectionCase(connection,args));assert.equal(await getPendingAuditCorrectionCase(connection,{...args,entityId:13}),null);
  await assert.rejects(getPendingAuditCorrectionCase(connection,{...args,actor:null}),{statusCode:403});
  await assert.rejects(getPendingAuditCorrectionCase(connection,{...args,correctionReason:'fix'}),{statusCode:400});
- row.review_status='closed';assert.equal(await getPendingAuditCorrectionCase(connection,args),null);
+ row.review_status='closed';await assert.rejects(getPendingAuditCorrectionCase(connection,args),{statusCode:409,code:'AUDIT_CASE_NOT_AWAITING_CORRECTION'});
 });
