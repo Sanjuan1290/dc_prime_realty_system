@@ -108,7 +108,7 @@ export default function NetworkProfitProofOfIncomeModal({ group, canPrint = fals
               <tr key={record.stage.id}><td className="p-3 font-bold">{record.profit.unit}</td><td className="p-3">{record.stage.stage}<p className="text-slate-500">{record.stage.paymentReference || '-'}</p></td>
                 <td className="p-3">{dateOnly(record.stage.actualReleaseDate)}</td><td className="p-3 font-bold">{money(record.stage.amount)}</td>
                 <td className="p-3"><div className="flex gap-2">{canPrint ? <button type="button" onClick={() => setPrintChoice(receiptRow(record))} className="rounded-lg border px-2 py-1 font-bold"><FiPrinter className="mr-1 inline"/>Print</button> : null}
-                  {canViewFiles ? <button type="button" onClick={() => setSignedChoice(record)} className="rounded-lg border px-2 py-1 font-bold"><FiFileText className="mr-1 inline"/>Signed Copy</button> : null}</div></td>
+                  {canViewFiles ? <button type="button" onClick={() => setSignedChoice(record)} className="rounded-lg border px-2 py-1 font-bold"><FiFileText className="mr-1 inline"/>Signed Company Receipt</button> : null}</div></td>
               </tr>)}</tbody>
           </table></div>
         </section>
@@ -117,9 +117,9 @@ export default function NetworkProfitProofOfIncomeModal({ group, canPrint = fals
     </div>
     {printChoice ? <CommissionReceiptPreview seller={printChoice.seller} receipt={printChoice.receipt} onClose={() => setPrintChoice(null)}/> : null}
     {signedChoice ? <SignedCopyUploadModal
-      title="Signed Network Company Profit Acknowledgment" category="Signed Network Company Profit"
+      title="Signed Company Receipt" category="Signed Network Company Profit"
       recordLabel={`NCP-${signedChoice.stage.id}`}
-      description="Signed original for this specific released Company Profit milestone."
+      description="Upload only the signed company receipt for this Company Profit milestone. You do not need to upload every seller's receipt here."
       basePath={`/projects/lot-projects/${signedChoice.profit.projectSlug}/network-company-profit/${signedChoice.profit.id}/releases/${signedChoice.stage.id}/signed-copy`}
       readOnly={!canUpload} onClose={() => setSignedChoice(null)} /> : null}
   </div>

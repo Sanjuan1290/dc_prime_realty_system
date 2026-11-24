@@ -597,6 +597,7 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
               profitRecord={selectedProfit}
               projectSlug={projectSlug}
               canRelease={canRelease}
+              canUnhold={canUnhold}
               paymentPercent={commissionGroup?.paymentPercent ?? commission.paymentPercent ?? 0}
               sellers={sellers.filter(seller => Number(seller.sellerGroupId) === Number(selectedProfit.networkId))}
             />

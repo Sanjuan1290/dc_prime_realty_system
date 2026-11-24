@@ -49,7 +49,7 @@ const PerformanceLeaderboard = ({ sellers = [], networks = [], scope = 'project'
           const key = `${tab}:${row.id}`
           return <tr key={key} className="align-top">
             <td className="px-3 py-4 font-black text-blue-700">#{(current-1)*pageSize+idx+1}</td>
-            <td className="px-3 py-4"><p className="font-black text-slate-900">{tab === 'network' ? row.group : row.seller}</p><p className="mt-1 text-xs text-slate-500">{tab === 'network' ? row.payee : row.group}</p>{tab === 'seller' && Number(row.units || 0) === 0 ? <span className="mt-2 inline-block rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">No sales in period</span> : null}{tab === 'seller' && row.status === 'inactive' ? <span className="ml-1 inline-block rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">Inactive</span> : null}</td>
+            <td className="px-3 py-4"><p className="font-black text-slate-900">{tab === 'network' ? row.group : row.seller}</p><p className="mt-1 text-xs text-slate-500">{tab === 'network' ? row.payee : row.group}</p>{tab === 'seller' && row.status === 'inactive' ? <span className="ml-1 inline-block rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">Inactive</span> : null}</td>
             <td className="px-3 py-4 font-semibold capitalize text-slate-600">{tab === 'network' ? (row.groupType === 'in_house' ? 'In-House' : 'External') : String(row.role || '').replaceAll('_',' ')}</td>
             <td className="px-3 py-4">{number(row.projectCount ?? 1)}</td><td className="px-3 py-4 font-black">{number(row.units)}</td>
             <td className="px-3 py-4 font-black text-blue-700">{money(row.salesAmount)}</td>

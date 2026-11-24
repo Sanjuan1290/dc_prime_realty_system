@@ -1032,6 +1032,8 @@ export const loadLiveSellerReleaseForBatch = async (connection, { stage, commiss
   return {
     release,
     paymentPercent,
+    paymentComplete: isPaymentComplete(release),
+    documentsComplete: areDocumentsComplete(release),
     computedStatus: normalizeReleaseStatus(release, paymentPercent, { retentionReady: isRetentionReady(release) }),
     isHistorical: buildAccountContext({ account: release }).isHistoricalEntry,
   };

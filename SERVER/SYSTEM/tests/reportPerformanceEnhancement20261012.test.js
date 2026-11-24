@@ -228,7 +228,7 @@ test('report-only seller directory endpoint enforces report permission and proje
   assert.match(performance,/accredited_seller_lot_project_rate_status = 'active'/)
   assert.match(performance,/c.accredited_seller_id = s.accredited_seller_id/)
   assert.match(system,/includeUnrankedSellers/)
-  assert.match(component,/No sales in period/)
+  assert.doesNotMatch(component,/No sales in period/)
   assert.match(component,/accredited sellers ranked/)
   assert.match(component,/rosterError/)
   assert.match(system,/rosterError=\{shouldLoadLotProjects && sellerRosterQuery.isError\}/)

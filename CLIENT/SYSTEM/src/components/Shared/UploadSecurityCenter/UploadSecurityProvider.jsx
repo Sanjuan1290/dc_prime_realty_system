@@ -476,13 +476,14 @@ const UploadSecurityProvider = ({ children }) => {
       {children}
 
       {tasks.length ? (
-        <aside className={`fixed bottom-4 right-4 z-[95] w-[calc(100vw-2rem)] max-w-[410px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20 transition-opacity duration-300 ${isClosing ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
+        <aside aria-label="Uploads and security status" className={`fixed bottom-4 right-4 z-[95] w-[calc(100vw-2rem)] max-w-[410px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20 transition-opacity duration-300 print:!hidden ${isClosing ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
           <header className="flex items-center justify-between gap-3 bg-slate-950 px-4 py-3 text-white">
             <button
               type="button"
               onClick={() => setCollapsed((current) => !current)}
               className="flex min-w-0 flex-1 items-center gap-3 text-left"
               aria-expanded={!collapsed}
+              aria-controls="upload-security-tasks"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600">
                 <FiShield className="h-4 w-4" />
@@ -511,17 +512,21 @@ const UploadSecurityProvider = ({ children }) => {
               <button
                 type="button"
                 onClick={() => setCollapsed((current) => !current)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:bg-white/10 hover:text-white"
+                className="flex h-8 shrink-0 items-center justify-center gap-1 rounded-lg px-2 text-xs font-bold text-slate-300 hover:bg-white/10 hover:text-white"
                 aria-label={collapsed ? 'Expand upload status' : 'Minimize upload status'}
+                aria-expanded={!collapsed}
+                aria-controls="upload-security-tasks"
+                title={collapsed ? 'Expand upload status' : 'Minimize upload status'}
               >
                 {collapsed ? <FiChevronUp /> : <FiChevronDown />}
+                <span>{collapsed ? 'Expand' : 'Minimize'}</span>
               </button>
             </div>
           </header>
 
           {!collapsed ? (
             <>
-              <div className="max-h-[360px] overflow-y-auto">
+              <div id="upload-security-tasks" className="max-h-[360px] overflow-y-auto">
                 {[...tasks].reverse().map((task) => {
                   const meta = statusMeta(task)
                   const Icon = meta.icon

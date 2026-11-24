@@ -6,6 +6,7 @@ import {
 
 import { getCommissionReleaseReceipt } from '../../controllers/Lot_Projects/Commissions/CommissionReleaseReceipt.controller.js';
 import { releaseAllInHouseMilestone } from '../../controllers/Lot_Projects/Commissions/InHouseBulkRelease.controller.js';
+import { unholdAllInHouseMilestone } from '../../controllers/Lot_Projects/Commissions/InHouseBulkUnhold.controller.js';
 import { getNetworkCompanyProfit, releaseNetworkCompanyProfit } from '../../controllers/Lot_Projects/Commissions/NetworkCompanyProfit.controller.js';
 import {
   authenticateUser,
@@ -212,6 +213,7 @@ router.get('/lot-projects/:projectSlug/commissions', requirePermission(PERMISSIO
 router.get('/lot-projects/:projectSlug/network-company-profit', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getNetworkCompanyProfit);
 router.post('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId', requirePermission(PERMISSIONS.LOT_COMMISSIONS_RELEASE), releaseNetworkCompanyProfit);
 router.post('/lot-projects/:projectSlug/network-company-profit/:profitId/release-all', requirePermission(PERMISSIONS.LOT_COMMISSIONS_RELEASE), releaseAllInHouseMilestone);
+router.post('/lot-projects/:projectSlug/network-company-profit/:profitId/unhold-all', requirePermission(PERMISSIONS.LOT_COMMISSIONS_UNHOLD), unholdAllInHouseMilestone);
 router.get('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId/signed-copy', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getNetworkProfitSignedCopy);
 router.post('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId/signed-copy/upload-signature', requirePermission(PERMISSIONS.LOT_COMMISSIONS_RELEASE), createNetworkProfitSignedUploadSignature);
 router.post('/lot-projects/:projectSlug/network-company-profit/:profitId/releases/:releaseId/signed-copy', requirePermission(PERMISSIONS.LOT_COMMISSIONS_RELEASE), saveNetworkProfitSignedCopy);
