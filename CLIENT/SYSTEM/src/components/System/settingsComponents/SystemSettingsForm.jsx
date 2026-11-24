@@ -1,4 +1,5 @@
 import { FiMail, FiPhone, FiSave, FiSettings, FiX } from 'react-icons/fi'
+import StatusAlert from '../../Shared/StatusAlert'
 
 const Field = ({ label, helper, children }) => (
   <label className="grid gap-2">
@@ -13,6 +14,13 @@ const textareaClass = 'min-h-[110px] resize-none rounded-2xl border border-slate
 
 const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = false, onCancel }) => {
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }))
+  const poolShareTotal = [
+    form.inHouseDmPoolSharePercent,
+    form.inHouseSdPoolSharePercent,
+    form.inHouseUmPoolSharePercent,
+    form.inHouseSaPoolSharePercent,
+  ].reduce((total, value) => total + Number(value || 0), 0)
+  const isPoolShareTotalValid = Number(poolShareTotal.toFixed(4)) === 100
 
   return (
     <form onSubmit={onSubmit} className="grid gap-6">
@@ -61,7 +69,12 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
           <Field label="Unit Manager" helper="Default: 20% of distributable pool"><div className="relative"><input disabled={disabled} type="number" min="0" max="100" step="0.0001" value={form.inHouseUmPoolSharePercent} onChange={(e) => update('inHouseUmPoolSharePercent', e.target.value)} className={`${inputClass} w-full pr-9`} /><span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">%</span></div></Field>
           <Field label="Sales Agent" helper="Default: 50% of distributable pool"><div className="relative"><input disabled={disabled} type="number" min="0" max="100" step="0.0001" value={form.inHouseSaPoolSharePercent} onChange={(e) => update('inHouseSaPoolSharePercent', e.target.value)} className={`${inputClass} w-full pr-9`} /><span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">%</span></div></Field>
         </div>
-        <div className="border-t border-slate-100 px-6 py-4 text-sm font-black text-slate-700">Total: {(Number(form.inHouseDmPoolSharePercent || 0) + Number(form.inHouseSdPoolSharePercent || 0) + Number(form.inHouseUmPoolSharePercent || 0) + Number(form.inHouseSaPoolSharePercent || 0)).toFixed(4)}%</div>
+        <div className="grid gap-3 border-t border-slate-100 px-6 py-4">
+          <p className={`text-sm font-black ${isPoolShareTotalValid ? 'text-slate-700' : 'text-amber-800'}`}>Total: {poolShareTotal.toFixed(4)}%</p>
+          {!isPoolShareTotalValid ? (
+            <StatusAlert type="warning" message="The percentages must total exactly 100%. Adjust the distribution before saving." />
+          ) : null}
+        </div>
         <div className="grid gap-4 border-t border-slate-100 p-6 md:grid-cols-[minmax(0,1fr)_2fr] md:items-end">
           <Field label="Maximum Company Profit" helper="Highest Company Profit a Network may keep, as a percentage of its Pool Rate. At 50%, an 8% Pool Rate allows up to 4% CP."><div className="relative"><input disabled={disabled} type="number" min="0" max="100" step="0.0001" value={form.maxCompanyProfitPercentOfPool} onChange={(e) => update('maxCompanyProfitPercentOfPool', e.target.value)} className={`${inputClass} w-full pr-16`} /><span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">% of pool</span></div></Field>
           <p className="text-sm font-semibold text-slate-500">Applies when a Network is created or edited. Every role (DM, SD, UM, SA) must still receive at least 0.0001% after Company Profit. Existing Networks keep working until they are next edited.</p>
