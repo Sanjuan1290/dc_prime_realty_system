@@ -37,6 +37,10 @@ Install each app's dependencies with npm ci in its directory. Run the frontend a
 
 For verification without loading private .env files, use **node tools/qa/check-project.mjs** and **node tools/qa/check-project.mjs --build**. End-to-end tests use only a guarded disposable database on loopback port 13307; see [QA instructions](tools/qa/README.md).
 
+Cloudinary malware results must reach the Realty API at `/api/v1/webhooks/cloudinary/malware`. Set `CLOUDINARY_MALWARE_NOTIFICATION_URL` to that path on the current System Render service; the retired `dc-prime-realty-api.onrender.com` host returns 404. On Render, the upload signer uses `RENDER_EXTERNAL_URL` to recover a missing or retired callback address. `CLOUDINARY_API_SECRET` verifies standard Cloudinary notifications; an optional `CLOUDINARY_WEBHOOK_API_SECRET` may also verify a separately configured signing key.
+
+Protected file access rechecks pending scan results directly with Cloudinary, with bounded requests, asset/version verification and an audit trail. To repair existing pending records, run `node scripts/reconcile-pending-malware-scans.mjs` from `SERVER/SYSTEM` for a dry run, then add `--apply` to save verified approvals or rejections and refresh buyer-document snapshots. It never marks a pending or unknown provider result as approved. These recovery changes require the updated System backend to be deployed.
+
 The fresh-start schemas under DATABASES/FRESH_START are for new empty databases, not upgrades of existing live databases. The invitation columns, import undo support and new HR permissions have additive startup upgrades and separately reviewable SQL migrations. Existing business data and passwords are preserved.
 
 See [current implementation and test evidence](QA_REPORTS/2026-11-18-payroll-undo-and-connected-fixes.md) for payroll undo, release, audit, document and export changes and their publication status. Historical batch documents describe earlier states and are not active deployment gates.

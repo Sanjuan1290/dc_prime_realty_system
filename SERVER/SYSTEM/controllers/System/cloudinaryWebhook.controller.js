@@ -6,9 +6,10 @@ import { writeAuditLog } from './auditLogs.controller.js';
 const clean = (value) => String(value ?? '').trim();
 const MAX_WEBHOOK_AGE_SECONDS = 2 * 60 * 60;
 
-const getWebhookSecret = () =>
-  clean(process.env.CLOUDINARY_WEBHOOK_API_SECRET) ||
-  clean(process.env.CLOUDINARY_API_SECRET);
+const getWebhookSecrets = () => [...new Set([
+  clean(process.env.CLOUDINARY_API_SECRET),
+  clean(process.env.CLOUDINARY_WEBHOOK_API_SECRET),
+].filter(Boolean))];
 
 const safeEqualHex = (left, right) => {
   const a = Buffer.from(clean(left).toLowerCase(), 'utf8');
@@ -19,23 +20,27 @@ const safeEqualHex = (left, right) => {
 const buildNotificationSignature = (rawBody, timestamp, secret, algorithm) =>
   crypto.createHash(algorithm).update(`${rawBody}${timestamp}${secret}`).digest('hex');
 
-const verifyCloudinaryNotification = (req) => {
+export const verifyCloudinaryNotification = (req) => {
   const signature = clean(req.get('X-Cld-Signature'));
   const timestampText = clean(req.get('X-Cld-Timestamp'));
   const timestamp = Number(timestampText);
-  const secret = getWebhookSecret();
+  const secrets = getWebhookSecrets();
   const rawBody = typeof req.rawBody === 'string' ? req.rawBody : '';
 
-  if (!secret || !signature || !timestampText || !Number.isFinite(timestamp) || !rawBody) {
+  if (!secrets.length || !signature || !timestampText || !Number.isFinite(timestamp) || !rawBody) {
     return false;
   }
 
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (Math.abs(nowSeconds - timestamp) > MAX_WEBHOOK_AGE_SECONDS) return false;
 
-  const sha1 = buildNotificationSignature(rawBody, timestampText, secret, 'sha1');
-  const sha256 = buildNotificationSignature(rawBody, timestampText, secret, 'sha256');
-  return safeEqualHex(signature, sha1) || safeEqualHex(signature, sha256);
+  // Uploads are signed with the API secret. A stale optional webhook secret
+  // must not reject genuine results; retain it for explicitly configured keys.
+  return secrets.some(secret => {
+    const sha1 = buildNotificationSignature(rawBody, timestampText, secret, 'sha1');
+    const sha256 = buildNotificationSignature(rawBody, timestampText, secret, 'sha256');
+    return safeEqualHex(signature, sha1) || safeEqualHex(signature, sha256);
+  });
 };
 
 const normalizeModerationStatus = (body = {}) => {

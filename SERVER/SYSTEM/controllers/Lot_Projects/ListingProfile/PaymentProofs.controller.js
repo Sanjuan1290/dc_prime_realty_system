@@ -7,6 +7,7 @@ import {
   getListingLookupWhere,
   getAuthenticatedUser,
 } from '../_shared/lotProject.shared.js';
+import { recheckPendingMalwareScan } from '../../../services/malwareScanRecovery.service.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import {
   assertEntityNotReviewLocked,
@@ -579,8 +580,9 @@ export const getLotProjectPaymentProofAccessUrl = async (req, res) => {
       `,
       [proofId, context.payment.lot_project_payment_id]
     );
-    const proof = rows[0];
+    let proof = rows[0];
     if (!proof) return res.status(404).json({ message: 'Payment proof not found.' });
+    proof = await recheckPendingMalwareScan(connection, 'payment_proof', proof, req);
 
     const malwareScanStatus = clean(proof.malware_scan_status || 'not_scanned').toLowerCase();
     if (malwareScanStatus === 'pending') {
@@ -639,8 +641,9 @@ export const getLotProjectPaymentProofContent = async (req, res) => {
       `,
       [proofId, context.payment.lot_project_payment_id]
     );
-    const proof = rows[0];
+    let proof = rows[0];
     if (!proof) return res.status(404).json({ message: 'Payment proof not found.' });
+    proof = await recheckPendingMalwareScan(connection, 'payment_proof', proof, req);
 
     const malwareScanStatus = clean(proof.malware_scan_status || 'not_scanned').toLowerCase();
     if (malwareScanStatus === 'pending') return res.status(423).json({ code: 'MALWARE_SCAN_PENDING', message: 'This payment proof is still being scanned for security threats. Try again shortly.' });

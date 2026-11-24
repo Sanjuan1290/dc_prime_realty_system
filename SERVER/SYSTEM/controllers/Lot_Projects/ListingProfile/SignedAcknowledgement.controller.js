@@ -7,6 +7,7 @@ import {
   getProjectBySlug,
   tableExists,
 } from '../_shared/lotProject.shared.js';
+import { recheckPendingMalwareScan } from '../../../services/malwareScanRecovery.service.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import {
   assertEntityNotReviewLocked,
@@ -142,7 +143,7 @@ export const getLotProjectPaymentAcknowledgementSignedCopy = async (req, res) =>
   try {
     const context = await getContext(connection, req);
     if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
-    const file = await getActiveFile(connection, context.payment.lot_project_payment_id);
+    const file = await recheckPendingMalwareScan(connection, 'payment_acknowledgment', await getActiveFile(connection, context.payment.lot_project_payment_id), req);
     return res.json({
       success: true,
       data: {
@@ -494,7 +495,7 @@ export const getLotProjectPaymentAcknowledgementSignedCopyAccessUrl = async (req
   try {
     const context = await getContext(connection, req);
     if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
-    const file = await getActiveFile(connection, context.payment.lot_project_payment_id);
+    const file = await recheckPendingMalwareScan(connection, 'payment_acknowledgment', await getActiveFile(connection, context.payment.lot_project_payment_id), req);
     if (!file) return res.status(404).json({ message: 'Signed acknowledgement receipt not found.' });
 
     const malwareScanStatus = clean(file.malware_scan_status || 'not_scanned').toLowerCase();
@@ -523,7 +524,7 @@ export const getLotProjectPaymentAcknowledgementSignedCopyContent = async (req, 
   try {
     const context = await getContext(connection, req);
     if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
-    const file = await getActiveFile(connection, context.payment.lot_project_payment_id);
+    const file = await recheckPendingMalwareScan(connection, 'payment_acknowledgment', await getActiveFile(connection, context.payment.lot_project_payment_id), req);
     if (!file) return res.status(404).json({ message: 'Signed acknowledgement receipt not found.' });
 
     const malwareScanStatus = clean(file.malware_scan_status || 'not_scanned').toLowerCase();

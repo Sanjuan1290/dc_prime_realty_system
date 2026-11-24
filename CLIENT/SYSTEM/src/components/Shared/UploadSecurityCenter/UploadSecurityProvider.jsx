@@ -345,8 +345,23 @@ const UploadSecurityProvider = ({ children }) => {
       const scanStatus = clean(
         result?.data?.malwareScanStatus ||
         result?.malwareScanStatus ||
-        'approved'
+        ''
       ).toLowerCase()
+
+      if (scanStatus === 'pending') {
+        const elapsed = Date.now() - Number(task.scanStartedAt || task.createdAt || Date.now())
+        updateUpload(task.id, {
+          status: manual || elapsed >= AUTO_POLL_TIMEOUT_MS ? 'scan_delayed' : 'scanning',
+          message: manual || elapsed >= AUTO_POLL_TIMEOUT_MS
+            ? 'The security provider has not returned a final scan result yet. Check again shortly.'
+            : 'The upload completed. Waiting for the malware scan result.',
+          pollFailures: 0,
+        })
+        return
+      }
+      if (!['approved', 'rejected', 'error', 'not_scanned'].includes(scanStatus)) {
+        throw new Error('The security scan result could not be verified. Try checking again shortly.')
+      }
 
       beginSecurityScan(task.id, {
         accessPath: task.accessPath,

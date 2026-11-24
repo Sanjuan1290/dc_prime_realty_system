@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FiExternalLink, FiEye, FiFileText, FiImage, FiLoader, FiLock, FiSearch, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
+import { useFetch as fetchJson } from '../../../../utils/useFetch'
 import { fetchProtectedObjectUrl, openProtectedObjectUrl, revokeProtectedObjectUrl } from '../../../../utils/protectedFile'
 import { getDocumentFiles, isPdfLike } from './documentFileUtils'
 import {
@@ -33,6 +34,7 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
   const [loadingKey, setLoadingKey] = useState('')
   const [notice, setNotice] = useState(null)
   const [resolvedUrls, setResolvedUrls] = useState({})
+  const [scanStates, setScanStates] = useState({})
   const [previewStatus, setPreviewStatus] = useState({ loading: false, failed: 0 })
   const objectUrlsRef = useRef(new Set())
 
@@ -129,6 +131,23 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
   }
 
   const openFile = async (file, document, index) => {
+    const key = getFileKey(document, file, index)
+    file = { ...file, ...(scanStates[key] ? { malwareScanStatus: scanStates[key] } : {}) }
+    if (file.protected && file.accessPath && getMalwareScanStatus(file) === 'pending') {
+      setLoadingKey(key)
+      setNotice({ type: 'loading', message: 'Checking the latest security scan result...' })
+      try {
+        const result = await fetchJson(file.accessPath)
+        const status = result?.data?.malwareScanStatus
+        if (!['approved', 'rejected', 'pending'].includes(status)) throw new Error('The security scan result could not be verified. Try again shortly.')
+        setScanStates(current => ({ ...current, [key]: status }))
+        file = { ...file, malwareScanStatus: status }
+        setNotice(null)
+      } catch (error) {
+        setNotice({ type: error?.code === 'MALWARE_SCAN_PENDING' ? 'warning' : 'error', message: error?.message || 'Could not check the security scan result.' })
+        return
+      } finally { setLoadingKey('') }
+    }
     const scanStatus = getMalwareScanStatus(file)
     if (!canOpenMalwareScannedFile(file)) {
       setNotice({
@@ -142,7 +161,6 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
       if (!confirmed) return
     }
 
-    const key = getFileKey(document, file, index)
     try {
       const url = await resolveFileUrl(file, key)
       if (isPdfLike(file)) {
@@ -195,8 +213,9 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
                   <div className="p-4">
                     {files.length ? (
                       <div className="grid gap-3 sm:grid-cols-2">
-                        {files.map((file, index) => {
-                          const key = getFileKey(document, file, index)
+                        {files.map((savedFile, index) => {
+                          const key = getFileKey(document, savedFile, index)
+                          const file = { ...savedFile, ...(scanStates[key] ? { malwareScanStatus: scanStates[key] } : {}) }
                           const isPdf = isPdfLike(file)
                           const isLoading = loadingKey === key
                           const scanStatus = getMalwareScanStatus(file)
@@ -225,7 +244,7 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
                               <div className="p-3">
                                 <div className="flex items-center justify-between gap-3">
                                   <span className="truncate text-xs font-black text-slate-700">{file.fileName || `File ${index + 1}`}</span>
-                                  <span className="inline-flex items-center gap-1 text-xs font-black text-blue-700">{isPdf ? <FiExternalLink /> : <FiEye />} Open</span>
+                                  <span className="inline-flex items-center gap-1 text-xs font-black text-blue-700">{isPdf ? <FiExternalLink /> : <FiEye />} {scanStatus === 'pending' ? 'Check & Open' : 'Open'}</span>
                                 </div>
                                 <p className={`mt-1 text-[10px] font-black ${
                                   scanStatus === 'approved'

@@ -5,6 +5,7 @@ import {
   tableExists,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { PERMISSIONS, roleHasPermission } from '../../config/permissions.js';
+import { recheckPendingMalwareScan } from '../../services/malwareScanRecovery.service.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import {
   authorizeMalwareQuotaFallback,
@@ -150,7 +151,7 @@ export const getAccreditedSellerProofOfIncomeSignedCopy = async (req, res) => {
     if (!sellerId || !receiptId) return res.status(400).json({ message: 'Seller id and receipt id are required.' });
     const context = await getContext(connection, sellerId, receiptId);
     if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
-    const file = await getActiveFile(connection, receiptId);
+    const file = await recheckPendingMalwareScan(connection, 'seller_receipt', await getActiveFile(connection, receiptId), req);
     return res.json({
       success: true,
       data: {
@@ -395,7 +396,7 @@ export const getAccreditedSellerProofOfIncomeSignedCopyAccessUrl = async (req, r
     if (!sellerId || !receiptId) return res.status(400).json({ message: 'Seller id and receipt id are required.' });
     const context = await getContext(connection, sellerId, receiptId);
     if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
-    const file = await getActiveFile(connection, receiptId);
+    const file = await recheckPendingMalwareScan(connection, 'seller_receipt', await getActiveFile(connection, receiptId), req);
     if (!file) return res.status(404).json({ message: 'Signed Proof of Income not found.' });
 
     const malwareScanStatus = clean(file.malware_scan_status || 'not_scanned').toLowerCase();
@@ -430,7 +431,7 @@ export const getAccreditedSellerProofOfIncomeSignedCopyContent = async (req, res
     if (!sellerId || !receiptId) return res.status(400).json({ message: 'Seller id and receipt id are required.' });
     const context = await getContext(connection, sellerId, receiptId);
     if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
-    const file = await getActiveFile(connection, receiptId);
+    const file = await recheckPendingMalwareScan(connection, 'seller_receipt', await getActiveFile(connection, receiptId), req);
     if (!file) return res.status(404).json({ message: 'Signed Proof of Income not found.' });
 
     const malwareScanStatus = clean(file.malware_scan_status || 'not_scanned').toLowerCase();

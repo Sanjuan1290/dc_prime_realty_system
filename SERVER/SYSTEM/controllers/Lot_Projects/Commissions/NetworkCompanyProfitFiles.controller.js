@@ -1,6 +1,7 @@
 // Uses the SAME protected Cloudinary transport and Perception Point scanning as seller Proof of Income.
 // Kept in a separate table: company income must never masquerade as seller earnings.
 import { db, getErrorMessage, getProjectBySlug } from '../_shared/lotProject.shared.js';
+import { recheckPendingMalwareScan } from '../../../services/malwareScanRecovery.service.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import {
   createAuthenticatedSignedCopyUploadSignature,
@@ -61,7 +62,7 @@ export const getNetworkProfitSignedCopy = async (req, res) => {
       receipt: { receiptId: record.profit_release_id, referenceNumber: `NCP-${record.profit_release_id}`,
         unitId: record.unit, totalAmount: Number(record.release_amount),
         receiptDate: record.actual_release_date, payee: record.payee_name },
-      signedCopy: fileResponse(req, await activeFile(connection, record.profit_release_id)),
+      signedCopy: fileResponse(req, await recheckPendingMalwareScan(connection, 'network_profit', await activeFile(connection, record.profit_release_id), req)),
     } });
   } catch (error) { return fail(res, error); } finally { connection.release(); }
 };
@@ -149,7 +150,7 @@ export const getNetworkProfitSignedAccessStatus = async (req, res) => {
   try {
     const record = await context(connection, req);
     if (!record || record.release_status !== 'Released') return res.status(404).json({ message: 'Release not found.' });
-    const file = await activeFile(connection, record.profit_release_id);
+    const file = await recheckPendingMalwareScan(connection, 'network_profit', await activeFile(connection, record.profit_release_id), req);
     if (!file) return res.status(404).json({ message: 'Signed acknowledgment not found.' });
     // Status metadata only. Never expose private Cloudinary delivery URLs.
     return res.json({ success: true, data: {
@@ -164,7 +165,7 @@ export const getNetworkProfitSignedContent = async (req, res) => {
   try {
     const record = await context(connection, req);
     if (!record || record.release_status !== 'Released') return res.status(404).json({ message: 'Release not found.' });
-    const file = await activeFile(connection, record.profit_release_id);
+    const file = await recheckPendingMalwareScan(connection, 'network_profit', await activeFile(connection, record.profit_release_id), req);
     if (!file) return res.status(404).json({ message: 'Signed acknowledgment not found.' });
     if (file.malware_scan_status !== 'approved') return res.status(423).json({ code: 'MALWARE_SCAN_NOT_APPROVED', message: 'The signed acknowledgment is not yet cleared by security scanning.' });
     return sendAuthenticatedAssetContent(res, { publicId: file.cloudinary_public_id,

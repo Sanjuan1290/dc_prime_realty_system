@@ -1,4 +1,5 @@
 import { db } from '../../../db/connect.js';
+import { recheckPendingMalwareScan } from '../../../services/malwareScanRecovery.service.js';
 import { writeAuditLog } from '../auditLogs.controller.js';
 import { signedReceiptErrorResponse } from '../../../services/employeePayrollReceiptErrors.service.js';
 import {
@@ -38,7 +39,7 @@ const queryPayroll = async (connection, payrollId, lock = false) => {
   return record;
 };
 const activeFiles = async (connection, payrollId) => {
-  const [rows] = await connection.query(`SELECT id, employee_payroll_id, original_file_name, mime_type, file_size_bytes, malware_scan_status, created_at FROM employee_payroll_signed_receipts WHERE employee_payroll_id = ? AND status = 'active' ORDER BY id ASC`, [payrollId]);
+  const [rows] = await connection.query(`SELECT * FROM employee_payroll_signed_receipts WHERE employee_payroll_id = ? AND status = 'active' ORDER BY id ASC`, [payrollId]);
   return rows;
 };
 const fileUrl = (payrollId, id) => `/employee-payroll/payrolls/${payrollId}/signed-receipts/${id}/content`;
@@ -59,7 +60,9 @@ export const listPayrollSignedReceipts = async (req, res) => {
     conn = await db.getConnection();
     const payrollId = getIds(req);
     await queryPayroll(conn, payrollId);
-    const rows = await activeFiles(conn, payrollId);
+    const rows = [];
+    for (const file of await activeFiles(conn, payrollId))
+      rows.push(await recheckPendingMalwareScan(conn, 'payroll_receipt', file, req));
     return res.json({ success: true, data: { maxFiles: MAX_SIGNED_PAYROLL_FILES, files: rows.map(mapped) } });
   } catch (error) { return sendError(res, error); }
   finally { conn?.release(); }
@@ -133,7 +136,8 @@ export const getPayrollSignedReceiptContent = async (req, res) => {
     const fileId = positiveId(req.params.fileId);
     if (!fileId) throw fail('Invalid receipt file.', 400);
     const [rows] = await conn.query(`SELECT * FROM employee_payroll_signed_receipts WHERE id = ? AND employee_payroll_id = ? AND status = 'active' LIMIT 1`, [fileId, payrollId]);
-    const file = rows[0]; if (!file) throw fail('Signed receipt not found.', 404);
+    let file = rows[0]; if (!file) throw fail('Signed receipt not found.', 404);
+    file = await recheckPendingMalwareScan(conn, 'payroll_receipt', file, req);
     if (file.malware_scan_status !== 'approved') throw fail('This signed receipt cannot be opened until its security scan is approved.', 423);
     return await sendAuthenticatedAssetContent(res, { publicId:file.cloudinary_public_id, format:file.cloudinary_format, resourceType:file.cloudinary_resource_type, fileName:file.original_file_name, fileMimeType:file.mime_type });
   } catch (error) { return sendError(res,error); }

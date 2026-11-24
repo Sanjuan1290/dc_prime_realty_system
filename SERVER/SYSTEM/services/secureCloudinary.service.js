@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { v2 as cloudinary } from 'cloudinary';
+import { resolveMalwareNotificationUrl } from './cloudinaryNotificationUrl.js';
 import {
   createReadableCloudinaryPublicId,
   createProjectStorageCode,
@@ -24,7 +25,7 @@ const toFiniteNumber = (value) => {
   return Number.isFinite(number) ? number : null;
 };
 
-const getMalwareNotificationUrl = () => clean(process.env.CLOUDINARY_MALWARE_NOTIFICATION_URL);
+const getMalwareNotificationUrl = () => resolveMalwareNotificationUrl();
 
 const getCloudinaryApiErrorDetails = (error) => {
   const nested = error && typeof error === 'object' ? error.error : null;
@@ -729,6 +730,7 @@ export const verifyAuthenticatedCloudinaryAsset = async ({ publicId, resourceTyp
     tags: true,
     context: true,
     moderations: true,
+    timeout: 12_000,
   });
 
   const actualFolder = clean(asset.asset_folder || asset.folder);

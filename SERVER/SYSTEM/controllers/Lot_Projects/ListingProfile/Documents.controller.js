@@ -10,6 +10,7 @@ import {
   parseClientDocumentImages,
   toNullable,
 } from '../_shared/lotProject.shared.js';
+import { recheckPendingMalwareScan } from '../../../services/malwareScanRecovery.service.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import {
   buildBuyerDocumentFolder,
@@ -818,8 +819,9 @@ export const getLotProjectDocumentFileAccessUrl = async (req, res) => {
       `,
       [fileId, project.lot_project_id]
     );
-    const file = rows[0];
+    let file = rows[0];
     if (!file) return res.status(404).json({ message: 'Document file not found.' });
+    file = await recheckPendingMalwareScan(connection, 'buyer_document', file, req);
 
     const malwareScanStatus = String(file.malware_scan_status || 'not_scanned').toLowerCase();
     if (malwareScanStatus === 'pending') {
@@ -880,8 +882,9 @@ export const getLotProjectDocumentFileContent = async (req, res) => {
       `,
       [fileId, project.lot_project_id]
     );
-    const file = rows[0];
+    let file = rows[0];
     if (!file) return res.status(404).json({ message: 'Document file not found.' });
+    file = await recheckPendingMalwareScan(connection, 'buyer_document', file, req);
 
     const malwareScanStatus = String(file.malware_scan_status || 'not_scanned').toLowerCase();
     if (malwareScanStatus === 'pending') return res.status(423).json({ code: 'MALWARE_SCAN_PENDING', message: 'This file is still being scanned for security threats. Try again shortly.' });
